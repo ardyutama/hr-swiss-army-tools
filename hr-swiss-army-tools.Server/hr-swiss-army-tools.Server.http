@@ -1,6 +1,0 @@
-@hr_swiss_army_tools.Server_HostAddress = http://localhost:5086
-
-GET {{hr_swiss_army_tools.Server_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###
