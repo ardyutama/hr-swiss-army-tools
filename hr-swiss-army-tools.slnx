@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="hr-swiss-army-tools.client/hr-swiss-army-tools.client.esproj" />
+  <Project Path="hr-swiss-army-tools.Server/hr-swiss-army-tools.Server.csproj" />
+</Solution>
