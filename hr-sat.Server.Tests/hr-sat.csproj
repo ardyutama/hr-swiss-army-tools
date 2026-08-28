@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\hr-swiss-army-tools.Server\hr-swiss-army-tools.Server.csproj" />
+    <ProjectReference Include="..\hr-sat.Server\hr-sat.Server.csproj" />
   </ItemGroup>
 
 </Project>

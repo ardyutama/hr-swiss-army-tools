@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="hr-sat.client/hr-sat.client.esproj" />
+  <Project Path="hr-sat.Server/hr-sat.Server.csproj" />
+  <Project Path="hr-sat.Server.Tests/hr-sat.Server.Tests.csproj" />
+</Solution>
