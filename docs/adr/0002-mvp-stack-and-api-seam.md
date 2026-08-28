@@ -29,7 +29,7 @@ own endpoints from `Features/<Feature>/`; a single `AppDbContext` (Npgsql) lives
 `Infrastructure/`; entities in `Domain/`. OpenAPI stays, dev-only, with Scalar as the API
 reference UI.
 
-**Database lifecycle.** PostgreSQL 17 in `compose.yml`. Schema is created with EF Core
+**Database lifecycle.** PostgreSQL 18 in `compose.yml`. Schema is created with EF Core
 `EnsureCreated()` at startup. Migrations are deferred deliberately: introduce `dotnet ef`
 migrations the first time the schema changes while data worth keeping exists. This is a
 deferral, not a rejection — do not "fix" it ahead of that trigger.

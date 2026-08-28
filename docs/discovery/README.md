@@ -15,3 +15,5 @@ Documentation translated from the discovery sketches
 4. [Architecture](04-architecture.md) — MVP V1 focused design and the possible final design.
 5. [UI sketches](05-ui-sketches.md) — the five V1 wireframe screens translated to behaviour:
    vacancy list, `.eml` import, candidate list, review workspace, bulk email templates.
+6. [Database design](06-database-design.md) — the confirmed PostgreSQL schema, ERD,
+   invariants, derived reads, and phased implementation plan.
