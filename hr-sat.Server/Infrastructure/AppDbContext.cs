@@ -1,7 +1,7 @@
-using hr_swiss_army_tools.Server.Domain;
+using hr_sat.Server.Domain;
 using Microsoft.EntityFrameworkCore;
 
-namespace hr_swiss_army_tools.Server.Infrastructure;
+namespace hr_sat.Server.Infrastructure;
 
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {

@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Testcontainers.PostgreSql;
 using Xunit;
 
-namespace hr_swiss_army_tools.Server.Tests;
+namespace hr_sat.Server.Tests;
 
 public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {

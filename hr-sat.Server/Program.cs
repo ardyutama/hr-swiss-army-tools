@@ -1,4 +1,4 @@
-using hr_swiss_army_tools.Server.Infrastructure;
+using hr_sat.Server.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 

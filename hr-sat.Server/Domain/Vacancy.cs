@@ -1,4 +1,4 @@
-namespace hr_swiss_army_tools.Server.Domain;
+namespace hr_sat.Server.Domain;
 
 public sealed class Vacancy
 {
