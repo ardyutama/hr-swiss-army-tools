@@ -10,6 +10,17 @@ function jsonResponse(body: unknown, status = 200): Response {
   })
 }
 
+function vacancy(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: '1',
+    title: 'Welder',
+    openedOn: '2026-08-27',
+    status: 'open',
+    progress: { processedCandidates: 0, totalCandidates: 0 },
+    ...overrides,
+  }
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
@@ -21,20 +32,43 @@ describe('VacancyListView', () => {
     const wrapper = mount(VacancyListView)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('No vacancies yet.')
+    expect(wrapper.text()).toContain('No vacancies yet')
   })
 
   it('lists vacancies returned by the API', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        jsonResponse([{ id: '1', title: 'Welder', createdOn: '2026-08-27T00:00:00Z' }]),
-      ),
+      vi.fn().mockResolvedValue(jsonResponse([vacancy()])),
     )
 
     const wrapper = mount(VacancyListView)
     await flushPromises()
 
     expect(wrapper.text()).toContain('Welder')
+  })
+
+  it('shows an error state with retry when the API fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({ title: 'Server error' }, 500)),
+    )
+
+    const wrapper = mount(VacancyListView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("Couldn't load vacancies")
+    expect(wrapper.text()).toContain('Try again')
+  })
+
+  it('shows the vacancy status badge from the API status', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse([vacancy({ status: 'closed' })])),
+    )
+
+    const wrapper = mount(VacancyListView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Closed')
   })
 })
