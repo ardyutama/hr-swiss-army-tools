@@ -2,6 +2,11 @@ using hr_sat.Server.Domain.Vacancies;
 
 namespace hr_sat.Server.Features.Vacancies;
 
+internal sealed record VacancyDefinitionRequest(
+    string? Title,
+    DateOnly OpenedOn,
+    IReadOnlyList<string?>? Requirements);
+
 internal sealed record VacancyRequirementResponse(long Id, string Phrase, int Position);
 
 internal sealed record VacancyProgressResponse(int ProcessedCandidates, int TotalCandidates);

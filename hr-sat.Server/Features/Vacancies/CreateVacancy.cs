@@ -6,13 +6,8 @@ namespace hr_sat.Server.Features.Vacancies;
 
 internal static class CreateVacancy
 {
-    internal sealed record Request(
-        string? Title,
-        DateOnly OpenedOn,
-        IReadOnlyList<string?>? Requirements);
-
     public static async Task<Results<Created<VacancyDetailsResponse>, ValidationProblem>> HandleAsync(
-        Request request,
+        VacancyDefinitionRequest request,
         AppDbContext dbContext,
         CancellationToken cancellationToken)
     {
