@@ -9,8 +9,8 @@ public static class VacancyEndpoints
         group.MapGet("/{id:long}", GetVacancy.HandleAsync);
         group.MapPost("", CreateVacancy.HandleAsync);
         group.MapPut("/{id:long}", UpdateVacancy.HandleAsync);
-        group.MapPost("/{id:long}/close", ChangeVacancyStatus.CloseAsync);
-        group.MapPost("/{id:long}/reopen", ChangeVacancyStatus.ReopenAsync);
+        group.MapPost("/{id:long}/close", CloseVacancy.HandleAsync);
+        group.MapPost("/{id:long}/reopen", ReopenVacancy.HandleAsync);
         group.MapDelete("/{id:long}", PurgeVacancy.HandleAsync);
 
         return endpoints;

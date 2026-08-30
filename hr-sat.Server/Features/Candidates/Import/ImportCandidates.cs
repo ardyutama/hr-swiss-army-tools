@@ -1,4 +1,3 @@
-using hr_sat.Server.Domain.Vacancies;
 using hr_sat.Server.Infrastructure;
 using hr_sat.Server.Infrastructure.Storage;
 using hr_sat.Server.Infrastructure.Vacancies;
@@ -52,14 +51,7 @@ internal static class ImportCandidates
             return TypedResults.NotFound();
         }
 
-        try
-        {
-            vacancy.EnsureCanReceiveCandidateImport();
-        }
-        catch (VacancyValidationException exception)
-        {
-            return TypedResults.ValidationProblem(exception.Errors);
-        }
+        vacancy.EnsureCanReceiveCandidateImport();
 
         var existingHashKeys = (await dbContext.Candidates
                 .Where(candidate => candidate.VacancyId == id)
