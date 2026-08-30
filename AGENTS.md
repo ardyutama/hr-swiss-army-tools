@@ -1,5 +1,41 @@
 # AGENTS.md
 
+## Architecture contract
+
+Applies to every change, both tiers. One request = one **slice** (backend); one user flow =
+one **slice** (frontend). Folders are feature-first. Shared code is **earned**: it moves to
+`Shared/` or `src/shared/` only at its second same-reason consumer. A feature is complete as
+a full vertical slice: schema → API → client → seam tests, in `docs/agents/workflow.md` order.
+
+### Backend slice layout
+
+`hr-sat.Server/Features/<Feature>/`:
+
+- `<Feature>Endpoints.cs` — route registration only
+- `<Feature>Contracts.cs` — contracts shared by the feature's use cases
+- `<UseCase>.cs` — one endpoint use case; a `<UseCase>/` subfolder only when it has deep internal work
+- `<Concept>.cs` — feature-shared behavior named after its concept
+
+Entities in `Domain/<Context>/`; EF configuration in `Infrastructure/`; tests mirror as
+`hr-sat.Server.Tests/<Feature>/<UseCase>Tests.cs`. Full rules: `docs/agents/dotnet.md` and
+`.agents/skills/dotnet-vsa-webapi/`.
+
+### Frontend slice layout
+
+`hr-sat.client/src/features/<feature>/`:
+
+- `<Flow>View.vue` — thin route view: composes composables and wires props/events; fetches,
+  mutates, formats nothing
+- `use<Flow>.ts` — one composable per async lifecycle; owns loading/error/data and the
+  view-state union (`loading | error | empty | ready`)
+- `api.ts` — typed DTOs plus one function per endpoint over `shared/http.ts`
+- `validation.ts` — pure input rules; the server owns business rules
+- `components/` — flow presentation with typed props/emits
+- `<Flow>View.spec.ts` — seam tests: mount the view, stub `fetch`, assert user-visible outcomes
+
+Flow state lives in composables; a store is earned by a second feature consumer. Full rules:
+`docs/agents/vue.md` and `.agents/skills/vue-feature-slices/`.
+
 ## Agent skills
 
 ### .NET architecture and coding
