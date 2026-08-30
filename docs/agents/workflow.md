@@ -23,7 +23,9 @@ Each ticket is worked in this order:
 
 - **No TDD.** Tests come after implementation within the same ticket. This is an explicit
   deviation from the default `/implement` behaviour, chosen for this project.
-- Backend tests at the HTTP API seam; frontend tests at the feature-component seam.
+- What gets tested — flow-first scope, traceability, and the critical spine — is defined
+  by `docs/agents/testing.md` (ADR 0003). Backend tests at the HTTP API seam; frontend
+  tests at the feature-component seam.
 
 ## Architecture posture
 

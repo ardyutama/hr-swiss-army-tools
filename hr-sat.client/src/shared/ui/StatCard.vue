@@ -8,8 +8,8 @@ defineProps<{
 
 <template>
   <section class="stat-card">
-    <span class="stat-card__value">{{ value }}</span>
     <span class="stat-card__label">{{ label }}</span>
+    <span class="stat-card__value">{{ value }}</span>
     <span v-if="hint" class="stat-card__hint">{{ hint }}</span>
   </section>
 </template>
@@ -20,28 +20,31 @@ defineProps<{
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  padding: 1rem 1.25rem;
+  padding: var(--space-4) var(--space-5);
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  min-width: 180px;
-}
-
-.stat-card__value {
-  font-size: 1.75rem;
-  font-weight: 700;
-  line-height: 1.1;
-  color: var(--accent);
+  gap: var(--space-1);
+  min-width: 11rem;
+  flex: 1;
+  max-width: 16rem;
 }
 
 .stat-card__label {
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.stat-card__value {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--text);
 }
 
 .stat-card__hint {
-  color: var(--muted);
-  font-size: 0.75rem;
-  font-style: italic;
+  color: var(--muted-soft);
+  font-size: var(--text-xs);
 }
 </style>

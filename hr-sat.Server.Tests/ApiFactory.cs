@@ -1,9 +1,10 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Npgsql;
 using Testcontainers.PostgreSql;
 using Xunit;
 
-namespace hr_swiss_army_tools.Server.Tests;
+namespace hr_sat.Server.Tests;
 
 public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
@@ -20,9 +21,41 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("ConnectionStrings:Database", _postgres.GetConnectionString());
     }
 
-    public async Task DisposeAsync()
+    public new HttpClient CreateClient()
+    {
+        return CreateDefaultClient(new DatabaseResetHandler(ResetDatabaseAsync));
+    }
+
+    private async Task ResetDatabaseAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(_postgres.GetConnectionString());
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "TRUNCATE TABLE vacancy RESTART IDENTITY CASCADE";
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public new async Task DisposeAsync()
     {
         await _postgres.DisposeAsync();
         await base.DisposeAsync();
+    }
+
+    private sealed class DatabaseResetHandler(
+        Func<CancellationToken, Task> resetDatabaseAsync) : DelegatingHandler
+    {
+        private int _hasReset;
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (Interlocked.Exchange(ref _hasReset, 1) == 0)
+            {
+                await resetDatabaseAsync(cancellationToken);
+            }
+
+            return await base.SendAsync(request, cancellationToken);
+        }
     }
 }
