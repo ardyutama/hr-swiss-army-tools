@@ -9,6 +9,12 @@ performance work, read `docs/agents/dotnet.md` after `CONTEXT.md` and any releva
 Use `.agents/skills/dotnet-skills/` as conditional playbooks for the matching task; the
 repository-specific rules in `docs/agents/dotnet.md` take precedence when they differ.
 
+### Vue client development
+
+For client-side work in `hr-sat.client/` (Vue SFCs, composables, router, shared UI, Vite
+configuration, or frontend tests), read `docs/agents/vue.md`. It defines the repository's
+frontend rules and points to the required Vue, router, and testing best-practice skills.
+
 ### Issue tracker
 
 Work items derive from `docs/discovery/03-user-stories.md` and live as local markdown under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
