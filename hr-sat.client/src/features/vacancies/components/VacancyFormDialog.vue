@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { computed, reactive, shallowRef, watch } from 'vue'
+import { toast } from 'vue-sonner'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppDialog from '@/shared/ui/AppDialog.vue'
 import AppField from '@/shared/ui/AppField.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
-import { fieldErrorsOf, type FieldErrors } from '@/shared/validation'
+import {
+  fieldErrorsOf,
+  firstNonFieldError,
+  formErrorsOnly,
+  type FieldErrors,
+} from '@/shared/validation'
 import {
   createVacancy,
   getVacancy,
@@ -12,6 +18,12 @@ import {
   type VacancySummary,
   type VacancyWritePayload,
 } from '../api'
+import {
+  vacancyFormFieldKeys,
+  vacancyRequirementValues,
+  type VacancyFormValues,
+  validateVacancyForm,
+} from '../validation'
 
 const props = defineProps<{
   open: boolean
@@ -46,13 +58,43 @@ const form = reactive({
 const fieldErrors = shallowRef<FieldErrors>({})
 const submitError = shallowRef<string | null>(null)
 const submitting = shallowRef(false)
+const initialFormPayload = shallowRef<VacancyWritePayload | null>(null)
 
 function resetForm() {
   form.title = props.vacancy?.title ?? ''
   form.openedOn = props.vacancy?.openedOn ?? todayIso()
   form.requirements = [requirementRow()]
+  initialFormPayload.value = null
   fieldErrors.value = {}
   submitError.value = null
+}
+
+function currentFormValues(): VacancyFormValues {
+  return {
+    title: form.title,
+    openedOn: form.openedOn,
+    requirements: form.requirements.map((row) => row.value),
+  }
+}
+
+function payloadFromFormValues(values: VacancyFormValues): VacancyWritePayload {
+  return {
+    title: values.title.trim(),
+    openedOn: values.openedOn,
+    requirements: vacancyRequirementValues(values.requirements),
+  }
+}
+
+function vacancyPayloadsEqual(
+  left: VacancyWritePayload,
+  right: VacancyWritePayload,
+): boolean {
+  return (
+    left.title === right.title &&
+    left.openedOn === right.openedOn &&
+    left.requirements.length === right.requirements.length &&
+    left.requirements.every((requirement, index) => requirement === right.requirements[index])
+  )
 }
 
 watch(
@@ -79,6 +121,11 @@ watch(
         requirements.length > 0
           ? requirements.map((r) => requirementRow(r.phrase))
           : [requirementRow()]
+      initialFormPayload.value = payloadFromFormValues({
+        title: details.title,
+        openedOn: details.openedOn,
+        requirements: requirements.map((requirement) => requirement.phrase),
+      })
     } catch {
       // Details are a best-effort prefill; the summary-backed form stays editable.
     }
@@ -100,56 +147,52 @@ function removeRequirement(index: number) {
   form.requirements.splice(index, 1)
 }
 
-function requirementValues(): string[] {
-  return form.requirements.map((r) => r.value.trim()).filter((r) => r.length > 0)
-}
-
-function clientValidate(): boolean {
-  const errors: FieldErrors = {}
-  if (form.title.trim().length === 0) {
-    errors.title = ['Title is required.']
-  } else if (form.title.trim().length > 200) {
-    errors.title = ['Title must be 200 characters or fewer.']
-  }
-  if (!form.openedOn) {
-    errors.openedon = ['Opening date is required.']
-  }
-  if (requirementValues().length === 0) {
-    errors.requirements = ['Add at least one requirement.']
-  }
-  fieldErrors.value = errors
-  return Object.keys(errors).length === 0
-}
-
 function firstError(key: string): string | undefined {
   return fieldErrors.value[key]?.[0]
 }
 
 async function submit() {
   submitError.value = null
-  if (!clientValidate()) {
+  const values = currentFormValues()
+  const clientErrors = validateVacancyForm(values)
+  fieldErrors.value = clientErrors
+  if (Object.keys(clientErrors).length > 0) {
     return
   }
-  const payload: VacancyWritePayload = {
-    title: form.title.trim(),
-    openedOn: form.openedOn,
-    requirements: requirementValues(),
+  const payload = payloadFromFormValues(values)
+  if (
+    isEdit.value &&
+    props.vacancy &&
+    initialFormPayload.value &&
+    vacancyPayloadsEqual(payload, initialFormPayload.value)
+  ) {
+    emit('close')
+    return
   }
   submitting.value = true
   try {
     if (isEdit.value && props.vacancy) {
       await updateVacancy(props.vacancy.id, payload)
+      toast.success(`Vacancy "${payload.title}" updated successfully`)
     } else {
       await createVacancy(payload)
+      toast.success('Vacancy created successfully')
     }
     emit('saved')
     emit('close')
   } catch (error) {
     const serverErrors = fieldErrorsOf(error)
     if (serverErrors) {
-      fieldErrors.value = serverErrors
+      fieldErrors.value = formErrorsOnly(serverErrors, vacancyFormFieldKeys)
+      const message =
+        firstNonFieldError(serverErrors, vacancyFormFieldKeys) ??
+        (isEdit.value ? 'Failed to update vacancy.' : 'Failed to create vacancy.')
+      submitError.value = message
+      toast.error(message)
     } else {
-      submitError.value = error instanceof Error ? error.message : 'Something went wrong.'
+      const message = error instanceof Error ? error.message : 'Something went wrong.'
+      submitError.value = message
+      toast.error(message)
     }
   } finally {
     submitting.value = false
@@ -216,8 +259,6 @@ async function submit() {
           </div>
         </template>
       </AppField>
-
-      <p v-if="submitError" class="vform__submit-error" role="alert">{{ submitError }}</p>
     </form>
 
     <template #footer>
@@ -293,15 +334,5 @@ async function submit() {
 .vform__add-req:hover {
   background: var(--accent-soft);
   border-color: var(--accent);
-}
-
-.vform__submit-error {
-  margin: 0;
-  padding: var(--space-3);
-  border-radius: var(--radius-sm);
-  background: var(--danger-soft);
-  color: var(--danger);
-  font-size: var(--text-sm);
-  font-weight: 500;
 }
 </style>

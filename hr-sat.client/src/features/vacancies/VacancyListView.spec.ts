@@ -1,7 +1,15 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { toast } from 'vue-sonner'
 
 import VacancyListView from './VacancyListView.vue'
+
+vi.mock('vue-sonner', () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+  },
+}))
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -41,6 +49,7 @@ function dialogButton(text: string): HTMLButtonElement | undefined {
 }
 
 afterEach(() => {
+  vi.clearAllMocks()
   vi.unstubAllGlobals()
   document.body.innerHTML = ''
 })
@@ -90,6 +99,58 @@ describe('VacancyListView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Closed')
+  })
+
+  it('hides row actions for a closed vacancy', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse([vacancy({ status: 'closed' })])),
+    )
+
+    const wrapper = mount(VacancyListView)
+    await flushPromises()
+
+    expect(wrapper.find('button[aria-label="Edit vacancy"]').exists()).toBe(false)
+    expect(wrapper.find('button[aria-label="Delete vacancy"]').exists()).toBe(false)
+  })
+
+  it('shows a success toast when a vacancy is created', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        return Promise.resolve(jsonResponse(vacancyDetails()))
+      }
+      return Promise.resolve(jsonResponse([]))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mount(VacancyListView)
+    await flushPromises()
+
+    const addButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Add your first vacancy'))
+    expect(addButton).toBeDefined()
+    await addButton!.trigger('click')
+    await flushPromises()
+
+    const titleInput = document.body.querySelector<HTMLInputElement>(
+      'input[placeholder="e.g. Senior Welder"]',
+    )
+    const requirementInput = document.body.querySelector<HTMLInputElement>(
+      '.vform__requirement-row input',
+    )
+    expect(titleInput).not.toBeNull()
+    expect(requirementInput).not.toBeNull()
+    titleInput!.value = 'Senior Welder'
+    titleInput!.dispatchEvent(new Event('input', { bubbles: true }))
+    requirementInput!.value = 'MIG welding'
+    requirementInput!.dispatchEvent(new Event('input', { bubbles: true }))
+
+    dialogButton('Create vacancy')?.click()
+    await flushPromises()
+
+    expect(toast.success).toHaveBeenCalledWith('Vacancy created successfully')
+    wrapper.unmount()
   })
 
   it('keeps the list visible and shows the error inside the dialog when delete fails', async () => {
@@ -149,6 +210,31 @@ describe('VacancyListView', () => {
       document.body.querySelectorAll<HTMLInputElement>('.vform__requirement-row input'),
     ).map((input) => input.value)
     expect(requirementValues).toEqual(['MIG welding', 'Blueprint reading'])
+
+    wrapper.unmount()
+  })
+
+  it('closes an unchanged edit without updating or refreshing the list', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/api/vacancies/1')) {
+        return Promise.resolve(jsonResponse(vacancyDetails()))
+      }
+      return Promise.resolve(jsonResponse([vacancy()]))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mount(VacancyListView)
+    await flushPromises()
+
+    await wrapper.find('button[aria-label="Edit vacancy"]').trigger('click')
+    await flushPromises()
+
+    dialogButton('Save changes')?.click()
+    await flushPromises()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(dialogButton('Save changes')).toBeUndefined()
 
     wrapper.unmount()
   })

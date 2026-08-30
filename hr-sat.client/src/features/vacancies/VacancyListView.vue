@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { shallowRef } from 'vue'
+import { toast } from 'vue-sonner'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import StatCard from '@/shared/ui/StatCard.vue'
@@ -48,6 +49,7 @@ async function confirmDelete() {
   deleteError.value = null
   try {
     await remove(vacancy.id)
+    toast.success(`Vacancy "${vacancy.title}" deleted successfully`, { closeButton: true })
     deleteOpen.value = false
     deletingVacancy.value = null
   } catch (error) {

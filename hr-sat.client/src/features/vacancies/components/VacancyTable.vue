@@ -68,7 +68,7 @@ function progressPercent(row: VacancySummary): number {
         </div>
 
         <div class="vtable__col vtable__col--actions">
-          <div class="vrow__actions">
+          <div v-if="row.status === 'open'" class="vrow__actions">
             <IconButton icon="pencil" label="Edit vacancy" @click="emit('edit', row)" />
             <IconButton icon="trash" label="Delete vacancy" variant="danger" @click="emit('remove', row)" />
           </div>
