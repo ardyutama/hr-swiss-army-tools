@@ -1,4 +1,4 @@
-import { delJson, getJson, postJson, putJson } from '@/shared/http'
+import { delJson, getJson, postFormData, postJson, putJson } from '@/shared/http'
 
 export interface VacancyProgress {
   processedCandidates: number
@@ -54,4 +54,52 @@ export function updateVacancy(id: string, payload: VacancyWritePayload): Promise
 
 export function deleteVacancy(id: string): Promise<void> {
   return delJson(`/api/vacancies/${id}`)
+}
+
+export interface CvDocumentResult {
+  id: number
+  originalFilename: string
+  sizeBytes: number
+  isPrimary: boolean
+  downloadUrl: string
+}
+
+export interface ImportedCandidate {
+  id: number
+  reviewStatus: string
+  extractionStatus: string
+  sourceSenderName: string | null
+  sourceSenderEmail: string | null
+  sourceSubject: string | null
+  sourceBodyText: string | null
+  sourceSentAt: string | null
+  sourceOriginalFilename: string
+  documents: CvDocumentResult[]
+}
+
+export type ImportFileStatus = 'imported' | 'skipped' | 'failed'
+
+export interface ImportFileResult {
+  fileName: string
+  status: ImportFileStatus
+  error: string | null
+  candidate: ImportedCandidate | null
+}
+
+export interface ImportCandidatesResponse {
+  results: ImportFileResult[]
+}
+
+export function importCandidates(
+  vacancyId: string,
+  files: File[],
+): Promise<ImportCandidatesResponse> {
+  const formData = new FormData()
+  for (const file of files) {
+    formData.append('files', file, file.name)
+  }
+  return postFormData<ImportCandidatesResponse>(
+    `/api/vacancies/${vacancyId}/candidates/import`,
+    formData,
+  )
 }
