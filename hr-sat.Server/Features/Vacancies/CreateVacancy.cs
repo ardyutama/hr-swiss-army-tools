@@ -16,15 +16,7 @@ internal static class CreateVacancy
         AppDbContext dbContext,
         CancellationToken cancellationToken)
     {
-        Vacancy vacancy;
-        try
-        {
-            vacancy = Vacancy.Create(request.Title, request.OpenedOn, request.Requirements);
-        }
-        catch (VacancyValidationException exception)
-        {
-            return TypedResults.ValidationProblem(exception.Errors);
-        }
+        var vacancy = Vacancy.Create(request.Title, request.OpenedOn, request.Requirements);
 
         dbContext.Vacancies.Add(vacancy);
         await dbContext.SaveChangesAsync(cancellationToken);

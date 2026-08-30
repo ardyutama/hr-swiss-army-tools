@@ -1,4 +1,5 @@
 using hr_sat.Server.Features.Candidates;
+using hr_sat.Server.Features.Shared;
 using hr_sat.Server.Features.Vacancies;
 using hr_sat.Server.Infrastructure;
 using hr_sat.Server.Infrastructure.Storage;
@@ -10,6 +11,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<DomainValidationExceptionHandler>();
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Database")));
@@ -26,6 +28,7 @@ builder.Services.Configure<FormOptions>(options =>
 });
 
 var app = builder.Build();
+app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())
 {

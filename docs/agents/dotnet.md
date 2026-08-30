@@ -42,6 +42,37 @@ handler, repository, provider, factory, or service interface only when a concret
 external boundary, lifetime boundary, or independently replaceable behavior requires it.
 EF Core does not need a repository wrapper by default.
 
+### Slice layout contract
+
+Within `Features/<Feature>/`, keep the slice sorted by ownership:
+
+```text
+<Feature>Endpoints.cs       route registration only
+<Feature>Contracts.cs       contracts shared by the feature's use cases
+<UseCase>.cs                one endpoint use case
+<UseCase>/                  only when that use case has deep internal work
+  <UseCase>.cs              endpoint orchestration and public slice interface
+  <internal modules>.cs     cohesive implementation details
+<Concept>.cs                feature-shared behavior named after its concept
+```
+
+Start a use case as one file. Give it a subfolder when its implementation has multiple
+cohesive modules with useful locality of their own, as with the candidate import
+pipeline; the endpoint module remains the only public interface of that use case. Do
+not create folders merely to mirror types, and do not move feature behavior into global
+`Services`, `Handlers`, or `Repositories` folders.
+
+Feature-shared modules belong at the feature root and are named for the domain concept
+they own, such as `VacancyProgress`; cross-feature HTTP adapters belong under
+`Features/Shared` and are named for the policy they adapt. A shared module needs two
+real consumers or a policy that must have one home. Persistence details remain in
+`Infrastructure/` unless the feature module owns the complete persistence operation.
+
+New backend flow-test files mirror this shape as
+`hr-sat.Server.Tests/<Feature>/<UseCase>Tests.cs` and continue to cross the HTTP seam.
+The existing flat suites are grandfathered by ADR-0003 and are not moved solely to
+make the folders look uniform.
+
 Complete a feature as a vertical slice: schema and persistence, API behavior, client
 feature, and the tests for the declared seams. Follow the implementation-before-tests
 work order in `docs/agents/workflow.md`; generic TDD or generated-test playbooks do not

@@ -3,23 +3,17 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace hr_sat.Server.Features.Vacancies;
 
-internal static class UpdateVacancy
+internal static class ReopenVacancy
 {
-    internal sealed record Request(
-        string? Title,
-        DateOnly OpenedOn,
-        IReadOnlyList<string?>? Requirements);
-
     public static async Task<Results<Ok<VacancyDetailsResponse>, NotFound, ValidationProblem>> HandleAsync(
         long id,
-        Request request,
         AppDbContext dbContext,
         CancellationToken cancellationToken)
     {
         var vacancy = await VacancyWrite.ExecuteAsync(
             id,
             dbContext,
-            item => item.UpdateDefinition(request.Title, request.OpenedOn, request.Requirements),
+            item => item.Reopen(),
             cancellationToken);
 
         if (vacancy is null)
