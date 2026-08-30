@@ -12,11 +12,15 @@ const emit = defineEmits<{
   remove: [row: VacancySummary]
 }>()
 
+const dateFormatter = new Intl.DateTimeFormat(undefined, {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+})
+
 function formatDate(iso: string): string {
   const date = new Date(iso)
-  return Number.isNaN(date.getTime())
-    ? iso
-    : date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+  return Number.isNaN(date.getTime()) ? iso : dateFormatter.format(date)
 }
 
 function progressPercent(row: VacancySummary): number {
@@ -30,7 +34,7 @@ function progressPercent(row: VacancySummary): number {
 
 <template>
   <div class="vtable">
-    <div class="vtable__head" role="row">
+    <div class="vtable__head">
       <span class="vtable__col vtable__col--role">Vacancy</span>
       <span class="vtable__col vtable__col--status">Status</span>
       <span class="vtable__col vtable__col--progress">Candidates</span>
@@ -82,7 +86,7 @@ function progressPercent(row: VacancySummary): number {
 
 .vtable__head {
   display: grid;
-  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr) 5rem;
+  grid-template-columns: var(--vtable-columns, minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr) 5rem);
   gap: var(--space-4);
   align-items: center;
   padding: 0 var(--space-5) var(--space-3);
@@ -105,7 +109,7 @@ function progressPercent(row: VacancySummary): number {
 
 .vrow {
   display: grid;
-  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr) 5rem;
+  grid-template-columns: var(--vtable-columns, minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr) 5rem);
   gap: var(--space-4);
   align-items: center;
   padding: var(--space-4) var(--space-5);
@@ -182,6 +186,12 @@ function progressPercent(row: VacancySummary): number {
 .vrow:hover .vrow__actions,
 .vrow:focus-within .vrow__actions {
   opacity: 1;
+}
+
+@media (hover: none) {
+  .vrow__actions {
+    opacity: 1;
+  }
 }
 
 .sr-only {

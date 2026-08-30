@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, shallowRef, watch } from 'vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppDialog from '@/shared/ui/AppDialog.vue'
 import AppField from '@/shared/ui/AppField.vue'
@@ -7,6 +7,7 @@ import AppIcon from '@/shared/ui/AppIcon.vue'
 import { fieldErrorsOf, type FieldErrors } from '@/shared/validation'
 import {
   createVacancy,
+  getVacancy,
   updateVacancy,
   type VacancySummary,
   type VacancyWritePayload,
@@ -25,29 +26,61 @@ const emit = defineEmits<{
 const isEdit = computed(() => props.vacancy !== null)
 const dialogTitle = computed(() => (isEdit.value ? 'Edit vacancy' : 'Add vacancy'))
 
+interface RequirementRow {
+  id: number
+  value: string
+}
+
+let nextRequirementId = 0
+
+function requirementRow(value = ''): RequirementRow {
+  return { id: nextRequirementId++, value }
+}
+
 const form = reactive({
   title: '',
   openedOn: '',
-  requirements: [''] as string[],
+  requirements: [requirementRow()] as RequirementRow[],
 })
 
-const fieldErrors = ref<FieldErrors>({})
-const submitError = ref<string | null>(null)
-const submitting = ref(false)
+const fieldErrors = shallowRef<FieldErrors>({})
+const submitError = shallowRef<string | null>(null)
+const submitting = shallowRef(false)
 
 function resetForm() {
   form.title = props.vacancy?.title ?? ''
   form.openedOn = props.vacancy?.openedOn ?? todayIso()
-  form.requirements = ['']
+  form.requirements = [requirementRow()]
   fieldErrors.value = {}
   submitError.value = null
 }
 
 watch(
   () => props.open,
-  (isOpen) => {
-    if (isOpen) {
-      resetForm()
+  async (isOpen) => {
+    if (!isOpen) {
+      return
+    }
+    const editing = props.vacancy
+    resetForm()
+    if (!editing) {
+      return
+    }
+    try {
+      const details = await getVacancy(editing.id)
+      // Ignore stale responses when the dialog was closed or retargeted meanwhile.
+      if (!props.open || props.vacancy?.id !== editing.id) {
+        return
+      }
+      const requirements = [...details.requirements].sort((a, b) => a.position - b.position)
+      form.title = details.title
+      form.openedOn = details.openedOn
+      form.requirements =
+        requirements.length > 0
+          ? requirements.map((r) => requirementRow(r.phrase))
+          : [requirementRow()]
+    } catch {
+      // Details are a best-effort prefill; the summary-backed form stays editable.
     }
   },
 )
@@ -60,11 +93,15 @@ function todayIso(): string {
 }
 
 function addRequirement() {
-  form.requirements.push('')
+  form.requirements.push(requirementRow())
 }
 
 function removeRequirement(index: number) {
   form.requirements.splice(index, 1)
+}
+
+function requirementValues(): string[] {
+  return form.requirements.map((r) => r.value.trim()).filter((r) => r.length > 0)
 }
 
 function clientValidate(): boolean {
@@ -77,8 +114,7 @@ function clientValidate(): boolean {
   if (!form.openedOn) {
     errors.openedon = ['Opening date is required.']
   }
-  const requirements = form.requirements.map((r) => r.trim()).filter((r) => r.length > 0)
-  if (requirements.length === 0) {
+  if (requirementValues().length === 0) {
     errors.requirements = ['Add at least one requirement.']
   }
   fieldErrors.value = errors
@@ -97,7 +133,7 @@ async function submit() {
   const payload: VacancyWritePayload = {
     title: form.title.trim(),
     openedOn: form.openedOn,
-    requirements: form.requirements.map((r) => r.trim()).filter((r) => r.length > 0),
+    requirements: requirementValues(),
   }
   submitting.value = true
   try {
@@ -151,12 +187,12 @@ async function submit() {
         <template #default>
           <div class="vform__requirements">
             <div
-              v-for="(requirement, index) in form.requirements"
-              :key="index"
+              v-for="(row, index) in form.requirements"
+              :key="row.id"
               class="vform__requirement-row"
             >
               <input
-                v-model="form.requirements[index]"
+                v-model="row.value"
                 type="text"
                 :placeholder="`Requirement ${index + 1}`"
                 maxlength="200"

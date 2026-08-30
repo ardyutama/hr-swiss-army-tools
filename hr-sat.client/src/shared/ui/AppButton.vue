@@ -1,5 +1,7 @@
 <script setup lang="ts">
-withDefaults(
+import { computed } from 'vue'
+
+const props = withDefaults(
   defineProps<{
     variant?: 'primary' | 'ghost' | 'danger' | 'danger-solid'
     loading?: boolean
@@ -7,13 +9,18 @@ withDefaults(
   }>(),
   { variant: 'primary', loading: false, disabled: false },
 )
+
+const buttonClasses = computed(() => [
+  `btn--${props.variant}`,
+  { 'btn--loading': props.loading },
+])
 </script>
 
 <template>
   <button
     type="button"
     class="btn"
-    :class="[`btn--${variant}`, { 'btn--loading': loading }]"
+    :class="buttonClasses"
     :disabled="disabled || loading"
   >
     <span v-if="loading" class="btn__spinner" aria-hidden="true" />

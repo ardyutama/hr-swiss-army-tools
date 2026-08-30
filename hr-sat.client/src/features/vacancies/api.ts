@@ -40,6 +40,10 @@ export function listVacancies(): Promise<VacancySummary[]> {
   return getJson<VacancySummary[]>('/api/vacancies')
 }
 
+export function getVacancy(id: string): Promise<VacancyDetails> {
+  return getJson<VacancyDetails>(`/api/vacancies/${id}`)
+}
+
 export function createVacancy(payload: VacancyWritePayload): Promise<VacancyDetails> {
   return postJson<VacancyDetails>('/api/vacancies', payload)
 }

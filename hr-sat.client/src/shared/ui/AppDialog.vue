@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, useTemplateRef, watch } from 'vue'
 import AppIcon from './AppIcon.vue'
 
 const props = defineProps<{
@@ -11,7 +11,7 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const panel = ref<HTMLElement | null>(null)
+const panel = useTemplateRef<HTMLElement>('panel')
 let previouslyFocused: HTMLElement | null = null
 
 const FOCUSABLE =
@@ -64,14 +64,8 @@ watch(
       previouslyFocused = null
     }
   },
+  { immediate: true },
 )
-
-onMounted(() => {
-  if (props.open) {
-    document.addEventListener('keydown', onKeydown, true)
-    document.body.style.overflow = 'hidden'
-  }
-})
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKeydown, true)

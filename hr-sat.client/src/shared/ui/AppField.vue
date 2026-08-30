@@ -48,13 +48,11 @@ const autoId = useId()
   font-size: var(--text-xs);
   color: var(--muted);
 }
-</style>
 
-<style>
-/* Shared input styling used by any control placed in AppField's default slot. */
-.field input,
-.field textarea,
-.field select {
+/* Shared input styling for any control placed in AppField's default slot. */
+.field :deep(input),
+.field :deep(textarea),
+.field :deep(select) {
   font-family: inherit;
   font-size: var(--text-base);
   color: var(--text);
@@ -66,27 +64,27 @@ const autoId = useId()
   width: 100%;
 }
 
-.field input::placeholder,
-.field textarea::placeholder {
+.field :deep(input)::placeholder,
+.field :deep(textarea)::placeholder {
   color: var(--muted-soft);
 }
 
-.field input:focus,
-.field textarea:focus,
-.field select:focus {
+.field :deep(input):focus,
+.field :deep(textarea):focus,
+.field :deep(select):focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: var(--focus-ring);
 }
 
-.field--invalid input,
-.field--invalid textarea,
-.field--invalid select {
+.field--invalid :deep(input),
+.field--invalid :deep(textarea),
+.field--invalid :deep(select) {
   border-color: var(--danger);
 }
 
-.field--invalid input:focus,
-.field--invalid textarea:focus {
+.field--invalid :deep(input):focus,
+.field--invalid :deep(textarea):focus {
   box-shadow: 0 0 0 3px var(--danger-soft);
 }
 </style>

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { useRoute } from 'vue-router'
-
 export interface NavItem {
   label: string
   to?: string
@@ -15,8 +13,6 @@ export interface NavSection {
 defineProps<{
   sections: NavSection[]
 }>()
-
-const route = useRoute()
 </script>
 
 <template>
@@ -30,7 +26,6 @@ const route = useRoute()
           <RouterLink
             v-if="item.to"
             class="sidebar__link"
-            :class="{ 'sidebar__link--active': route.path === item.to }"
             :to="item.to"
           >
             {{ item.label }}
@@ -95,7 +90,7 @@ const route = useRoute()
   background: rgb(255 255 255 / 0.07);
 }
 
-.sidebar__link--active {
+.sidebar__link.router-link-exact-active {
   background: var(--accent);
   color: var(--sidebar-active);
   font-weight: 600;

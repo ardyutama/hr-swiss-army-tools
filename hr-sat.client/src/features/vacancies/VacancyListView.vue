@@ -1,47 +1,22 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { shallowRef } from 'vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import StatCard from '@/shared/ui/StatCard.vue'
 import VacancyTable from './components/VacancyTable.vue'
 import VacancyFormDialog from './components/VacancyFormDialog.vue'
 import ConfirmDeleteDialog from './components/ConfirmDeleteDialog.vue'
-import {
-  deleteVacancy,
-  listVacancies,
-  type VacancySummary,
-} from './api'
+import { useVacancies } from './useVacancies'
+import type { VacancySummary } from './api'
 
-const vacancies = ref<VacancySummary[] | null>(null)
-const error = ref<string | null>(null)
-const loading = computed(() => vacancies.value === null && error.value === null)
+const { vacancies, loadError, viewState, openCount, cvsToSort, load, remove } = useVacancies()
 
-const openCount = computed(
-  () => (vacancies.value ?? []).filter((v) => v.status === 'open').length,
-)
-const cvsToSort = computed(() =>
-  (vacancies.value ?? []).reduce(
-    (sum, v) => sum + Math.max(0, v.progress.totalCandidates - v.progress.processedCandidates),
-    0,
-  ),
-)
-
-const formOpen = ref(false)
-const editingVacancy = ref<VacancySummary | null>(null)
-const deleteOpen = ref(false)
-const deletingVacancy = ref<VacancySummary | null>(null)
-const deleting = ref(false)
-
-onMounted(load)
-
-async function load() {
-  error.value = null
-  try {
-    vacancies.value = await listVacancies()
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load vacancies'
-  }
-}
+const formOpen = shallowRef(false)
+const editingVacancy = shallowRef<VacancySummary | null>(null)
+const deleteOpen = shallowRef(false)
+const deletingVacancy = shallowRef<VacancySummary | null>(null)
+const deleting = shallowRef(false)
+const deleteError = shallowRef<string | null>(null)
 
 function openCreate() {
   editingVacancy.value = null
@@ -55,22 +30,28 @@ function openEdit(row: VacancySummary) {
 
 function requestDelete(row: VacancySummary) {
   deletingVacancy.value = row
+  deleteError.value = null
   deleteOpen.value = true
 }
 
+function closeDelete() {
+  deleteOpen.value = false
+  deleteError.value = null
+}
+
 async function confirmDelete() {
-  if (!deletingVacancy.value) {
+  const vacancy = deletingVacancy.value
+  if (!vacancy) {
     return
   }
   deleting.value = true
+  deleteError.value = null
   try {
-    await deleteVacancy(deletingVacancy.value.id)
+    await remove(vacancy.id)
     deleteOpen.value = false
     deletingVacancy.value = null
-    await load()
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to delete vacancy'
-    deleteOpen.value = false
+  } catch (error) {
+    deleteError.value = error instanceof Error ? error.message : 'Failed to delete vacancy'
   } finally {
     deleting.value = false
   }
@@ -103,7 +84,7 @@ async function onSaved() {
 
     <section class="vacancy-page__panel">
       <!-- Loading -->
-      <div v-if="loading" class="vacancy-page__loading" aria-busy="true" aria-label="Loading vacancies">
+      <div v-if="viewState === 'loading'" class="vacancy-page__loading" aria-busy="true" aria-label="Loading vacancies">
         <div v-for="n in 4" :key="n" class="skeleton-row">
           <span class="skeleton skeleton--title" />
           <span class="skeleton skeleton--chip" />
@@ -113,14 +94,14 @@ async function onSaved() {
       </div>
 
       <!-- Error -->
-      <div v-else-if="error" class="vacancy-page__state" role="alert">
+      <div v-else-if="viewState === 'error'" class="vacancy-page__state" role="alert">
         <p class="vacancy-page__state-title">Couldn't load vacancies</p>
-        <p class="vacancy-page__state-text">{{ error }}</p>
+        <p class="vacancy-page__state-text">{{ loadError }}</p>
         <AppButton variant="ghost" @click="load">Try again</AppButton>
       </div>
 
       <!-- Empty -->
-      <div v-else-if="vacancies!.length === 0" class="vacancy-page__state vacancy-page__state--empty">
+      <div v-else-if="viewState === 'empty'" class="vacancy-page__state vacancy-page__state--empty">
         <span class="vacancy-page__empty-icon">
           <AppIcon name="briefcase" :size="30" />
         </span>
@@ -135,7 +116,7 @@ async function onSaved() {
       </div>
 
       <!-- Data -->
-      <VacancyTable v-else :rows="vacancies!" @edit="openEdit" @remove="requestDelete" />
+      <VacancyTable v-else :rows="vacancies ?? []" @edit="openEdit" @remove="requestDelete" />
     </section>
 
     <VacancyFormDialog
@@ -148,7 +129,8 @@ async function onSaved() {
       :open="deleteOpen"
       :vacancy="deletingVacancy"
       :deleting="deleting"
-      @close="deleteOpen = false"
+      :error="deleteError"
+      @close="closeDelete"
       @confirm="confirmDelete"
     />
   </div>
@@ -196,6 +178,7 @@ async function onSaved() {
 }
 
 .vacancy-page__panel {
+  --vtable-columns: minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr) 5rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -255,7 +238,7 @@ async function onSaved() {
 
 .skeleton-row {
   display: grid;
-  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr);
+  grid-template-columns: var(--vtable-columns);
   gap: var(--space-4);
   align-items: center;
   padding: var(--space-4) var(--space-5);
