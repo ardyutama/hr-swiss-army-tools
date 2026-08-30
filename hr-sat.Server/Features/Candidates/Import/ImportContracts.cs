@@ -1,6 +1,6 @@
 using hr_sat.Server.Domain.Candidates;
 
-namespace hr_sat.Server.Features.Candidates;
+namespace hr_sat.Server.Features.Candidates.Import;
 
 internal sealed record CandidateImportResponse(
     long Id,
