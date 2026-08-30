@@ -1,23 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive, shallowRef, watch } from 'vue'
-import { toast } from 'vue-sonner'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppDialog from '@/shared/ui/AppDialog.vue'
 import AppField from '@/shared/ui/AppField.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
-import {
-  fieldErrorsOf,
-  firstNonFieldError,
-  formErrorsOnly,
-  type FieldErrors,
-} from '@/shared/validation'
-import {
-  createVacancy,
-  getVacancy,
-  updateVacancy,
-  type VacancySummary,
-  type VacancyWritePayload,
-} from '../api'
+import { fieldErrorsOf, formErrorsOnly, type FieldErrors } from '@/shared/validation'
+import type { VacancyDetails, VacancySummary, VacancyWritePayload } from '../api'
 import {
   vacancyFormFieldKeys,
   vacancyRequirementValues,
@@ -28,11 +16,13 @@ import {
 const props = defineProps<{
   open: boolean
   vacancy: VacancySummary | null
+  details: VacancyDetails | null
+  saving: boolean
 }>()
 
 const emit = defineEmits<{
   close: []
-  saved: []
+  submit: [payload: VacancyWritePayload]
 }>()
 
 const isEdit = computed(() => props.vacancy !== null)
@@ -56,8 +46,6 @@ const form = reactive({
 })
 
 const fieldErrors = shallowRef<FieldErrors>({})
-const submitError = shallowRef<string | null>(null)
-const submitting = shallowRef(false)
 const initialFormPayload = shallowRef<VacancyWritePayload | null>(null)
 
 function resetForm() {
@@ -66,7 +54,6 @@ function resetForm() {
   form.requirements = [requirementRow()]
   initialFormPayload.value = null
   fieldErrors.value = {}
-  submitError.value = null
 }
 
 function currentFormValues(): VacancyFormValues {
@@ -99,36 +86,32 @@ function vacancyPayloadsEqual(
 
 watch(
   () => props.open,
-  async (isOpen) => {
-    if (!isOpen) {
+  (isOpen) => {
+    if (isOpen) {
+      resetForm()
+    }
+  },
+)
+
+// Apply the full prefill once the vacancy details arrive from the composable.
+watch(
+  () => props.details,
+  (details) => {
+    if (!props.open || !details || details.id !== props.vacancy?.id) {
       return
     }
-    const editing = props.vacancy
-    resetForm()
-    if (!editing) {
-      return
-    }
-    try {
-      const details = await getVacancy(editing.id)
-      // Ignore stale responses when the dialog was closed or retargeted meanwhile.
-      if (!props.open || props.vacancy?.id !== editing.id) {
-        return
-      }
-      const requirements = [...details.requirements].sort((a, b) => a.position - b.position)
-      form.title = details.title
-      form.openedOn = details.openedOn
-      form.requirements =
-        requirements.length > 0
-          ? requirements.map((r) => requirementRow(r.phrase))
-          : [requirementRow()]
-      initialFormPayload.value = payloadFromFormValues({
-        title: details.title,
-        openedOn: details.openedOn,
-        requirements: requirements.map((requirement) => requirement.phrase),
-      })
-    } catch {
-      // Details are a best-effort prefill; the summary-backed form stays editable.
-    }
+    const requirements = [...details.requirements].sort((a, b) => a.position - b.position)
+    form.title = details.title
+    form.openedOn = details.openedOn
+    form.requirements =
+      requirements.length > 0
+        ? requirements.map((r) => requirementRow(r.phrase))
+        : [requirementRow()]
+    initialFormPayload.value = payloadFromFormValues({
+      title: details.title,
+      openedOn: details.openedOn,
+      requirements: requirements.map((requirement) => requirement.phrase),
+    })
   },
 )
 
@@ -151,8 +134,7 @@ function firstError(key: string): string | undefined {
   return fieldErrors.value[key]?.[0]
 }
 
-async function submit() {
-  submitError.value = null
+function submit() {
   const values = currentFormValues()
   const clientErrors = validateVacancyForm(values)
   fieldErrors.value = clientErrors
@@ -169,35 +151,18 @@ async function submit() {
     emit('close')
     return
   }
-  submitting.value = true
-  try {
-    if (isEdit.value && props.vacancy) {
-      await updateVacancy(props.vacancy.id, payload)
-      toast.success(`Vacancy "${payload.title}" updated successfully`)
-    } else {
-      await createVacancy(payload)
-      toast.success('Vacancy created successfully')
-    }
-    emit('saved')
-    emit('close')
-  } catch (error) {
+  emit('submit', payload)
+}
+
+defineExpose({
+  /** Routes a failed save's ValidationProblem back onto the fields it names. */
+  applyServerErrors(error: unknown) {
     const serverErrors = fieldErrorsOf(error)
     if (serverErrors) {
       fieldErrors.value = formErrorsOnly(serverErrors, vacancyFormFieldKeys)
-      const message =
-        firstNonFieldError(serverErrors, vacancyFormFieldKeys) ??
-        (isEdit.value ? 'Failed to update vacancy.' : 'Failed to create vacancy.')
-      submitError.value = message
-      toast.error(message)
-    } else {
-      const message = error instanceof Error ? error.message : 'Something went wrong.'
-      submitError.value = message
-      toast.error(message)
     }
-  } finally {
-    submitting.value = false
-  }
-}
+  },
+})
 </script>
 
 <template>
@@ -262,8 +227,8 @@ async function submit() {
     </form>
 
     <template #footer>
-      <AppButton variant="ghost" :disabled="submitting" @click="emit('close')">Cancel</AppButton>
-      <AppButton :loading="submitting" @click="submit">
+      <AppButton variant="ghost" :disabled="saving" @click="emit('close')">Cancel</AppButton>
+      <AppButton :loading="saving" @click="submit">
         {{ isEdit ? 'Save changes' : 'Create vacancy' }}
       </AppButton>
     </template>

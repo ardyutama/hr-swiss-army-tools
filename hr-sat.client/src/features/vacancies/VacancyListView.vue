@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { shallowRef } from 'vue'
-import { toast } from 'vue-sonner'
+import { shallowRef, useTemplateRef } from 'vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import StatCard from '@/shared/ui/StatCard.vue'
@@ -8,25 +7,54 @@ import VacancyTable from './components/VacancyTable.vue'
 import VacancyFormDialog from './components/VacancyFormDialog.vue'
 import ConfirmDeleteDialog from './components/ConfirmDeleteDialog.vue'
 import { useVacancies } from './useVacancies'
-import type { VacancySummary } from './api'
+import type { VacancySummary, VacancyWritePayload } from './api'
 
-const { vacancies, loadError, viewState, openCount, cvsToSort, load, remove } = useVacancies()
+const {
+  vacancies,
+  loadError,
+  viewState,
+  openCount,
+  cvsToSort,
+  saving,
+  removing,
+  editingDetails,
+  load,
+  beginEdit,
+  save,
+  remove,
+} = useVacancies()
 
 const formOpen = shallowRef(false)
 const editingVacancy = shallowRef<VacancySummary | null>(null)
+const formDialog = useTemplateRef<InstanceType<typeof VacancyFormDialog>>('formDialog')
 const deleteOpen = shallowRef(false)
 const deletingVacancy = shallowRef<VacancySummary | null>(null)
-const deleting = shallowRef(false)
 const deleteError = shallowRef<string | null>(null)
 
 function openCreate() {
   editingVacancy.value = null
+  beginEdit(null)
   formOpen.value = true
 }
 
 function openEdit(row: VacancySummary) {
   editingVacancy.value = row
+  beginEdit(row)
   formOpen.value = true
+}
+
+function closeForm() {
+  formOpen.value = false
+  beginEdit(null)
+}
+
+async function onSubmitForm(payload: VacancyWritePayload) {
+  try {
+    await save(payload, editingVacancy.value?.id ?? null)
+    closeForm()
+  } catch (error) {
+    formDialog.value?.applyServerErrors(error)
+  }
 }
 
 function requestDelete(row: VacancySummary) {
@@ -45,22 +73,13 @@ async function confirmDelete() {
   if (!vacancy) {
     return
   }
-  deleting.value = true
-  deleteError.value = null
   try {
-    await remove(vacancy.id)
-    toast.success(`Vacancy "${vacancy.title}" deleted successfully`, { closeButton: true })
+    await remove(vacancy)
     deleteOpen.value = false
     deletingVacancy.value = null
   } catch (error) {
     deleteError.value = error instanceof Error ? error.message : 'Failed to delete vacancy'
-  } finally {
-    deleting.value = false
   }
-}
-
-async function onSaved() {
-  await load()
 }
 </script>
 
@@ -122,15 +141,18 @@ async function onSaved() {
     </section>
 
     <VacancyFormDialog
+      ref="formDialog"
       :open="formOpen"
       :vacancy="editingVacancy"
-      @close="formOpen = false"
-      @saved="onSaved"
+      :details="editingDetails"
+      :saving="saving"
+      @close="closeForm"
+      @submit="onSubmitForm"
     />
     <ConfirmDeleteDialog
       :open="deleteOpen"
       :vacancy="deletingVacancy"
-      :deleting="deleting"
+      :deleting="removing"
       :error="deleteError"
       @close="closeDelete"
       @confirm="confirmDelete"

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, toRef } from 'vue'
-import { toast } from 'vue-sonner'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import StatusBadge from './components/StatusBadge.vue'
@@ -8,6 +7,7 @@ import ImportDropZone from './components/ImportDropZone.vue'
 import ImportResultList from './components/ImportResultList.vue'
 import { useVacancyDetail } from './useVacancyDetail'
 import { useCandidateImport } from './useCandidateImport'
+import { formatDate, progressPercent } from './format'
 
 const props = defineProps<{
   id: string
@@ -19,45 +19,13 @@ const { importing, importError, results, importFiles } = useCandidateImport(vaca
 
 const isClosed = computed(() => vacancy.value?.status === 'closed')
 
-const progressPercent = computed(() => {
-  const progress = vacancy.value?.progress
-  if (!progress || progress.totalCandidates <= 0) {
-    return 0
-  }
-  return Math.min(100, Math.round((progress.processedCandidates / progress.totalCandidates) * 100))
-})
-
-const dateFormatter = new Intl.DateTimeFormat(undefined, {
-  year: 'numeric',
-  month: 'short',
-  day: 'numeric',
-})
-
-function formatDate(iso: string): string {
-  const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? iso : dateFormatter.format(date)
-}
+const progress = computed(() => (vacancy.value ? progressPercent(vacancy.value.progress) : 0))
 
 async function onFiles(files: File[]) {
   const response = await importFiles(files)
-  if (!response) {
-    return
-  }
-  // Refresh so the vacancy progress reflects the imported candidates.
-  await load()
-
-  const imported = response.results.filter((result) => result.status === 'imported').length
-  const skipped = response.results.filter((result) => result.status === 'skipped').length
-  const failed = response.results.filter((result) => result.status === 'failed').length
-  const summary = [
-    `${imported} imported`,
-    ...(skipped > 0 ? [`${skipped} skipped`] : []),
-    ...(failed > 0 ? [`${failed} failed`] : []),
-  ].join(', ')
-  if (imported > 0) {
-    toast.success(`Import complete: ${summary}`, { closeButton: true })
-  } else {
-    toast.error(`No candidates imported: ${summary}`, { closeButton: true })
+  if (response) {
+    // Refresh so the vacancy progress reflects the imported candidates.
+    await load()
   }
 }
 </script>
@@ -104,7 +72,7 @@ async function onFiles(files: File[]) {
           </span>
         </div>
         <div class="detail-page__progress-track">
-          <div class="detail-page__progress-bar" :style="{ width: `${progressPercent}%` }" />
+          <div class="detail-page__progress-bar" :style="{ width: `${progress}%` }" />
         </div>
       </section>
 
