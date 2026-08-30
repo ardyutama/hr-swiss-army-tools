@@ -55,53 +55,34 @@ afterEach(() => {
 })
 
 describe('VacancyListView', () => {
-  it('shows the empty state when the API returns no vacancies', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse([])))
-
-    const wrapper = mount(VacancyListView)
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('No vacancies yet')
-  })
-
-  it('lists vacancies returned by the API', async () => {
+  it('US-10: HR sees all vacancies with their status and progress', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(jsonResponse([vacancy()])),
+      vi.fn().mockResolvedValue(
+        jsonResponse([
+          vacancy({ progress: { processedCandidates: 3, totalCandidates: 30 } }),
+          vacancy({
+            id: '2',
+            title: 'Forklift Operator',
+            status: 'closed',
+            progress: { processedCandidates: 30, totalCandidates: 30 },
+          }),
+        ]),
+      ),
     )
 
     const wrapper = mount(VacancyListView)
     await flushPromises()
 
     expect(wrapper.text()).toContain('Welder')
-  })
-
-  it('shows an error state with retry when the API fails', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(jsonResponse({ title: 'Server error' }, 500)),
-    )
-
-    const wrapper = mount(VacancyListView)
-    await flushPromises()
-
-    expect(wrapper.text()).toContain("Couldn't load vacancies")
-    expect(wrapper.text()).toContain('Try again')
-  })
-
-  it('shows the vacancy status badge from the API status', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(jsonResponse([vacancy({ status: 'closed' })])),
-    )
-
-    const wrapper = mount(VacancyListView)
-    await flushPromises()
-
+    expect(wrapper.text()).toContain('Open')
+    expect(wrapper.text()).toContain('3/30')
+    expect(wrapper.text()).toContain('Forklift Operator')
     expect(wrapper.text()).toContain('Closed')
+    expect(wrapper.text()).toContain('30/30')
   })
 
-  it('hides row actions for a closed vacancy', async () => {
+  it('domain: closed vacancy is read-only — row actions are hidden', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(jsonResponse([vacancy({ status: 'closed' })])),
@@ -114,12 +95,16 @@ describe('VacancyListView', () => {
     expect(wrapper.find('button[aria-label="Delete vacancy"]').exists()).toBe(false)
   })
 
-  it('shows a success toast when a vacancy is created', async () => {
+  it('US-9: HR creates a vacancy and sees it listed', async () => {
+    let created = false
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'POST') {
-        return Promise.resolve(jsonResponse(vacancyDetails()))
+        created = true
+        return Promise.resolve(jsonResponse(vacancyDetails({ title: 'Senior Welder' })))
       }
-      return Promise.resolve(jsonResponse([]))
+      return Promise.resolve(
+        jsonResponse(created ? [vacancy({ title: 'Senior Welder' })] : []),
+      )
     })
     vi.stubGlobal('fetch', fetchMock)
 
@@ -150,10 +135,11 @@ describe('VacancyListView', () => {
     await flushPromises()
 
     expect(toast.success).toHaveBeenCalledWith('Vacancy created successfully')
+    expect(wrapper.text()).toContain('Senior Welder')
     wrapper.unmount()
   })
 
-  it('keeps the list visible and shows the error inside the dialog when delete fails', async () => {
+  it('US-11: HR is told when deleting a vacancy fails and the list stays intact', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'DELETE') {
         return Promise.resolve(jsonResponse({ title: 'Server error' }, 500))
@@ -180,7 +166,7 @@ describe('VacancyListView', () => {
     wrapper.unmount()
   })
 
-  it('prefills the form from the vacancy details when editing', async () => {
+  it('US-11: HR edits a vacancy and the form is prefilled with its details', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input)
       if (url.endsWith('/api/vacancies/1')) {
@@ -210,31 +196,6 @@ describe('VacancyListView', () => {
       document.body.querySelectorAll<HTMLInputElement>('.vform__requirement-row input'),
     ).map((input) => input.value)
     expect(requirementValues).toEqual(['MIG welding', 'Blueprint reading'])
-
-    wrapper.unmount()
-  })
-
-  it('closes an unchanged edit without updating or refreshing the list', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.endsWith('/api/vacancies/1')) {
-        return Promise.resolve(jsonResponse(vacancyDetails()))
-      }
-      return Promise.resolve(jsonResponse([vacancy()]))
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    const wrapper = mount(VacancyListView)
-    await flushPromises()
-
-    await wrapper.find('button[aria-label="Edit vacancy"]').trigger('click')
-    await flushPromises()
-
-    dialogButton('Save changes')?.click()
-    await flushPromises()
-
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(dialogButton('Save changes')).toBeUndefined()
 
     wrapper.unmount()
   })

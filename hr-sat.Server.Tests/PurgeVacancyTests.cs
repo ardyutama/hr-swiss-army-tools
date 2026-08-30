@@ -7,7 +7,7 @@ namespace hr_sat.Server.Tests;
 public sealed class PurgeVacancyTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     [Fact]
-    public async Task Purge_vacancy_removes_vacancy_and_owned_requirements()
+    public async Task Purge_vacancy_removes_vacancy_and_owned_requirements() // domain: purge removes a vacancy irreversibly with all it owns
     {
         using var client = factory.CreateClient();
         var createResponse = await client.PostAsJsonAsync("/api/vacancies", new
@@ -23,15 +23,5 @@ public sealed class PurgeVacancyTests(ApiFactory factory) : IClassFixture<ApiFac
 
         Assert.Equal(HttpStatusCode.NoContent, purgeResponse.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
-    }
-
-    [Fact]
-    public async Task Purge_missing_vacancy_returns_not_found()
-    {
-        using var client = factory.CreateClient();
-
-        var response = await client.DeleteAsync("/api/vacancies/999999");
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 }

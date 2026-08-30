@@ -7,7 +7,7 @@ namespace hr_sat.Server.Tests;
 public sealed class CreateVacancyTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     [Fact]
-    public async Task Create_vacancy_preserves_requirement_order()
+    public async Task Create_vacancy_preserves_requirement_order() // US-9: create a vacancy with a role title, date, and skills requirements
     {
         using var client = factory.CreateClient();
         var request = new
@@ -34,7 +34,7 @@ public sealed class CreateVacancyTests(ApiFactory factory) : IClassFixture<ApiFa
     }
 
     [Fact]
-    public async Task Create_vacancy_requires_at_least_one_requirement()
+    public async Task Create_vacancy_requires_at_least_one_requirement() // US-9: create a vacancy with a role title, date, and skills requirements
     {
         using var client = factory.CreateClient();
         var request = new
@@ -53,7 +53,7 @@ public sealed class CreateVacancyTests(ApiFactory factory) : IClassFixture<ApiFa
     }
 
     [Fact]
-    public async Task Create_vacancy_rejects_duplicate_normalized_requirements()
+    public async Task Create_vacancy_rejects_duplicate_normalized_requirements() // domain: vacancy requirement is a distinct, matchable phrase
     {
         using var client = factory.CreateClient();
         var request = new
@@ -72,7 +72,7 @@ public sealed class CreateVacancyTests(ApiFactory factory) : IClassFixture<ApiFa
     }
 
     [Fact]
-    public async Task Create_vacancy_requires_a_nonblank_title()
+    public async Task Create_vacancy_requires_a_nonblank_title() // US-9: create a vacancy with a role title, date, and skills requirements
     {
         using var client = factory.CreateClient();
         var request = new
@@ -91,7 +91,7 @@ public sealed class CreateVacancyTests(ApiFactory factory) : IClassFixture<ApiFa
     }
 
     [Fact]
-    public async Task Create_vacancy_requires_an_opening_date()
+    public async Task Create_vacancy_requires_an_opening_date() // domain: opening date is the business date a vacancy's hiring effort begins
     {
         using var client = factory.CreateClient();
         var request = new
@@ -109,7 +109,7 @@ public sealed class CreateVacancyTests(ApiFactory factory) : IClassFixture<ApiFa
     }
 
     [Fact]
-    public async Task Create_vacancy_requires_nonblank_requirement_phrases()
+    public async Task Create_vacancy_requires_nonblank_requirement_phrases() // domain: vacancy requirement is a distinct, matchable phrase
     {
         using var client = factory.CreateClient();
         var request = new
@@ -128,7 +128,7 @@ public sealed class CreateVacancyTests(ApiFactory factory) : IClassFixture<ApiFa
     }
 
     [Fact]
-    public async Task Create_vacancy_allows_repeated_title_and_opening_date()
+    public async Task Create_vacancy_allows_repeated_title_and_opening_date() // US-9: each creation is its own hiring effort for one role
     {
         using var client = factory.CreateClient();
         var request = new

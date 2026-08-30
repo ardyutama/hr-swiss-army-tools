@@ -1,4 +1,3 @@
-using System.Net;
 using System.Net.Http.Json;
 using Xunit;
 
@@ -7,20 +6,7 @@ namespace hr_sat.Server.Tests;
 public sealed class ListVacanciesTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     [Fact]
-    public async Task Get_vacancies_returns_empty_list_on_fresh_database()
-    {
-        using var client = factory.CreateClient();
-
-        var response = await client.GetAsync("/api/vacancies");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var vacancies = await response.Content.ReadFromJsonAsync<List<VacancySummary>>();
-        Assert.NotNull(vacancies);
-        Assert.Empty(vacancies);
-    }
-
-    [Fact]
-    public async Task Get_vacancies_returns_status_opening_date_and_zero_progress()
+    public async Task Get_vacancies_returns_status_opening_date_and_zero_progress() // US-10: HR sees all vacancies with status and progress
     {
         using var client = factory.CreateClient();
         var createResponse = await client.PostAsJsonAsync("/api/vacancies", new

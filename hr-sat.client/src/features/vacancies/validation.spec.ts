@@ -7,7 +7,7 @@ import {
 } from './validation'
 
 describe('vacancy form validation', () => {
-  it('reports the required vacancy fields', () => {
+  it('US-9: rejects a form missing the required title, opening date, and requirements', () => {
     const values: VacancyFormValues = {
       title: '  ',
       openedOn: '',
@@ -21,13 +21,7 @@ describe('vacancy form validation', () => {
     })
   })
 
-  it('trims and removes blank requirements for the API payload', () => {
-    expect(
-      vacancyRequirementValues([' MIG welding ', ' ', 'Blueprint reading']),
-    ).toEqual(['MIG welding', 'Blueprint reading'])
-  })
-
-  it('accepts a complete vacancy form', () => {
+  it('US-9: accepts a complete vacancy form', () => {
     expect(
       validateVacancyForm({
         title: 'Senior Welder',
@@ -35,5 +29,11 @@ describe('vacancy form validation', () => {
         requirements: ['MIG welding'],
       }),
     ).toEqual({})
+  })
+
+  it('domain: vacancy requirement is ordered and non-empty — trims blanks and preserves order for the payload', () => {
+    expect(
+      vacancyRequirementValues([' MIG welding ', ' ', 'Blueprint reading']),
+    ).toEqual(['MIG welding', 'Blueprint reading'])
   })
 })

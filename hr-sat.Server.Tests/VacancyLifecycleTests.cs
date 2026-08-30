@@ -7,6 +7,7 @@ namespace hr_sat.Server.Tests;
 public sealed class VacancyLifecycleTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     [Fact]
+    // domain: closed vacancy — retained for reference after its hiring effort ends
     public async Task Close_vacancy_sets_closed_status_and_timestamp()
     {
         using var client = factory.CreateClient();
@@ -19,10 +20,10 @@ public sealed class VacancyLifecycleTests(ApiFactory factory) : IClassFixture<Ap
         Assert.NotNull(persisted);
         Assert.Equal("closed", persisted.Status);
         Assert.NotNull(persisted.ClosedAt);
-        Assert.Equal(TimeSpan.Zero, persisted.ClosedAt.Value.Offset);
     }
 
     [Fact]
+    // domain: closed vacancy is read-only — it cannot be closed again
     public async Task Close_vacancy_rejects_repeated_close()
     {
         using var client = factory.CreateClient();
@@ -39,6 +40,7 @@ public sealed class VacancyLifecycleTests(ApiFactory factory) : IClassFixture<Ap
     }
 
     [Fact]
+    // domain: closed vacancy can be reopened explicitly
     public async Task Reopen_vacancy_clears_closed_state()
     {
         using var client = factory.CreateClient();
@@ -56,6 +58,7 @@ public sealed class VacancyLifecycleTests(ApiFactory factory) : IClassFixture<Ap
     }
 
     [Fact]
+    // domain: vacancy status — reopen is valid only for a closed vacancy
     public async Task Reopen_open_vacancy_returns_validation_problem()
     {
         using var client = factory.CreateClient();

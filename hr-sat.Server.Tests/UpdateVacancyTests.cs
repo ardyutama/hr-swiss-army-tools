@@ -7,7 +7,7 @@ namespace hr_sat.Server.Tests;
 public sealed class UpdateVacancyTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     [Fact]
-    public async Task Update_vacancy_replaces_definition_and_preserves_new_requirement_order()
+    public async Task Update_vacancy_replaces_definition_and_preserves_new_requirement_order() // US-11: edit a vacancy to fix mistakes
     {
         using var client = factory.CreateClient();
         var createResponse = await client.PostAsJsonAsync("/api/vacancies", new
@@ -37,7 +37,7 @@ public sealed class UpdateVacancyTests(ApiFactory factory) : IClassFixture<ApiFa
     }
 
     [Fact]
-    public async Task Update_closed_vacancy_is_rejected()
+    public async Task Update_closed_vacancy_is_rejected() // domain: closed vacancy is read-only
     {
         using var client = factory.CreateClient();
         var location = await CreateVacancyAsync(client);
@@ -62,7 +62,7 @@ public sealed class UpdateVacancyTests(ApiFactory factory) : IClassFixture<ApiFa
     }
 
     [Fact]
-    public async Task Reopened_vacancy_can_be_updated()
+    public async Task Reopened_vacancy_can_be_updated() // domain: closed vacancy can be reopened explicitly; open vacancy can be changed
     {
         using var client = factory.CreateClient();
         var location = await CreateVacancyAsync(client);
