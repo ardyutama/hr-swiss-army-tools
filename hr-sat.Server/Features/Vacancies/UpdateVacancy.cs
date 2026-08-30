@@ -31,8 +31,12 @@ internal static class UpdateVacancy
             return TypedResults.ValidationProblem(exception.Errors);
         }
 
-        return vacancy is null
-            ? TypedResults.NotFound()
-            : TypedResults.Ok(VacancyDetailsResponse.From(vacancy));
+        if (vacancy is null)
+        {
+            return TypedResults.NotFound();
+        }
+
+        var progress = await VacancyProgress.GetAsync(id, dbContext, cancellationToken);
+        return TypedResults.Ok(VacancyDetailsResponse.From(vacancy, progress));
     }
 }

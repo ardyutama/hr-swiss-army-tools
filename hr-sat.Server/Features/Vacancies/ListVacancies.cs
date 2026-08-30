@@ -1,3 +1,4 @@
+using hr_sat.Server.Domain.Candidates;
 using hr_sat.Server.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,6 +18,10 @@ internal static class ListVacancies
                 vacancy.Title,
                 vacancy.OpenedOn,
                 vacancy.Status == Domain.Vacancies.VacancyStatus.Open ? "open" : "closed",
-                new VacancyProgressResponse(0, 0)))
+                new VacancyProgressResponse(
+                    vacancy.Candidates.Count(candidate =>
+                        candidate.ReviewStatus == CandidateReviewStatus.Shortlisted ||
+                        candidate.ReviewStatus == CandidateReviewStatus.Rejected),
+                    vacancy.Candidates.Count())))
             .ToListAsync(cancellationToken);
 }
