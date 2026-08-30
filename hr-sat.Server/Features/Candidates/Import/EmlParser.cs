@@ -1,6 +1,6 @@
 using MimeKit;
 
-namespace hr_sat.Server.Features.Candidates;
+namespace hr_sat.Server.Features.Candidates.Import;
 
 internal static class EmlParser
 {
@@ -15,6 +15,9 @@ internal static class EmlParser
         var sender = message.From.Mailboxes.FirstOrDefault();
         var attachments = new List<ParsedPdfAttachment>();
         long decodedPdfBytes = 0;
+        DateTimeOffset? sentAt = message.Date == DateTimeOffset.MinValue
+            ? null
+            : message.Date.ToUniversalTime();
 
         foreach (var attachment in message.Attachments.OfType<MimePart>())
         {
@@ -70,7 +73,7 @@ internal static class EmlParser
             string.IsNullOrWhiteSpace(sender?.Address) ? null : sender.Address,
             message.Subject,
             message.TextBody ?? message.HtmlBody,
-            message.Date == DateTimeOffset.MinValue ? null : message.Date,
+            sentAt,
             attachments);
     }
 

@@ -1,3 +1,5 @@
+using hr_sat.Server.Features.Candidates.Import;
+
 namespace hr_sat.Server.Features.Candidates;
 
 public static class CandidateEndpoints

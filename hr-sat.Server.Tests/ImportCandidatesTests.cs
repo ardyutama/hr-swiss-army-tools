@@ -76,6 +76,36 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
     }
 
     [Fact]
+    public async Task Importing_eml_with_non_utc_date_preserves_the_source_instant() // US-12/US-13: HR imports emails from exported source files
+    {
+        using var client = factory.CreateClient();
+        var vacancyLocation = await CreateVacancyAsync(client);
+        using var form = new MultipartFormDataContent();
+        AddFile(
+            form,
+            CreateEml(
+                "Offset Applicant",
+                "offset@example.com",
+                "Offset application",
+                "The source email uses a local timezone.",
+                "Sat, 29 Aug 2026 10:00:00 +0800",
+                ("offset.pdf", Encoding.ASCII.GetBytes("%PDF-1.7\nOffset\n%%EOF"))),
+            "offset.eml");
+
+        var response = await client.PostAsync($"{vacancyLocation}/candidates/import", form);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var import = await response.Content.ReadFromJsonAsync<ImportResponse>();
+        Assert.NotNull(import);
+        var candidate = Assert.Single(import.Results).Candidate;
+        Assert.NotNull(candidate);
+        Assert.Equal(
+            new DateTimeOffset(2026, 8, 29, 2, 0, 0, TimeSpan.Zero),
+            candidate.SourceSentAt);
+        Assert.Equal(TimeSpan.Zero, candidate.SourceSentAt?.Offset);
+    }
+
+    [Fact]
     public async Task Importing_a_batch_keeps_valid_files_when_another_file_fails() // US-12/US-13: each dropped email is processed independently
     {
         using var client = factory.CreateClient();
@@ -220,11 +250,28 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
         string body,
         params (string Filename, byte[] Content)[] attachments)
     {
+        return CreateEml(
+            senderName,
+            senderEmail,
+            subject,
+            body,
+            "Sat, 29 Aug 2026 10:00:00 +0000",
+            attachments);
+    }
+
+    private static byte[] CreateEml(
+        string senderName,
+        string senderEmail,
+        string subject,
+        string body,
+        string date,
+        params (string Filename, byte[] Content)[] attachments)
+    {
         const string boundary = "hr-sat-boundary";
         var builder = new StringBuilder();
         builder.Append($"From: {senderName} <{senderEmail}>\r\n");
         builder.Append("To: hr@example.com\r\n");
-        builder.Append("Date: Sat, 29 Aug 2026 10:00:00 +0000\r\n");
+        builder.Append($"Date: {date}\r\n");
         builder.Append($"Subject: {subject}\r\n");
         builder.Append("MIME-Version: 1.0\r\n");
         builder.Append($"Content-Type: multipart/mixed; boundary=\"{boundary}\"\r\n");
@@ -267,6 +314,7 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
         string? SourceSenderEmail,
         string? SourceSubject,
         string? SourceBodyText,
+        DateTimeOffset? SourceSentAt,
         IReadOnlyList<CvDocumentResponse> Documents);
 
     private sealed record CvDocumentResponse(
