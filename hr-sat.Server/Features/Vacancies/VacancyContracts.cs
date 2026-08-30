@@ -16,7 +16,9 @@ internal sealed record VacancyDetailsResponse(
     IReadOnlyList<VacancyRequirementResponse> Requirements,
     VacancyProgressResponse Progress)
 {
-    public static VacancyDetailsResponse From(Vacancy vacancy) => new(
+    public static VacancyDetailsResponse From(
+        Vacancy vacancy,
+        VacancyProgressResponse? progress = null) => new(
         vacancy.Id,
         vacancy.Title,
         vacancy.OpenedOn,
@@ -30,7 +32,7 @@ internal sealed record VacancyDetailsResponse(
                 requirement.Phrase,
                 requirement.Position))
             .ToList(),
-        new VacancyProgressResponse(0, 0));
+        progress ?? new VacancyProgressResponse(0, 0));
 }
 
 internal sealed record VacancySummaryResponse(

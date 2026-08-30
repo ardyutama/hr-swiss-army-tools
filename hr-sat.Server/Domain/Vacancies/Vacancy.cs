@@ -1,8 +1,11 @@
+using hr_sat.Server.Domain.Candidates;
+
 namespace hr_sat.Server.Domain.Vacancies;
 
 public sealed class Vacancy
 {
     private readonly List<VacancyRequirement> _requirements = [];
+    private readonly List<Candidate> _candidates = [];
 
     private Vacancy()
     {
@@ -22,6 +25,7 @@ public sealed class Vacancy
     public DateTimeOffset? ClosedAt { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public IReadOnlyList<VacancyRequirement> Requirements => _requirements;
+    public IReadOnlyList<Candidate> Candidates => _candidates;
 
     public static Vacancy Create(string? title, DateOnly openedOn, IEnumerable<string?>? requirements)
     {
@@ -62,6 +66,11 @@ public sealed class Vacancy
 
         Status = VacancyStatus.Open;
         ClosedAt = null;
+    }
+
+    public void EnsureCanReceiveCandidateImport()
+    {
+        EnsureOpen("A closed vacancy cannot receive candidate imports.");
     }
 
     private void EnsureOpen(string message)
