@@ -9,7 +9,7 @@ namespace hr_sat.Server.Features.Candidates.Import;
 internal static class ImportCandidates
 {
     public static async Task<Results<Ok<ImportCandidatesResponse>, NotFound, ValidationProblem>> HandleAsync(
-        long id,
+        long vacancyId,
         HttpRequest request,
         AppDbContext dbContext,
         IPrivateFileStorage fileStorage,
@@ -45,7 +45,7 @@ internal static class ImportCandidates
         }
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-        var vacancy = await dbContext.FindVacancyForUpdateAsync(id, cancellationToken);
+        var vacancy = await dbContext.FindVacancyForUpdateAsync(vacancyId, cancellationToken);
         if (vacancy is null)
         {
             return TypedResults.NotFound();
@@ -54,13 +54,13 @@ internal static class ImportCandidates
         vacancy.EnsureCanReceiveCandidateImport();
 
         var existingHashKeys = (await dbContext.Candidates
-                .Where(candidate => candidate.VacancyId == id)
+                .Where(candidate => candidate.VacancyId == vacancyId)
                 .Select(candidate => candidate.SourceSha256)
                 .ToListAsync(cancellationToken))
             .Select(Convert.ToHexString)
             .ToHashSet(StringComparer.Ordinal);
         var filePreparer = new ImportFilePreparer(
-            id,
+            vacancyId,
             existingHashKeys,
             dbContext,
             fileStorage,
@@ -85,7 +85,7 @@ internal static class ImportCandidates
 
         return TypedResults.Ok(new ImportCandidatesResponse(
             outcomes
-                .Select(outcome => outcome.ToResponse(id))
+                .Select(outcome => outcome.ToResponse(vacancyId))
                 .ToList()));
     }
 }

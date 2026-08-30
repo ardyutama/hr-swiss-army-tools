@@ -7,7 +7,7 @@ public static class CandidateEndpoints
     public static IEndpointRouteBuilder MapCandidateEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost(
-                "/api/vacancies/{id:long}/candidates/import",
+                "/api/vacancies/{vacancyId:long}/candidates/import",
                 ImportCandidates.HandleAsync)
             .DisableAntiforgery();
         endpoints.MapGet(

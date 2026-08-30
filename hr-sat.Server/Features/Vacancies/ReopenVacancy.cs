@@ -21,7 +21,6 @@ internal static class ReopenVacancy
             return TypedResults.NotFound();
         }
 
-        var progress = await VacancyProgress.GetAsync(id, dbContext, cancellationToken);
-        return TypedResults.Ok(VacancyDetailsResponse.From(vacancy, progress));
+        return TypedResults.Ok(await VacancyProgress.GetDetailsAsync(vacancy, dbContext, cancellationToken));
     }
 }
