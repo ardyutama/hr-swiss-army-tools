@@ -2,6 +2,7 @@
 import IconButton from '@/shared/ui/IconButton.vue'
 import StatusBadge from './StatusBadge.vue'
 import type { VacancySummary } from '../api'
+import { formatDate, progressPercent } from '../format'
 
 defineProps<{
   rows: VacancySummary[]
@@ -11,25 +12,6 @@ const emit = defineEmits<{
   edit: [row: VacancySummary]
   remove: [row: VacancySummary]
 }>()
-
-const dateFormatter = new Intl.DateTimeFormat(undefined, {
-  year: 'numeric',
-  month: 'short',
-  day: 'numeric',
-})
-
-function formatDate(iso: string): string {
-  const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? iso : dateFormatter.format(date)
-}
-
-function progressPercent(row: VacancySummary): number {
-  const { processedCandidates, totalCandidates } = row.progress
-  if (totalCandidates <= 0) {
-    return 0
-  }
-  return Math.min(100, Math.round((processedCandidates / totalCandidates) * 100))
-}
 </script>
 
 <template>
@@ -60,7 +42,7 @@ function progressPercent(row: VacancySummary): number {
         <div class="vtable__col vtable__col--progress">
           <div class="vrow__progress">
             <div class="vrow__progress-track">
-              <div class="vrow__progress-bar" :style="{ width: `${progressPercent(row)}%` }" />
+              <div class="vrow__progress-bar" :style="{ width: `${progressPercent(row.progress)}%` }" />
             </div>
             <span class="vrow__progress-text">
               {{ row.progress.processedCandidates }}/{{ row.progress.totalCandidates }}

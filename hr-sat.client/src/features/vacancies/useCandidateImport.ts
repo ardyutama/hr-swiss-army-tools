@@ -1,9 +1,11 @@
 import { shallowRef, watch, type Ref } from 'vue'
+import { toast } from 'vue-sonner'
 import { fieldErrorsOf, firstNonFieldError } from '@/shared/validation'
 import {
   importCandidates,
   type ImportCandidatesResponse,
   type ImportFileResult,
+  type ImportFileStatus,
 } from './api'
 
 export function useCandidateImport(vacancyId: Ref<string>) {
@@ -20,6 +22,7 @@ export function useCandidateImport(vacancyId: Ref<string>) {
     try {
       const response = await importCandidates(vacancyId.value, files)
       results.value = response.results
+      announceResults(response.results)
       return response
     } catch (error) {
       importError.value = describeError(error)
@@ -37,6 +40,24 @@ export function useCandidateImport(vacancyId: Ref<string>) {
   })
 
   return { importing, importError, results, importFiles }
+}
+
+function announceResults(results: ImportFileResult[]): void {
+  const countOf = (status: ImportFileStatus) =>
+    results.filter((result) => result.status === status).length
+  const imported = countOf('imported')
+  const skipped = countOf('skipped')
+  const failed = countOf('failed')
+  const summary = [
+    `${imported} imported`,
+    ...(skipped > 0 ? [`${skipped} skipped`] : []),
+    ...(failed > 0 ? [`${failed} failed`] : []),
+  ].join(', ')
+  if (imported > 0) {
+    toast.success(`Import complete: ${summary}`, { closeButton: true })
+  } else {
+    toast.error(`No candidates imported: ${summary}`, { closeButton: true })
+  }
 }
 
 function describeError(error: unknown): string {
