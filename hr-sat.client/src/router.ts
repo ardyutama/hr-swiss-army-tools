@@ -8,5 +8,11 @@ export const router = createRouter({
       name: 'vacancy-list',
       component: () => import('@/features/vacancies/VacancyListView.vue'),
     },
+    {
+      path: '/vacancies/:id',
+      name: 'vacancy-detail',
+      component: () => import('@/features/vacancies/VacancyDetailView.vue'),
+      props: true,
+    },
   ],
 })

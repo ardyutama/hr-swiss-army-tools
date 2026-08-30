@@ -45,7 +45,12 @@ function progressPercent(row: VacancySummary): number {
     <ul class="vtable__body">
       <li v-for="row in rows" :key="row.id" class="vrow">
         <div class="vtable__col vtable__col--role">
-          <span class="vrow__title">{{ row.title }}</span>
+          <RouterLink
+            class="vrow__title vrow__title--link"
+            :to="{ name: 'vacancy-detail', params: { id: row.id } }"
+          >
+            {{ row.title }}
+          </RouterLink>
         </div>
 
         <div class="vtable__col vtable__col--status">
@@ -137,6 +142,16 @@ function progressPercent(row: VacancySummary): number {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.vrow__title--link {
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+.vrow__title--link:hover {
+  color: var(--accent);
+  text-decoration: underline;
 }
 
 .vrow__progress {

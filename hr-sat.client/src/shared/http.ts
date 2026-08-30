@@ -38,6 +38,19 @@ export function postJson<T>(path: string, body: unknown): Promise<T> {
   return sendJson<T>(path, 'POST', body)
 }
 
+export async function postFormData<T>(path: string, formData: FormData): Promise<T> {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { Accept: 'application/json' },
+    // No Content-Type header: the browser sets multipart/form-data with its boundary.
+    body: formData,
+  })
+  if (!response.ok) {
+    throw new ApiError(response.status, await response.json().catch(() => null))
+  }
+  return (await response.json()) as T
+}
+
 export function putJson<T>(path: string, body: unknown): Promise<T> {
   return sendJson<T>(path, 'PUT', body)
 }
