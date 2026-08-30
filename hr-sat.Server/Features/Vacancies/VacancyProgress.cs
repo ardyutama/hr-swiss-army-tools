@@ -33,4 +33,13 @@ internal static class VacancyProgress
 
         return progress ?? new VacancyProgressResponse(0, 0);
     }
+
+    public static async Task<VacancyDetailsResponse> GetDetailsAsync(
+        Vacancy vacancy,
+        AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var progress = await GetAsync(vacancy.Id, dbContext, cancellationToken);
+        return VacancyDetailsResponse.From(vacancy, progress);
+    }
 }
