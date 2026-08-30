@@ -12,7 +12,9 @@ guide and `docs/agents/workflow.md` are the local source of truth when they diff
    order in `docs/agents/workflow.md`: backend slice, frontend feature folder, then tests.
    This step is complete when the requested behavior and its API contract are identified.
 
-2. **Load Vue guidance.** For every Vue task, read `.agents/skills/vue-best-practices/SKILL.md`
+2. **Load Vue guidance.** For feature structure, slice boundaries, state ownership, or
+   client architecture review, read `.agents/skills/vue-feature-slices/SKILL.md` and its
+   referenced files. For every Vue task, read `.agents/skills/vue-best-practices/SKILL.md`
    and keep its required references in working context:
    `references/reactivity.md`, `references/sfc.md`, `references/component-data-flow.md`,
    and `references/composables.md`. Read `.agents/skills/vue/SKILL.md` when using Vue 3.5
