@@ -127,8 +127,11 @@ checks when those features are added.
 
 ## Testing
 
-Backend tests cross the HTTP seam with xUnit, `WebApplicationFactory`, and a hermetic
-Testcontainers PostgreSQL database. Assert observable behavior:
+Scope is flow-first per `docs/agents/testing.md` (ADR 0003): every test traces to a user
+story or a `CONTEXT.md` term, and spine stories land their Flow Tests in the same ticket.
+The mechanics stay as they are: backend tests cross the HTTP seam with xUnit,
+`WebApplicationFactory`, and a hermetic Testcontainers PostgreSQL database. Assert
+observable behavior:
 
 - status codes and response contracts;
 - RFC 7807 error details for invalid or unavailable operations;

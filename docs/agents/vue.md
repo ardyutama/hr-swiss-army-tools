@@ -90,12 +90,14 @@ guide and `docs/agents/workflow.md` are the local source of truth when they diff
 - When a route parameter changes without leaving the route component, explicitly handle the
   new parameter and clean up any listeners or async effects. Use the router skill for guard,
   parameter, and lifecycle decisions.
-- Follow the project testing stance: implement the slice first, then test the feature
-  component seam with Vitest, Vue Test Utils, and jsdom. Assert user-visible states and
-  emitted behavior rather than private implementation details or snapshots alone.
-- Cover the relevant loading, error, empty, ready, disabled, and submission states. For
-  teleported dialogs, assert against `document.body` and clear teleported content between
-  tests.
+- Follow the project testing stance in `docs/agents/testing.md` (ADR 0003): implement the
+  slice first, then test the feature-component seam with Vitest, Vue Test Utils, and jsdom
+  as Flow Tests traced to a user story or glossary term. Mock only `fetch` (plus platform
+  modules the component genuinely owns, e.g. toasts). Assert user-visible outcomes —
+  rendered content, toasts, emitted events — rather than private implementation details or
+  snapshots.
+- For teleported dialogs, assert against `document.body` and clear teleported content
+  between tests.
 - Oxlint is the sole client linter. Keep type checking with `vue-tsc` and use the scripts in
   `hr-sat.client/package.json` for linting, type checking, tests, and builds; do not add a
   second lint stack without revisiting ADR 0001.

@@ -19,6 +19,10 @@ frontend rules and points to the required Vue, router, and testing best-practice
 
 Work items derive from `docs/discovery/03-user-stories.md` and live as local markdown under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
 
+### Testing
+
+Flow-first test scope, traceability, and the critical spine: see `docs/agents/testing.md` (ADR 0003).
+
 ### Triage labels
 
 Default canonical labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
