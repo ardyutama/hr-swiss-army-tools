@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted (2026-08-27)
+Accepted (2026-08-27). Amended by ADR-0005 (2026-08-31): `dotnet ef` migrations replace
+the deferred `EnsureCreated()` lifecycle.
 
 ## Context
 

@@ -7,20 +7,6 @@ one **slice** (frontend). Folders are feature-first. Shared code is **earned**: 
 `Shared/` or `src/shared/` only at its second same-reason consumer. A feature is complete as
 a full vertical slice: schema → API → client → seam tests, in `docs/agents/workflow.md` order.
 
-### Backend slice layout
-
-`hr-sat.Server/Features/<Feature>/`:
-
-- `<Feature>Endpoints.cs` — route registration only
-- `<Feature>Contracts.cs` — contracts shared by the feature's use cases; request contracts carry DataAnnotations presence rules
-- `<UseCase>.cs` — one endpoint use case; a `<UseCase>/` subfolder only when it has deep internal work
-- `<Concept>.cs` — feature-shared behavior named after its concept
-
-Entities in `Domain/<Context>/`; EF configuration in `Infrastructure/`; tests mirror as
-`hr-sat.Server.Tests/<Feature>/<UseCase>Tests.cs`; architecture rules live in
-`hr-sat.Server.Tests/Architecture/`. Full rules: `docs/agents/dotnet.md` and
-`.agents/skills/dotnet-vsa-webapi/`.
-
 ### Frontend slice layout
 
 One user flow = one page under `hr-sat.client/src/pages/<page>/` plus one feature module
@@ -52,8 +38,11 @@ state lives in composables; a store is earned by a second feature consumer. Full
 
 For ASP.NET Core, EF Core, backend testing, dependency injection, domain modeling, or
 performance work, read `docs/agents/dotnet.md` after `CONTEXT.md` and any relevant ADRs.
-Use `.agents/skills/dotnet-skills/` as conditional playbooks for the matching task; the
-repository-specific rules in `docs/agents/dotnet.md` take precedence when they differ.
+Backend slice conventions (layers, handlers, validation, errors, per-slice tests) are
+owned by the `.agents/skills/vertical-slice-dotnet/` pack (`add-feature`, `add-entity`,
+`add-tests`, `ca-review`) — the source of truth per ADR-0005; `docs/agents/dotnet.md`
+adds only repo-specific rules. Use `.agents/skills/dotnet-skills/` as conditional
+playbooks for the matching task.
 
 ### Vue client development
 
