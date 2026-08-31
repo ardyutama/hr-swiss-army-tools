@@ -56,6 +56,10 @@ export function deleteVacancy(id: string): Promise<void> {
   return delJson(`/api/vacancies/${id}`)
 }
 
+export type CandidateReviewStatus = 'new' | 'flagged' | 'shortlisted' | 'rejected'
+
+export type CandidateExtractionStatus = 'pending' | 'succeeded' | 'failed'
+
 export interface CvDocumentResult {
   id: number
   originalFilename: string
@@ -66,8 +70,8 @@ export interface CvDocumentResult {
 
 export interface ImportedCandidate {
   id: number
-  reviewStatus: string
-  extractionStatus: string
+  reviewStatus: CandidateReviewStatus
+  extractionStatus: CandidateExtractionStatus
   sourceSenderName: string | null
   sourceSenderEmail: string | null
   sourceSubject: string | null
@@ -102,4 +106,21 @@ export function importCandidates(
     `/api/vacancies/${vacancyId}/candidates/import`,
     formData,
   )
+}
+
+export interface CandidateSummary {
+  id: number
+  fullName: string | null
+  contactEmail: string | null
+  notes: string | null
+  reviewStatus: CandidateReviewStatus
+  extractionStatus: CandidateExtractionStatus
+  sourceSenderName: string | null
+  sourceSenderEmail: string | null
+  sourceSubject: string | null
+  sourceSentAt: string | null
+}
+
+export function listCandidates(vacancyId: string): Promise<CandidateSummary[]> {
+  return getJson<CandidateSummary[]>(`/api/vacancies/${vacancyId}/candidates`)
 }
