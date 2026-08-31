@@ -9,7 +9,7 @@ to all candidate" button (disabled until ticket 06).
 
 **Blocked by:** 03-eml-import
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] List candidates of a vacancy: display name (sender fallback), notes, review status
 - [x] Delete a candidate

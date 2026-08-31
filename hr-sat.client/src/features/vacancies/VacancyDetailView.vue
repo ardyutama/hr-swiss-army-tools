@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { computed, toRef } from 'vue'
+import { computed, shallowRef, toRef } from 'vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import StatusBadge from './components/StatusBadge.vue'
-import ImportDropZone from './components/ImportDropZone.vue'
+import ImportCandidatesDialog from './components/ImportCandidatesDialog.vue'
+import CandidateDeleteDialog from './components/CandidateDeleteDialog.vue'
 import ImportResultList from './components/ImportResultList.vue'
 import CandidateList from './components/CandidateList.vue'
 import { useVacancyDetail } from './useVacancyDetail'
 import { useCandidateImport } from './useCandidateImport'
 import { useCandidates } from './useCandidates'
 import { formatDate, progressPercent } from './format'
+import type { CandidateSummary } from './api'
 
 const props = defineProps<{
   id: string
@@ -17,23 +19,67 @@ const props = defineProps<{
 
 const vacancyId = toRef(props, 'id')
 const { vacancy, loadError, viewState, load } = useVacancyDetail(vacancyId)
-const { importing, importError, results, importFiles } = useCandidateImport(vacancyId)
+const { importing, importError, results, importFiles, clearError } = useCandidateImport(vacancyId)
 const {
   candidates,
   loadError: candidatesError,
   viewState: candidatesViewState,
+  removing,
   load: loadCandidates,
+  remove,
 } = useCandidates(vacancyId)
+
+const importOpen = shallowRef(false)
+const deleteOpen = shallowRef(false)
+const deletingCandidate = shallowRef<CandidateSummary | null>(null)
+const deleteError = shallowRef<string | null>(null)
 
 const isClosed = computed(() => vacancy.value?.status === 'closed')
 
 const progress = computed(() => (vacancy.value ? progressPercent(vacancy.value.progress) : 0))
 
+function openImport() {
+  importOpen.value = true
+}
+
+function closeImport() {
+  importOpen.value = false
+  clearError()
+}
+
 async function onFiles(files: File[]) {
   const response = await importFiles(files)
   if (response) {
+    closeImport()
     // Refresh so the vacancy progress and the candidate list reflect the import.
     await Promise.all([load(), loadCandidates()])
+  }
+}
+
+function requestDeleteCandidate(candidate: CandidateSummary) {
+  deletingCandidate.value = candidate
+  deleteError.value = null
+  deleteOpen.value = true
+}
+
+function closeDelete() {
+  deleteOpen.value = false
+  deleteError.value = null
+}
+
+async function confirmDeleteCandidate() {
+  const candidate = deletingCandidate.value
+  if (!candidate) {
+    return
+  }
+  try {
+    await remove(candidate)
+    deleteOpen.value = false
+    deletingCandidate.value = null
+    // Progress counts candidates, so the vacancy details need a refresh too.
+    await load()
+  } catch (error) {
+    deleteError.value = error instanceof Error ? error.message : 'Failed to delete candidate'
   }
 }
 </script>
@@ -69,7 +115,18 @@ async function onFiles(files: File[]) {
           <h1 class="detail-page__title">{{ vacancy.title }}</h1>
           <p class="detail-page__subtitle">Opened {{ formatDate(vacancy.openedOn) }}</p>
         </div>
-        <StatusBadge :status="vacancy.status" />
+        <div class="detail-page__header-side">
+          <StatusBadge :status="vacancy.status" />
+          <div class="detail-page__actions">
+            <AppButton v-if="!isClosed" variant="ghost" @click="openImport">
+              <AppIcon name="upload" :size="16" />
+              Import .eml
+            </AppButton>
+            <span title="Available once email templates exist">
+              <AppButton disabled>Send Email to all candidate</AppButton>
+            </span>
+          </div>
+        </div>
       </header>
 
       <section class="detail-page__panel detail-page__progress" aria-label="Vacancy progress">
@@ -99,29 +156,39 @@ async function onFiles(files: File[]) {
           <span class="skeleton skeleton--line" />
         </div>
 
-        <div v-else-if="candidatesViewState === 'error'" class="detail-page__closed" role="alert">
+        <div v-else-if="candidatesViewState === 'error'" class="detail-page__notice" role="alert">
           <p class="detail-page__state-title">Couldn't load candidates</p>
           <p class="detail-page__state-text">{{ candidatesError }}</p>
           <AppButton variant="ghost" @click="loadCandidates">Try again</AppButton>
         </div>
 
-        <!-- No candidates yet: the drop zone is the import entry point -->
         <template v-else-if="candidatesViewState === 'empty'">
           <!-- Closed vacancy is read-only -->
-          <div v-if="isClosed" class="detail-page__closed">
+          <div v-if="isClosed" class="detail-page__notice">
             <p class="detail-page__state-title">This vacancy is closed</p>
             <p class="detail-page__state-text">
               A closed vacancy is read-only and can't receive candidate imports.
             </p>
           </div>
-          <template v-else>
-            <ImportDropZone :busy="importing" @files="onFiles" />
-            <p v-if="importError" class="detail-page__import-error" role="alert">{{ importError }}</p>
-          </template>
+          <div v-else class="detail-page__notice">
+            <p class="detail-page__state-title">No candidates yet</p>
+            <p class="detail-page__state-text">
+              Export the application emails as .eml files and drop them in to import each
+              email as a candidate.
+            </p>
+            <AppButton @click="openImport">
+              <AppIcon name="upload" :size="16" />
+              Import .eml files
+            </AppButton>
+          </div>
         </template>
 
-        <!-- Candidates exist: the list replaces the drop zone -->
-        <CandidateList v-else :candidates="candidates ?? []" />
+        <CandidateList
+          v-else
+          :candidates="candidates ?? []"
+          :readonly="isClosed"
+          @remove="requestDeleteCandidate"
+        />
       </section>
 
       <section
@@ -133,6 +200,22 @@ async function onFiles(files: File[]) {
         <ImportResultList :results="results" />
       </section>
     </template>
+
+    <ImportCandidatesDialog
+      :open="importOpen"
+      :busy="importing"
+      :error="importError"
+      @close="closeImport"
+      @files="onFiles"
+    />
+    <CandidateDeleteDialog
+      :open="deleteOpen"
+      :candidate="deletingCandidate"
+      :deleting="removing"
+      :error="deleteError"
+      @close="closeDelete"
+      @confirm="confirmDeleteCandidate"
+    />
   </div>
 </template>
 
@@ -171,6 +254,20 @@ async function onFiles(files: File[]) {
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
+}
+
+.detail-page__header-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.detail-page__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
 
 .detail-page__heading {
@@ -281,7 +378,7 @@ async function onFiles(files: File[]) {
   padding: var(--space-4) var(--space-3);
 }
 
-.detail-page__closed {
+.detail-page__notice {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -292,11 +389,8 @@ async function onFiles(files: File[]) {
   min-height: 12rem;
 }
 
-.detail-page__import-error {
-  margin: var(--space-3) var(--space-2) 0;
-  font-size: var(--text-sm);
-  color: var(--danger);
-  font-weight: 500;
+.detail-page__notice .btn {
+  margin-top: var(--space-3);
 }
 
 .detail-page__results {

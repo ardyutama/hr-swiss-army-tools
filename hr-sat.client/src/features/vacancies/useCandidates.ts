@@ -1,11 +1,14 @@
 import { computed, shallowRef, watch, type Ref } from 'vue'
-import { listCandidates, type CandidateSummary } from './api'
+import { toast } from 'vue-sonner'
+import { deleteCandidate, listCandidates, type CandidateSummary } from './api'
+import { candidateDisplayName } from './format'
 
 export type CandidatesViewState = 'loading' | 'error' | 'empty' | 'ready'
 
 export function useCandidates(vacancyId: Ref<string>) {
   const candidates = shallowRef<CandidateSummary[] | null>(null)
   const loadError = shallowRef<string | null>(null)
+  const removing = shallowRef(false)
   let requestToken = 0
 
   const viewState = computed<CandidatesViewState>(() => {
@@ -47,5 +50,22 @@ export function useCandidates(vacancyId: Ref<string>) {
     { immediate: true },
   )
 
-  return { candidates, loadError, viewState, load }
+  /**
+   * Deletes a candidate, then reloads the list. Re-throws failures without a
+   * toast so the confirm dialog can keep the failure visible inline.
+   */
+  async function remove(candidate: CandidateSummary): Promise<void> {
+    removing.value = true
+    try {
+      await deleteCandidate(vacancyId.value, candidate.id)
+      toast.success(`Candidate "${candidateDisplayName(candidate)}" deleted successfully`, {
+        closeButton: true,
+      })
+      await load()
+    } finally {
+      removing.value = false
+    }
+  }
+
+  return { candidates, loadError, viewState, removing, load, remove }
 }

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import ConfirmDialog from '@/shared/ui/ConfirmDialog.vue'
-import type { VacancySummary } from '../api'
+import type { CandidateSummary } from '../api'
+import { candidateDisplayName } from '../format'
 
 withDefaults(
   defineProps<{
     open: boolean
-    vacancy: VacancySummary | null
+    candidate: CandidateSummary | null
     deleting?: boolean
     error?: string | null
   }>(),
@@ -21,16 +22,16 @@ const emit = defineEmits<{
 <template>
   <ConfirmDialog
     :open="open"
-    title="Delete vacancy"
-    confirm-label="Delete vacancy"
+    title="Delete candidate"
+    confirm-label="Delete candidate"
     :confirming="deleting"
     :error="error"
     @close="emit('close')"
     @confirm="emit('confirm')"
   >
     <p class="confirm__text">
-      Delete <strong>{{ vacancy?.title }}</strong
-      >? This permanently removes the vacancy and can't be undone.
+      Delete <strong>{{ candidate ? candidateDisplayName(candidate) : '' }}</strong
+      >? This permanently removes the candidate and their CV documents and can't be undone.
     </p>
   </ConfirmDialog>
 </template>

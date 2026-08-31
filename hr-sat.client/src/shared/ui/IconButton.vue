@@ -6,8 +6,9 @@ withDefaults(
     icon: IconName
     label: string
     variant?: 'neutral' | 'danger'
+    disabled?: boolean
   }>(),
-  { variant: 'neutral' },
+  { variant: 'neutral', disabled: false },
 )
 </script>
 
@@ -18,6 +19,7 @@ withDefaults(
     :class="`icon-btn--${variant}`"
     :aria-label="label"
     :title="label"
+    :disabled="disabled"
   >
     <AppIcon :name="icon" :size="17" />
   </button>
@@ -41,7 +43,7 @@ withDefaults(
   color: var(--muted);
 }
 
-.icon-btn--neutral:hover {
+.icon-btn--neutral:hover:not(:disabled) {
   background: var(--accent-soft);
   color: var(--accent);
 }
@@ -50,8 +52,13 @@ withDefaults(
   color: var(--muted);
 }
 
-.icon-btn--danger:hover {
+.icon-btn--danger:hover:not(:disabled) {
   background: var(--danger-soft);
   color: var(--danger);
+}
+
+.icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 </style>

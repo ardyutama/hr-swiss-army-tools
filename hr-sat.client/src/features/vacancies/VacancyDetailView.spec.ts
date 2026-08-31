@@ -1,4 +1,4 @@
-import { flushPromises, mount, type DOMWrapper } from '@vue/test-utils'
+import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'vue-sonner'
 
@@ -71,6 +71,16 @@ function candidateSummary(id: number, overrides: Partial<Record<string, unknown>
   }
 }
 
+function bobSummary() {
+  return candidateSummary(2, {
+    sourceSenderName: 'Bob Builder',
+    sourceSenderEmail: 'bob@example.com',
+    sourceSubject: 'Bob application',
+    reviewStatus: 'shortlisted',
+    notes: 'Strong MIG experience',
+  })
+}
+
 function mountView(id = '1') {
   return mount(VacancyDetailView, {
     props: { id },
@@ -82,8 +92,31 @@ function mountView(id = '1') {
   })
 }
 
-function dropFiles(dropzone: DOMWrapper<Element>, files: File[]) {
-  return dropzone.trigger('drop', { dataTransfer: { files } })
+function bodyElement(selector: string): Element {
+  const element = document.body.querySelector(selector)
+  if (!element) {
+    throw new Error(`Expected "${selector}" to exist in document.body`)
+  }
+  return element
+}
+
+function dialogButton(text: string): HTMLButtonElement | undefined {
+  return Array.from(document.body.querySelectorAll('button')).find((button) =>
+    button.textContent?.includes(text),
+  )
+}
+
+async function openImportDialog(wrapper: VueWrapper) {
+  const button = wrapper
+    .findAll('button')
+    .find((candidate) => candidate.text().includes('Import .eml'))
+  expect(button, 'an Import .eml button').toBeDefined()
+  await button!.trigger('click')
+  await flushPromises()
+}
+
+function dropFiles(files: File[]) {
+  return new DOMWrapper(bodyElement('.dropzone')).trigger('drop', { dataTransfer: { files } })
 }
 
 afterEach(() => {
@@ -140,7 +173,8 @@ describe('VacancyDetailView', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('Welder')
 
-    await dropFiles(wrapper.find('.dropzone'), [
+    await openImportDialog(wrapper)
+    await dropFiles([
       new File(['alice source'], 'alice.eml', { type: 'message/rfc822' }),
       new File(['broken source'], 'broken.eml', { type: 'message/rfc822' }),
     ])
@@ -202,9 +236,8 @@ describe('VacancyDetailView', () => {
     const progress = () => wrapper.find('[aria-label="Vacancy progress"]').text()
     expect(progress()).toContain('0/0')
 
-    await dropFiles(wrapper.find('.dropzone'), [
-      new File(['alice source'], 'alice.eml', { type: 'message/rfc822' }),
-    ])
+    await openImportDialog(wrapper)
+    await dropFiles([new File(['alice source'], 'alice.eml', { type: 'message/rfc822' })])
     await flushPromises()
 
     expect(progress()).toContain('0/1')
@@ -232,32 +265,22 @@ describe('VacancyDetailView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    await dropFiles(wrapper.find('.dropzone'), [
-      new File(['alice source'], 'alice.eml', { type: 'message/rfc822' }),
-    ])
+    await openImportDialog(wrapper)
+    await dropFiles([new File(['alice source'], 'alice.eml', { type: 'message/rfc822' })])
     await flushPromises()
 
-    expect(wrapper.text()).toContain('At least one .eml file is required.')
+    // The dialog stays open with the failure visible next to the drop zone.
+    expect(document.body.textContent).toContain('At least one .eml file is required.')
+    expect(document.body.querySelector('.dropzone')).not.toBeNull()
     expect(toast.success).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 
-  it('US-14: HR sees the candidate list instead of the drop zone once candidates exist', async () => {
+  it('US-14: HR sees the whole pipeline at a glance — name, match status, notes, and status per candidate', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input)
       if (url.endsWith('/candidates')) {
-        return Promise.resolve(
-          jsonResponse([
-            candidateSummary(1),
-            candidateSummary(2, {
-              sourceSenderName: 'Bob Builder',
-              sourceSenderEmail: 'bob@example.com',
-              sourceSubject: 'Bob application',
-              reviewStatus: 'shortlisted',
-              notes: 'Strong MIG experience',
-            }),
-          ]),
-        )
+        return Promise.resolve(jsonResponse([candidateSummary(1), bobSummary()]))
       }
       return Promise.resolve(
         jsonResponse(
@@ -272,20 +295,116 @@ describe('VacancyDetailView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    // One row per candidate with name, review status, and notes.
+    // Header: vacancy title with date and the send-all action parked for email templates.
+    expect(wrapper.text()).toContain('Welder')
+    expect(wrapper.text()).toContain('Opened')
+    const sendAll = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Send Email to all candidate'))
+    expect(sendAll).toBeDefined()
+    expect((sendAll!.element as HTMLButtonElement).disabled).toBe(true)
+
+    // One row per candidate under the sketch's columns.
+    const header = wrapper.find('.ctable__head')
+    expect(header.text()).toContain('Candidate')
+    expect(header.text()).toContain('Match Status')
+    expect(header.text()).toContain('Notes')
+    expect(header.text()).toContain('Status')
+
     expect(wrapper.text()).toContain('Alice Applicant')
     expect(wrapper.text()).toContain('Bob Builder')
     expect(wrapper.text()).toContain('New')
     expect(wrapper.text()).toContain('Shortlisted')
     expect(wrapper.text()).toContain('Strong MIG experience')
 
-    // The drop zone is gone once candidates exist.
+    // Send is a placeholder until templates exist; Delete is available.
+    const sendButtons = wrapper.findAll('button[aria-label*="Send email"]')
+    expect(sendButtons).toHaveLength(2)
+    expect(
+      sendButtons.every((button) => (button.element as HTMLButtonElement).disabled),
+    ).toBe(true)
+    expect(wrapper.findAll('button[aria-label="Delete candidate"]')).toHaveLength(2)
+
+    // The drop zone only lives inside the import dialog, which starts closed.
     expect(wrapper.find('.dropzone').exists()).toBe(false)
-    expect(wrapper.find('input[type="file"]').exists()).toBe(false)
+    expect(document.body.querySelector('.dropzone')).toBeNull()
     wrapper.unmount()
   })
 
-  it('US-12/US-14: a successful import replaces the drop zone with the candidate list', async () => {
+  it('US-14: HR deletes a candidate after confirming', async () => {
+    let deleted = false
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (init?.method === 'DELETE' && url.endsWith('/candidates/2')) {
+        deleted = true
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      if (url.endsWith('/candidates')) {
+        return Promise.resolve(
+          jsonResponse(deleted ? [candidateSummary(1)] : [candidateSummary(1), bobSummary()]),
+        )
+      }
+      return Promise.resolve(jsonResponse(vacancyDetails()))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const bobRow = wrapper.findAll('.crow').find((row) => row.text().includes('Bob Builder'))
+    expect(bobRow).toBeDefined()
+    await bobRow!.find('button[aria-label="Delete candidate"]').trigger('click')
+    await flushPromises()
+
+    // The confirm dialog names the candidate being deleted.
+    expect(document.body.textContent).toContain('Bob Builder')
+    expect(document.body.textContent).toContain("can't be undone")
+
+    dialogButton('Delete candidate')?.click()
+    await flushPromises()
+
+    expect(deleted).toBe(true)
+    expect(toast.success).toHaveBeenCalledWith(
+      'Candidate "Bob Builder" deleted successfully',
+      expect.anything(),
+    )
+    expect(wrapper.text()).toContain('Alice Applicant')
+    expect(wrapper.text()).not.toContain('Bob Builder')
+    wrapper.unmount()
+  })
+
+  it('US-14: HR is told when deleting a candidate fails and the list stays intact', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (init?.method === 'DELETE' && url.endsWith('/candidates/2')) {
+        return Promise.resolve(jsonResponse({ title: 'Server error' }, 500))
+      }
+      if (url.endsWith('/candidates')) {
+        return Promise.resolve(jsonResponse([candidateSummary(1), bobSummary()]))
+      }
+      return Promise.resolve(jsonResponse(vacancyDetails()))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const bobRow = wrapper.findAll('.crow').find((row) => row.text().includes('Bob Builder'))
+    await bobRow!.find('button[aria-label="Delete candidate"]').trigger('click')
+    await flushPromises()
+
+    dialogButton('Delete candidate')?.click()
+    await flushPromises()
+
+    // Dialog stays open with the error; the loaded list is untouched.
+    expect(document.body.textContent).toContain('API request failed with status 500')
+    expect(document.body.textContent).toContain("can't be undone")
+    expect(wrapper.text()).toContain('Bob Builder')
+    expect(toast.success).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('US-12/US-14: a successful import replaces the empty state with the candidate list', async () => {
     let imported = false
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
@@ -307,28 +426,20 @@ describe('VacancyDetailView', () => {
       if (url.endsWith('/candidates')) {
         return Promise.resolve(jsonResponse(imported ? [candidateSummary(1)] : []))
       }
-      return Promise.resolve(
-        jsonResponse(
-          vacancyDetails({
-            progress: imported
-              ? { processedCandidates: 0, totalCandidates: 1 }
-              : { processedCandidates: 0, totalCandidates: 0 },
-          }),
-        ),
-      )
+      return Promise.resolve(jsonResponse(vacancyDetails()))
     })
     vi.stubGlobal('fetch', fetchMock)
 
     const wrapper = mountView()
     await flushPromises()
-    expect(wrapper.find('.dropzone').exists()).toBe(true)
+    expect(wrapper.text()).toContain('No candidates yet')
+    expect(wrapper.find('.crow').exists()).toBe(false)
 
-    await dropFiles(wrapper.find('.dropzone'), [
-      new File(['alice source'], 'alice.eml', { type: 'message/rfc822' }),
-    ])
+    await openImportDialog(wrapper)
+    await dropFiles([new File(['alice source'], 'alice.eml', { type: 'message/rfc822' })])
     await flushPromises()
 
-    expect(wrapper.find('.dropzone').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('No candidates yet')
     expect(wrapper.text()).toContain('Alice Applicant')
     wrapper.unmount()
   })
@@ -354,8 +465,40 @@ describe('VacancyDetailView', () => {
 
     expect(wrapper.text()).toContain('Closed')
     expect(wrapper.text()).toContain('read-only')
+    expect(
+      wrapper.findAll('button').filter((button) => button.text().includes('Import')),
+    ).toHaveLength(0)
     expect(wrapper.find('input[type="file"]').exists()).toBe(false)
-    expect(wrapper.find('.dropzone').exists()).toBe(false)
+    expect(document.body.querySelector('.dropzone')).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('domain: closed vacancy is read-only — candidate rows have no actions', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.endsWith('/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+        }
+        return Promise.resolve(
+          jsonResponse(
+            vacancyDetails({
+              status: 'closed',
+              closedAt: '2026-08-29T00:00:00Z',
+              progress: { processedCandidates: 0, totalCandidates: 1 },
+            }),
+          ),
+        )
+      }),
+    )
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Alice Applicant')
+    expect(wrapper.findAll('button[aria-label="Delete candidate"]')).toHaveLength(0)
+    expect(wrapper.findAll('button[aria-label*="Send email"]')).toHaveLength(0)
     wrapper.unmount()
   })
 })

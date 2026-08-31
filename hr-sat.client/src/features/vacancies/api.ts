@@ -124,3 +124,7 @@ export interface CandidateSummary {
 export function listCandidates(vacancyId: string): Promise<CandidateSummary[]> {
   return getJson<CandidateSummary[]>(`/api/vacancies/${vacancyId}/candidates`)
 }
+
+export function deleteCandidate(vacancyId: string, candidateId: number): Promise<void> {
+  return delJson(`/api/vacancies/${vacancyId}/candidates/${candidateId}`)
+}
