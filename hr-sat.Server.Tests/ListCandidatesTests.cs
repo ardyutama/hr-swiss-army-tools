@@ -23,6 +23,16 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
     }
 
     [Fact]
+    public async Task US_14_HR_receives_not_found_when_listing_an_unknown_vacancy()
+    {
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/api/vacancies/999/candidates");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task US_14_HR_sees_imported_candidate_summaries_in_import_order()
     {
         using var client = factory.CreateClient();
