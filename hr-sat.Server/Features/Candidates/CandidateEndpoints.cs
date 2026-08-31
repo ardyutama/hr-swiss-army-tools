@@ -13,6 +13,11 @@ public static class CandidateEndpoints
             .WithName("ImportCandidates")
             .DisableAntiforgery();
         endpoints.MapGet(
+                "/api/vacancies/{vacancyId:long}/candidates",
+                ListCandidates.HandleAsync)
+            .WithTags("Candidates")
+            .WithName("ListCandidates");
+        endpoints.MapGet(
                 "/api/vacancies/{vacancyId:long}/candidates/{candidateId:long}/cv-documents/{documentId:long}",
                 GetCvDocument.HandleAsync)
             .WithTags("Candidates")
