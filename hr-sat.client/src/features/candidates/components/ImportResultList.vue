@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ImportFileResult, ImportFileStatus } from '../api'
+import type { ImportFileResult, ImportFileStatus } from '@/features/candidates/api'
 
 defineProps<{
   results: ImportFileResult[]

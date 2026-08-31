@@ -3,11 +3,11 @@ import { shallowRef, useTemplateRef } from 'vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import StatCard from '@/shared/ui/StatCard.vue'
-import VacancyTable from './components/VacancyTable.vue'
-import VacancyFormDialog from './components/VacancyFormDialog.vue'
-import ConfirmDeleteDialog from './components/ConfirmDeleteDialog.vue'
-import { useVacancies } from './useVacancies'
-import type { VacancySummary, VacancyWritePayload } from './api'
+import VacancyTable from '@/features/vacancies/components/VacancyTable.vue'
+import VacancyFormDialog from '@/features/vacancies/components/VacancyFormDialog.vue'
+import ConfirmDeleteDialog from '@/features/vacancies/components/ConfirmDeleteDialog.vue'
+import { useVacancies } from '@/features/vacancies/useVacancies'
+import type { VacancySummary, VacancyWritePayload } from '@/features/vacancies/api'
 
 const {
   vacancies,

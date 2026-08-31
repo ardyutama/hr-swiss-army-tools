@@ -1,5 +1,5 @@
 import { computed, shallowRef, watch, type Ref } from 'vue'
-import { getVacancy, type VacancyDetails } from './api'
+import { getVacancy, type VacancyDetails } from '@/features/vacancies/api'
 
 export type VacancyDetailViewState = 'loading' | 'error' | 'ready'
 

@@ -23,18 +23,27 @@ Entities in `Domain/<Context>/`; EF configuration in `Infrastructure/`; tests mi
 
 ### Frontend slice layout
 
-`hr-sat.client/src/features/<feature>/`:
+One user flow = one page under `hr-sat.client/src/pages/<page>/` plus one feature module
+under `hr-sat.client/src/features/<feature>/`.
 
-- `<Flow>View.vue` — thin route view: composes composables and wires props/events; fetches,
-  mutates, formats nothing
+`src/pages/<page>/`:
+
+- `<Flow>View.vue` — thin route view: composes feature modules and wires props/events;
+  fetches, mutates, formats nothing
+- `<Flow>View.spec.ts` — seam tests: mount the view, stub `fetch`, assert user-visible outcomes
+
+`src/features/<feature>/`:
+
 - `use<Flow>.ts` — one composable per async lifecycle; owns loading/error/data and the
   view-state union (`loading | error | empty | ready`)
 - `api.ts` — typed DTOs plus one function per endpoint over `shared/http.ts`
 - `validation.ts` — pure input rules; the server owns business rules
+- `format.ts` — pure display formatting helpers
 - `components/` — flow presentation with typed props/emits
-- `<Flow>View.spec.ts` — seam tests: mount the view, stub `fetch`, assert user-visible outcomes
 
-Flow state lives in composables; a store is earned by a second feature consumer. Full rules:
+Pages compose feature modules; features never import from pages or from a sibling
+feature's internals (cross-feature imports use the feature's root modules only). Flow
+state lives in composables; a store is earned by a second feature consumer. Full rules:
 `docs/agents/vue.md` and `.agents/skills/vue-feature-slices/`.
 
 ## Agent skills

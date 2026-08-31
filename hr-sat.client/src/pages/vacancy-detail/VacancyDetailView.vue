@@ -2,16 +2,16 @@
 import { computed, shallowRef, toRef } from 'vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
-import StatusBadge from './components/StatusBadge.vue'
-import ImportCandidatesDialog from './components/ImportCandidatesDialog.vue'
-import CandidateDeleteDialog from './components/CandidateDeleteDialog.vue'
-import ImportResultList from './components/ImportResultList.vue'
-import CandidateList from './components/CandidateList.vue'
-import { useVacancyDetail } from './useVacancyDetail'
-import { useCandidateImport } from './useCandidateImport'
-import { useCandidates } from './useCandidates'
-import { formatDate, progressPercent } from './format'
-import type { CandidateSummary } from './api'
+import StatusBadge from '@/features/vacancies/components/StatusBadge.vue'
+import ImportCandidatesDialog from '@/features/candidates/components/ImportCandidatesDialog.vue'
+import CandidateDeleteDialog from '@/features/candidates/components/CandidateDeleteDialog.vue'
+import ImportResultList from '@/features/candidates/components/ImportResultList.vue'
+import CandidateList from '@/features/candidates/components/CandidateList.vue'
+import { useVacancyDetail } from '@/features/vacancy-detail/useVacancyDetail'
+import { useCandidateImport } from '@/features/candidates/useCandidateImport'
+import { useCandidates } from '@/features/candidates/useCandidates'
+import { formatDate, progressPercent } from '@/features/vacancies/format'
+import type { CandidateSummary } from '@/features/candidates/api'
 
 const props = defineProps<{
   id: string
@@ -123,7 +123,7 @@ async function confirmDeleteCandidate() {
               Import .eml
             </AppButton>
             <span title="Available once email templates exist">
-              <AppButton disabled>Send Email to all candidate</AppButton>
+              <AppButton disabled>Send email to all candidates</AppButton>
             </span>
           </div>
         </div>

@@ -6,12 +6,12 @@ export const router = createRouter({
     {
       path: '/',
       name: 'vacancy-list',
-      component: () => import('@/features/vacancies/VacancyListView.vue'),
+      component: () => import('@/pages/vacancies/VacancyListView.vue'),
     },
     {
       path: '/vacancies/:id',
       name: 'vacancy-detail',
-      component: () => import('@/features/vacancies/VacancyDetailView.vue'),
+      component: () => import('@/pages/vacancy-detail/VacancyDetailView.vue'),
       props: true,
     },
   ],

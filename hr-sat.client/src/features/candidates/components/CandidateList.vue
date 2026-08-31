@@ -23,48 +23,54 @@ const reviewStatusLabels: Record<CandidateReviewStatus, string> = {
   rejected: 'Rejected',
 }
 
-const gridColumns = computed(() =>
+// Column proportions applied via <colgroup> so the semantic table keeps a fixed layout.
+const columnWidths = computed(() =>
   props.readonly
-    ? 'minmax(0, 1.6fr) minmax(0, 0.9fr) minmax(0, 1.4fr) minmax(0, 0.8fr)'
-    : 'minmax(0, 1.6fr) minmax(0, 0.9fr) minmax(0, 1.4fr) minmax(0, 0.8fr) 4.5rem',
+    ? ['34%', '19%', '30%', '17%']
+    : ['30%', '17%', '26%', '14%', '4.5rem'],
 )
 </script>
 
 <template>
-  <div class="ctable" :style="{ '--ctable-columns': gridColumns }">
-    <div class="ctable__head">
-      <span class="ctable__col">Candidate</span>
-      <span class="ctable__col">Match Status</span>
-      <span class="ctable__col">Notes</span>
-      <span class="ctable__col">Status</span>
-      <span v-if="!readonly" class="ctable__col ctable__col--actions">
-        <span class="sr-only">Actions</span>
-      </span>
-    </div>
+  <table class="ctable">
+    <colgroup>
+      <col v-for="width in columnWidths" :key="width" :style="{ width }" />
+    </colgroup>
+    <thead class="ctable__head">
+      <tr>
+        <th class="ctable__col" scope="col">Candidate</th>
+        <th class="ctable__col" scope="col">Match Status</th>
+        <th class="ctable__col" scope="col">Notes</th>
+        <th class="ctable__col" scope="col">Status</th>
+        <th v-if="!readonly" class="ctable__col ctable__col--actions" scope="col">
+          <span class="sr-only">Actions</span>
+        </th>
+      </tr>
+    </thead>
 
-    <ul class="ctable__body">
-      <li v-for="candidate in candidates" :key="candidate.id" class="crow">
-        <div class="ctable__col crow__name">
+    <tbody>
+      <tr v-for="candidate in candidates" :key="candidate.id" class="crow">
+        <td class="ctable__col crow__name">
           <span class="crow__name-text">{{ candidateDisplayName(candidate) }}</span>
-        </div>
+        </td>
 
-        <div class="ctable__col">
+        <td class="ctable__col">
           <!-- Real match status lands with PDF extraction (ticket 05). -->
           <span class="crow__placeholder">—</span>
-        </div>
+        </td>
 
-        <div class="ctable__col">
+        <td class="ctable__col">
           <span v-if="candidate.notes" class="crow__notes">{{ candidate.notes }}</span>
           <span v-else class="crow__placeholder">—</span>
-        </div>
+        </td>
 
-        <div class="ctable__col">
+        <td class="ctable__col">
           <span class="crow__status" :class="`crow__status--${candidate.reviewStatus}`">
             {{ reviewStatusLabels[candidate.reviewStatus] }}
           </span>
-        </div>
+        </td>
 
-        <div v-if="!readonly" class="ctable__col ctable__col--actions">
+        <td v-if="!readonly" class="ctable__col ctable__col--actions">
           <div class="crow__actions">
             <IconButton
               icon="send"
@@ -78,61 +84,55 @@ const gridColumns = computed(() =>
               @click="emit('remove', candidate)"
             />
           </div>
-        </div>
-      </li>
-    </ul>
-  </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
 </template>
 
 <style scoped>
 .ctable {
-  display: flex;
-  flex-direction: column;
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
 }
 
-.ctable__head {
-  display: grid;
-  grid-template-columns: var(--ctable-columns);
-  gap: var(--space-4);
-  align-items: center;
-  padding: 0 var(--space-5) var(--space-3);
-  border-bottom: 1px solid var(--border);
+.ctable__col {
+  padding: var(--space-4) var(--space-2);
+  vertical-align: middle;
+  transition: background 0.15s ease;
+}
+
+.ctable__col:first-child {
+  padding-left: var(--space-5);
+}
+
+.ctable__col:last-child {
+  padding-right: var(--space-5);
 }
 
 .ctable__head .ctable__col {
+  padding-top: 0;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
   font-size: var(--text-xs);
   font-weight: 600;
+  text-align: left;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
 }
 
-.ctable__body {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.crow {
-  display: grid;
-  grid-template-columns: var(--ctable-columns);
-  gap: var(--space-4);
-  align-items: center;
-  padding: var(--space-4) var(--space-5);
+.crow .ctable__col {
   border-bottom: 1px solid var(--border);
-  transition: background 0.15s ease;
 }
 
-.crow:last-child {
+.crow:last-child .ctable__col {
   border-bottom: none;
 }
 
-.crow:hover {
+.crow:hover .ctable__col {
   background: var(--surface-subtle);
-}
-
-.ctable__col {
-  min-width: 0;
 }
 
 .crow__name-text {
@@ -190,7 +190,7 @@ const gridColumns = computed(() =>
 }
 
 .ctable__col--actions {
-  justify-self: end;
+  text-align: right;
 }
 
 .crow__actions {
