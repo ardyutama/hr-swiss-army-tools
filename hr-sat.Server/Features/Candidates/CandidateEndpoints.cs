@@ -17,6 +17,11 @@ public static class CandidateEndpoints
                 ListCandidates.HandleAsync)
             .WithTags("Candidates")
             .WithName("ListCandidates");
+        endpoints.MapDelete(
+                "/api/vacancies/{vacancyId:long}/candidates/{candidateId:long}",
+                DeleteCandidate.HandleAsync)
+            .WithTags("Candidates")
+            .WithName("DeleteCandidate");
         endpoints.MapGet(
                 "/api/vacancies/{vacancyId:long}/candidates/{candidateId:long}/cv-documents/{documentId:long}",
                 GetCvDocument.HandleAsync)

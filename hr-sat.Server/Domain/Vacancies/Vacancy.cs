@@ -73,6 +73,11 @@ public sealed class Vacancy
         EnsureOpen("A closed vacancy cannot receive candidate imports.");
     }
 
+    public void EnsureCanRemoveCandidate()
+    {
+        EnsureOpen("A closed vacancy must be reopened before candidates can be removed.");
+    }
+
     private void EnsureOpen(string message)
     {
         if (Status == VacancyStatus.Closed)

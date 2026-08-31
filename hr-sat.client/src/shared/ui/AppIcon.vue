@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-export type IconName = 'plus' | 'pencil' | 'trash' | 'close' | 'briefcase' | 'upload' | 'arrow-left'
+export type IconName =
+  | 'plus'
+  | 'pencil'
+  | 'trash'
+  | 'close'
+  | 'briefcase'
+  | 'upload'
+  | 'arrow-left'
+  | 'send'
 
 const props = withDefaults(
   defineProps<{
@@ -22,6 +30,7 @@ const paths: Record<IconName, string> = {
     'M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2zM16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2',
   upload: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12',
   'arrow-left': 'M19 12H5M12 19l-7-7 7-7',
+  send: 'M22 2 11 13M22 2l-7 20-4-9-9-4 22-7z',
 }
 
 const d = computed(() => paths[props.name])

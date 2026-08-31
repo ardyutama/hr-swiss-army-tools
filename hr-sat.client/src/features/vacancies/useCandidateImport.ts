@@ -39,7 +39,12 @@ export function useCandidateImport(vacancyId: Ref<string>) {
     results.value = null
   })
 
-  return { importing, importError, results, importFiles }
+  /** Dismisses a visible import error (e.g. when the import dialog closes). */
+  function clearError() {
+    importError.value = null
+  }
+
+  return { importing, importError, results, importFiles, clearError }
 }
 
 function announceResults(results: ImportFileResult[]): void {

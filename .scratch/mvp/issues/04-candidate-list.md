@@ -8,10 +8,16 @@ button (disabled until ticket 07).
 
 **Blocked by:** 03-eml-import
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
-- [ ] List candidates of a vacancy: name, match status, notes, review status
-- [ ] Delete a candidate
-- [ ] Row opens the review workspace for that candidate
-- [ ] Header shows vacancy title with date and a (disabled) "Send Email to all candidate" button
-- [ ] Backend and frontend tests pass (written after implementation)
+- [x] List candidates of a vacancy: name, match status, notes, review status
+      (match status renders "—" until ticket 05 computes skills-vs-requirements)
+- [x] Delete a candidate
+- [ ] Row opens the review workspace for that candidate — deferred: review route
+      lands with ticket 06-review-workspace
+- [x] Header shows vacancy title with date and a (disabled) "Send Email to all candidate" button
+- [x] Backend and frontend tests pass (written after implementation)
+
+**Amendment (2026-08-31):** the S2 drop zone moved into an "Import .eml" dialog on the
+candidate list page (user request) instead of an inline-only empty state; the empty state
+now offers a button that opens the same dialog.
