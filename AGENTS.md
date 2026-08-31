@@ -12,12 +12,13 @@ a full vertical slice: schema → API → client → seam tests, in `docs/agents
 `hr-sat.Server/Features/<Feature>/`:
 
 - `<Feature>Endpoints.cs` — route registration only
-- `<Feature>Contracts.cs` — contracts shared by the feature's use cases
+- `<Feature>Contracts.cs` — contracts shared by the feature's use cases; request contracts carry DataAnnotations presence rules
 - `<UseCase>.cs` — one endpoint use case; a `<UseCase>/` subfolder only when it has deep internal work
 - `<Concept>.cs` — feature-shared behavior named after its concept
 
 Entities in `Domain/<Context>/`; EF configuration in `Infrastructure/`; tests mirror as
-`hr-sat.Server.Tests/<Feature>/<UseCase>Tests.cs`. Full rules: `docs/agents/dotnet.md` and
+`hr-sat.Server.Tests/<Feature>/<UseCase>Tests.cs`; architecture rules live in
+`hr-sat.Server.Tests/Architecture/`. Full rules: `docs/agents/dotnet.md` and
 `.agents/skills/dotnet-vsa-webapi/`.
 
 ### Frontend slice layout

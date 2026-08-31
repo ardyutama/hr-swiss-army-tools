@@ -42,13 +42,19 @@ handler, repository, provider, factory, or service interface only when a concret
 external boundary, lifetime boundary, or independently replaceable behavior requires it.
 EF Core does not need a repository wrapper by default.
 
+Endpoint registrations invoke slice handlers directly; dispatch is a plain static call
+with no mediator in between (ADR-0004). Input validation runs before the handler through
+the .NET 10 pipeline: `AddValidation()` in `Program.cs` plus DataAnnotations presence
+rules on write contracts.
+
 ### Slice layout contract
 
 Within `Features/<Feature>/`, keep the slice sorted by ownership:
 
 ```text
 <Feature>Endpoints.cs       route registration only
-<Feature>Contracts.cs       contracts shared by the feature's use cases
+<Feature>Contracts.cs       contracts shared by the feature's use cases; request contracts
+                            carry DataAnnotations presence rules
 <UseCase>.cs                one endpoint use case
 <UseCase>/                  only when that use case has deep internal work
   <UseCase>.cs              endpoint orchestration and public slice interface
@@ -67,6 +73,23 @@ they own, such as `VacancyProgress`; cross-feature HTTP adapters belong under
 `Features/Shared` and are named for the policy they adapt. A shared module needs two
 real consumers or a policy that must have one home. Persistence details remain in
 `Infrastructure/` unless the feature module owns the complete persistence operation.
+
+Sharing follows three tiers (research round 2):
+
+- **Infrastructure is shared by default.** `AppDbContext`, EF configuration, and storage
+  live in `Infrastructure/` and any slice may use them; each slice still owns its data
+  access, and slices never call into each other (enforced by
+  `hr-sat.Server.Tests/Architecture/`).
+- **Domain concepts are shared and deepened.** Business rules live on the entities in
+  `Domain/`; every slice shares the same domain model.
+- **Feature-family logic stays local.** Behavior shared by one feature's use cases lives
+  at the feature root as a `<Concept>.cs`. Only cross-cutting policies get a cross-feature
+  home in `Features/Shared/`.
+
+The "earned at the second same-reason consumer" threshold deliberately deviates from the
+Rule of Three: it applies to extracting a stable *policy* with one home (a transaction
+policy, a cross-cutting adapter). Look-alike code still waits for its third consumer —
+duplication is cheaper than the wrong abstraction.
 
 New backend flow-test files mirror this shape as
 `hr-sat.Server.Tests/<Feature>/<UseCase>Tests.cs` and continue to cross the HTTP seam.
@@ -100,8 +123,12 @@ override that project decision.
 - Keep endpoints under `/api/*`.
 - Return plain JSON on success; use RFC 7807 `ProblemDetails` for errors. Do not add a
   response envelope without an accepted design decision.
-- Validate external input at the API and domain boundaries. Translate expected validation
-  failures into stable client-visible problem responses.
+- Validate external input at two boundaries: presence rules (`[Required]`, `[MinLength]`)
+  on write contracts run in the `AddValidation()` pipeline before the handler; rules that
+  depend on normalization or state (trim, uniqueness, lifecycle) stay in the domain.
+  Translate expected validation failures into stable client-visible problem responses.
+- Tag every endpoint group with `WithTags(...)` and name every route with
+  `WithName(...)`; route names become the OpenAPI operation IDs in the hosted Scalar docs.
 - Pass the request `CancellationToken` through asynchronous database and I/O operations.
 - Keep endpoint handlers small and feature-local. They should coordinate validation,
   domain behavior, persistence, and the response rather than become a second domain
@@ -161,8 +188,10 @@ checks when those features are added.
 Scope is flow-first per `docs/agents/testing.md` (ADR 0003): every test traces to a user
 story or a `CONTEXT.md` term, and spine stories land their Flow Tests in the same ticket.
 The mechanics stay as they are: backend tests cross the HTTP seam with xUnit,
-`WebApplicationFactory`, and a hermetic Testcontainers PostgreSQL database. Assert
-observable behavior:
+`WebApplicationFactory`, and a hermetic Testcontainers PostgreSQL database. The slice
+layout contract is executable: `hr-sat.Server.Tests/Architecture/` enforces slice
+isolation, domain purity, and the public surface of `Features/`; extend it when the
+contract grows. Assert observable behavior:
 
 - status codes and response contracts;
 - RFC 7807 error details for invalid or unavailable operations;
