@@ -1,4 +1,4 @@
-import type { CandidateSummary, VacancyProgress } from './api'
+import type { VacancyProgress } from './api'
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   year: 'numeric',
@@ -18,14 +18,4 @@ export function progressPercent(progress: VacancyProgress): number {
     return 0
   }
   return Math.min(100, Math.round((progress.processedCandidates / progress.totalCandidates) * 100))
-}
-
-/** Best available display name until CV extraction fills in the candidate details. */
-export function candidateDisplayName(candidate: CandidateSummary): string {
-  return (
-    candidate.fullName ??
-    candidate.sourceSenderName ??
-    candidate.sourceSenderEmail ??
-    'Unknown candidate'
-  )
 }

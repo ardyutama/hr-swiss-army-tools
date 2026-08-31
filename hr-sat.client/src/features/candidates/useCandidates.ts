@@ -1,7 +1,7 @@
 import { computed, shallowRef, watch, type Ref } from 'vue'
 import { toast } from 'vue-sonner'
-import { deleteCandidate, listCandidates, type CandidateSummary } from './api'
-import { candidateDisplayName } from './format'
+import { deleteCandidate, listCandidates, type CandidateSummary } from '@/features/candidates/api'
+import { candidateDisplayName } from '@/features/candidates/format'
 
 export type CandidatesViewState = 'loading' | 'error' | 'empty' | 'ready'
 

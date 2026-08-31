@@ -36,8 +36,11 @@ guide and `docs/agents/workflow.md` are the local source of truth when they diff
 
 ### Architecture
 
-- Put feature code in `hr-sat.client/src/features/<feature>/`: route view, feature
-  components, composables, and API client.
+- Put route views in `hr-sat.client/src/pages/<page>/` — one thin view per route plus its
+  seam test — and feature behavior in `hr-sat.client/src/features/<feature>/`:
+  composables, API client, validation, formatting, and feature components. Pages compose
+  feature modules; features never import from pages or from a sibling feature's internals
+  (cross-feature imports use the feature's root modules only).
 - Keep `hr-sat.client/src/shared/` as the thin shared kernel for reusable UI, HTTP, and
   validation helpers. Feature state and feature-specific API behavior stay in the feature
   folder.

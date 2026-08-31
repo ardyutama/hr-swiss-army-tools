@@ -6,7 +6,7 @@ import {
   type ImportCandidatesResponse,
   type ImportFileResult,
   type ImportFileStatus,
-} from './api'
+} from '@/features/candidates/api'
 
 export function useCandidateImport(vacancyId: Ref<string>) {
   const importing = shallowRef(false)

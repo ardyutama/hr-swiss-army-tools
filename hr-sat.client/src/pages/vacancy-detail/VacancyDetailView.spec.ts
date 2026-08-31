@@ -300,7 +300,7 @@ describe('VacancyDetailView', () => {
     expect(wrapper.text()).toContain('Opened')
     const sendAll = wrapper
       .findAll('button')
-      .find((button) => button.text().includes('Send Email to all candidate'))
+      .find((button) => button.text().includes('Send email to all candidates'))
     expect(sendAll).toBeDefined()
     expect((sendAll!.element as HTMLButtonElement).disabled).toBe(true)
 
