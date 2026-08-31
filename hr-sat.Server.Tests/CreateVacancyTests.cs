@@ -128,6 +128,42 @@ public sealed class CreateVacancyTests(ApiFactory factory) : IClassFixture<ApiFa
     }
 
     [Fact]
+    public async Task Create_vacancy_rejects_a_missing_title_at_the_input_boundary() // US-9: create a vacancy with a role title, date, and skills requirements
+    {
+        using var client = factory.CreateClient();
+        var request = new
+        {
+            openedOn = "2026-08-29",
+            requirements = new[] { "Inventory control" }
+        };
+
+        var response = await client.PostAsJsonAsync("/api/vacancies", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblemResponse>();
+        Assert.NotNull(problem);
+        Assert.Contains(problem.Errors.Keys, key => string.Equals(key, "title", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Create_vacancy_rejects_missing_requirements_at_the_input_boundary() // US-9: create a vacancy with a role title, date, and skills requirements
+    {
+        using var client = factory.CreateClient();
+        var request = new
+        {
+            title = "Warehouse Coordinator",
+            openedOn = "2026-08-29"
+        };
+
+        var response = await client.PostAsJsonAsync("/api/vacancies", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblemResponse>();
+        Assert.NotNull(problem);
+        Assert.Contains(problem.Errors.Keys, key => string.Equals(key, "requirements", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task Create_vacancy_allows_repeated_title_and_opening_date() // US-9: each creation is its own hiring effort for one role
     {
         using var client = factory.CreateClient();

@@ -11,6 +11,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
+builder.Services.AddValidation();
 builder.Services.AddExceptionHandler<DomainValidationExceptionHandler>();
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -47,7 +48,4 @@ app.MapVacancyEndpoints();
 app.MapCandidateEndpoints();
 
 app.Run();
-
-// Exposes the implicit Program class to WebApplicationFactory in integration tests.
-public partial class Program;
 

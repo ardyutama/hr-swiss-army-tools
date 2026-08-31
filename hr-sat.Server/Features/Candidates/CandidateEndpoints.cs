@@ -9,10 +9,14 @@ public static class CandidateEndpoints
         endpoints.MapPost(
                 "/api/vacancies/{vacancyId:long}/candidates/import",
                 ImportCandidates.HandleAsync)
+            .WithTags("Candidates")
+            .WithName("ImportCandidates")
             .DisableAntiforgery();
         endpoints.MapGet(
-            "/api/vacancies/{vacancyId:long}/candidates/{candidateId:long}/cv-documents/{documentId:long}",
-            GetCvDocument.HandleAsync);
+                "/api/vacancies/{vacancyId:long}/candidates/{candidateId:long}/cv-documents/{documentId:long}",
+                GetCvDocument.HandleAsync)
+            .WithTags("Candidates")
+            .WithName("GetCvDocument");
 
         return endpoints;
     }

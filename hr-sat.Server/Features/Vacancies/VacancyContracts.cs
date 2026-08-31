@@ -1,10 +1,16 @@
+using System.ComponentModel.DataAnnotations;
 using hr_sat.Server.Domain.Vacancies;
 
 namespace hr_sat.Server.Features.Vacancies;
 
+// Presence rules are the input boundary (AddValidation pipeline, 400 before the handler).
+// Normalization-dependent rules (trim, uniqueness, ordering) stay in the domain.
 internal sealed record VacancyDefinitionRequest(
+    [property: Required(ErrorMessage = "Title is required.")]
     string? Title,
     DateOnly OpenedOn,
+    [property: Required(ErrorMessage = "At least one vacancy requirement is required.")]
+    [property: MinLength(1, ErrorMessage = "At least one vacancy requirement is required.")]
     IReadOnlyList<string?>? Requirements);
 
 internal sealed record VacancyRequirementResponse(long Id, string Phrase, int Position);
