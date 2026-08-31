@@ -5,8 +5,10 @@ import AppIcon from '@/shared/ui/AppIcon.vue'
 import StatusBadge from './components/StatusBadge.vue'
 import ImportDropZone from './components/ImportDropZone.vue'
 import ImportResultList from './components/ImportResultList.vue'
+import CandidateList from './components/CandidateList.vue'
 import { useVacancyDetail } from './useVacancyDetail'
 import { useCandidateImport } from './useCandidateImport'
+import { useCandidates } from './useCandidates'
 import { formatDate, progressPercent } from './format'
 
 const props = defineProps<{
@@ -16,6 +18,12 @@ const props = defineProps<{
 const vacancyId = toRef(props, 'id')
 const { vacancy, loadError, viewState, load } = useVacancyDetail(vacancyId)
 const { importing, importError, results, importFiles } = useCandidateImport(vacancyId)
+const {
+  candidates,
+  loadError: candidatesError,
+  viewState: candidatesViewState,
+  load: loadCandidates,
+} = useCandidates(vacancyId)
 
 const isClosed = computed(() => vacancy.value?.status === 'closed')
 
@@ -24,8 +32,8 @@ const progress = computed(() => (vacancy.value ? progressPercent(vacancy.value.p
 async function onFiles(files: File[]) {
   const response = await importFiles(files)
   if (response) {
-    // Refresh so the vacancy progress reflects the imported candidates.
-    await load()
+    // Refresh so the vacancy progress and the candidate list reflect the import.
+    await Promise.all([load(), loadCandidates()])
   }
 }
 </script>
@@ -76,18 +84,44 @@ async function onFiles(files: File[]) {
         </div>
       </section>
 
-      <section class="detail-page__panel detail-page__import" aria-label="Import candidates">
-        <!-- Closed vacancy is read-only -->
-        <div v-if="isClosed" class="detail-page__closed">
-          <p class="detail-page__state-title">This vacancy is closed</p>
-          <p class="detail-page__state-text">
-            A closed vacancy is read-only and can't receive candidate imports.
-          </p>
+      <section
+        class="detail-page__panel detail-page__candidates"
+        :class="{ 'detail-page__candidates--list': candidatesViewState === 'ready' }"
+        aria-label="Candidates"
+      >
+        <div
+          v-if="candidatesViewState === 'loading'"
+          class="detail-page__candidates-loading"
+          aria-busy="true"
+          aria-label="Loading candidates"
+        >
+          <span class="skeleton skeleton--line" />
+          <span class="skeleton skeleton--line" />
         </div>
-        <template v-else>
-          <ImportDropZone :busy="importing" @files="onFiles" />
-          <p v-if="importError" class="detail-page__import-error" role="alert">{{ importError }}</p>
+
+        <div v-else-if="candidatesViewState === 'error'" class="detail-page__closed" role="alert">
+          <p class="detail-page__state-title">Couldn't load candidates</p>
+          <p class="detail-page__state-text">{{ candidatesError }}</p>
+          <AppButton variant="ghost" @click="loadCandidates">Try again</AppButton>
+        </div>
+
+        <!-- No candidates yet: the drop zone is the import entry point -->
+        <template v-else-if="candidatesViewState === 'empty'">
+          <!-- Closed vacancy is read-only -->
+          <div v-if="isClosed" class="detail-page__closed">
+            <p class="detail-page__state-title">This vacancy is closed</p>
+            <p class="detail-page__state-text">
+              A closed vacancy is read-only and can't receive candidate imports.
+            </p>
+          </div>
+          <template v-else>
+            <ImportDropZone :busy="importing" @files="onFiles" />
+            <p v-if="importError" class="detail-page__import-error" role="alert">{{ importError }}</p>
+          </template>
         </template>
+
+        <!-- Candidates exist: the list replaces the drop zone -->
+        <CandidateList v-else :candidates="candidates ?? []" />
       </section>
 
       <section
@@ -232,8 +266,19 @@ async function onFiles(files: File[]) {
   transition: width 0.3s ease;
 }
 
-.detail-page__import {
+.detail-page__candidates {
   padding: var(--space-3);
+}
+
+.detail-page__candidates--list {
+  padding: 0;
+}
+
+.detail-page__candidates-loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-3);
 }
 
 .detail-page__closed {

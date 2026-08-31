@@ -55,6 +55,22 @@ function importedCandidate(id: number, filename: string) {
   }
 }
 
+function candidateSummary(id: number, overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id,
+    fullName: null,
+    contactEmail: null,
+    notes: null,
+    reviewStatus: 'new',
+    extractionStatus: 'pending',
+    sourceSenderName: 'Alice Applicant',
+    sourceSenderEmail: 'alice@example.com',
+    sourceSubject: 'Application for Welder',
+    sourceSentAt: '2026-08-28T09:00:00Z',
+    ...overrides,
+  }
+}
+
 function mountView(id = '1') {
   return mount(VacancyDetailView, {
     props: { id },
@@ -104,6 +120,9 @@ describe('VacancyDetailView', () => {
             ],
           }),
         )
+      }
+      if (url.endsWith('/candidates')) {
+        return Promise.resolve(jsonResponse(imported ? [candidateSummary(1)] : []))
       }
       return Promise.resolve(
         jsonResponse(
@@ -162,6 +181,9 @@ describe('VacancyDetailView', () => {
           }),
         )
       }
+      if (url.endsWith('/candidates')) {
+        return Promise.resolve(jsonResponse(imported ? [candidateSummary(1)] : []))
+      }
       return Promise.resolve(
         jsonResponse(
           vacancyDetails({
@@ -200,6 +222,9 @@ describe('VacancyDetailView', () => {
           ),
         )
       }
+      if (url.endsWith('/candidates')) {
+        return Promise.resolve(jsonResponse([]))
+      }
       return Promise.resolve(jsonResponse(vacancyDetails()))
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -217,14 +242,111 @@ describe('VacancyDetailView', () => {
     wrapper.unmount()
   })
 
+  it('US-14: HR sees the candidate list instead of the drop zone once candidates exist', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/candidates')) {
+        return Promise.resolve(
+          jsonResponse([
+            candidateSummary(1),
+            candidateSummary(2, {
+              sourceSenderName: 'Bob Builder',
+              sourceSenderEmail: 'bob@example.com',
+              sourceSubject: 'Bob application',
+              reviewStatus: 'shortlisted',
+              notes: 'Strong MIG experience',
+            }),
+          ]),
+        )
+      }
+      return Promise.resolve(
+        jsonResponse(
+          vacancyDetails({
+            progress: { processedCandidates: 1, totalCandidates: 2 },
+          }),
+        ),
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    // One row per candidate with name, review status, and notes.
+    expect(wrapper.text()).toContain('Alice Applicant')
+    expect(wrapper.text()).toContain('Bob Builder')
+    expect(wrapper.text()).toContain('New')
+    expect(wrapper.text()).toContain('Shortlisted')
+    expect(wrapper.text()).toContain('Strong MIG experience')
+
+    // The drop zone is gone once candidates exist.
+    expect(wrapper.find('.dropzone').exists()).toBe(false)
+    expect(wrapper.find('input[type="file"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('US-12/US-14: a successful import replaces the drop zone with the candidate list', async () => {
+    let imported = false
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (init?.method === 'POST' && url.endsWith('/candidates/import')) {
+        imported = true
+        return Promise.resolve(
+          jsonResponse({
+            results: [
+              {
+                fileName: 'alice.eml',
+                status: 'imported',
+                error: null,
+                candidate: importedCandidate(1, 'alice.eml'),
+              },
+            ],
+          }),
+        )
+      }
+      if (url.endsWith('/candidates')) {
+        return Promise.resolve(jsonResponse(imported ? [candidateSummary(1)] : []))
+      }
+      return Promise.resolve(
+        jsonResponse(
+          vacancyDetails({
+            progress: imported
+              ? { processedCandidates: 0, totalCandidates: 1 }
+              : { processedCandidates: 0, totalCandidates: 0 },
+          }),
+        ),
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.find('.dropzone').exists()).toBe(true)
+
+    await dropFiles(wrapper.find('.dropzone'), [
+      new File(['alice source'], 'alice.eml', { type: 'message/rfc822' }),
+    ])
+    await flushPromises()
+
+    expect(wrapper.find('.dropzone').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Alice Applicant')
+    wrapper.unmount()
+  })
+
   it('domain: closed vacancy is read-only — no import is offered', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        jsonResponse(
-          vacancyDetails({ status: 'closed', closedAt: '2026-08-29T00:00:00Z' }),
-        ),
-      ),
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.endsWith('/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return Promise.resolve(
+          jsonResponse(
+            vacancyDetails({ status: 'closed', closedAt: '2026-08-29T00:00:00Z' }),
+          ),
+        )
+      }),
     )
 
     const wrapper = mountView()
