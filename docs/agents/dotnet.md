@@ -46,9 +46,10 @@ src/Web.Api/           composition root plus minimal-API endpoints mirrored per 
                        at Endpoints/{Feature}/{UseCase}.cs
 ```
 
-The current single `hr-sat.Server` project migrates to this layout as part of the
-ADR-0005 transition; until then its `Domain/`, `Features/`, and `Infrastructure/` folders
-stand in for the Domain, Application, and Infrastructure layers.
+Within a slice folder, keep **one type per file**, each file named exactly after the type
+it holds (`UpdateVacancyCommand.cs`, `UpdateVacancyCommandValidator.cs`,
+`UpdateVacancyCommandHandler.cs`). The command/query record, its validator, and the
+handler are separate responsibilities — they never share a file.
 
 Handlers are `internal sealed` with primary constructors, implementing the owned
 `ICommandHandler<>`/`IQueryHandler<>` abstractions and discovered by Scrutor assembly

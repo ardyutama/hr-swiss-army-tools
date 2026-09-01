@@ -28,3 +28,11 @@ CreateVacancy as the worked reference:
   full suite + `ca-review` pass.
 
 ## Comments
+
+- Foundation-commit follow-up (ca-review, 2026-09-01, commit fb39bb0): when the
+  last slice converts and `TypedResults` leaves Application, remove the
+  `FrameworkReference Microsoft.AspNetCore.App` + `global using
+  Microsoft.AspNetCore.Http;` from `hr-sat.Application` and add
+  `"Microsoft.AspNetCore"` to the Application architecture assertion; optionally
+  add an "Endpoints do not depend on Infrastructure" rule scoped to
+  `hr_sat.Web.Api.Endpoints.*` once per-use-case endpoints land.
