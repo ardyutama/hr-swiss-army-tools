@@ -12,6 +12,17 @@ export interface CvDocumentResult {
   downloadUrl: string
 }
 
+export interface CandidateMatch {
+  matchedRequirements: number
+  totalRequirements: number
+}
+
+export interface CandidateSkill {
+  id: number
+  phrase: string
+  position: number
+}
+
 export interface ImportedCandidate {
   id: number
   reviewStatus: CandidateReviewStatus
@@ -56,9 +67,12 @@ export interface CandidateSummary {
   id: number
   fullName: string | null
   contactEmail: string | null
+  contactPhone: string | null
   notes: string | null
   reviewStatus: CandidateReviewStatus
   extractionStatus: CandidateExtractionStatus
+  skills: CandidateSkill[]
+  match: CandidateMatch
   sourceSenderName: string | null
   sourceSenderEmail: string | null
   sourceSubject: string | null
