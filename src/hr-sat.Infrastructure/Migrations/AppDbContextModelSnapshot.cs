@@ -15,6 +15,11 @@ namespace hr_sat.Infrastructure.Migrations
     {
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
+            BuildSnapshotModel(modelBuilder);
+        }
+
+        internal static void BuildSnapshotModel(ModelBuilder modelBuilder)
+        {
 #pragma warning disable 612, 618
             modelBuilder
                 .HasAnnotation("ProductVersion", "10.0.11")
@@ -311,6 +316,37 @@ namespace hr_sat.Infrastructure.Migrations
                             t.HasCheckConstraint("vacancy_requirement_phrase_check", "char_length(btrim(phrase)) BETWEEN 1 AND 200");
 
                             t.HasCheckConstraint("vacancy_requirement_position_check", "position >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("hr_sat.Application.Abstractions.Data.PendingFileDeletion", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("EnqueuedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("enqueued_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("storage_key");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StorageKey")
+                        .HasDatabaseName("pending_file_deletion_storage_key_idx");
+
+                    b.ToTable("pending_file_deletion", null, t =>
+                        {
+                            t.HasCheckConstraint("pending_file_deletion_storage_key_check", "btrim(storage_key) <> ''");
                         });
                 });
 

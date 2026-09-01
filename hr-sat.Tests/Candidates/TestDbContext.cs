@@ -22,6 +22,7 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
     public DbSet<VacancyRequirement> VacancyRequirements => Set<VacancyRequirement>();
     public DbSet<Candidate> Candidates => Set<Candidate>();
     public DbSet<CvDocument> CvDocuments => Set<CvDocument>();
+    public DbSet<PendingFileDeletion> PendingFileDeletions => Set<PendingFileDeletion>();
 
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken) =>
         Database.BeginTransactionAsync(cancellationToken);
@@ -95,6 +96,12 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
         {
             entity.HasKey(document => document.Id);
             entity.Property(document => document.Id).ValueGeneratedOnAdd();
+        });
+
+        modelBuilder.Entity<PendingFileDeletion>(entity =>
+        {
+            entity.HasKey(deletion => deletion.Id);
+            entity.Property(deletion => deletion.Id).ValueGeneratedOnAdd();
         });
     }
 

@@ -22,6 +22,7 @@ builder.Services.AddScoped<IApplicationDbContext>(
 builder.Services.Configure<PrivateFileStorageOptions>(
     builder.Configuration.GetSection(PrivateFileStorageOptions.SectionName));
 builder.Services.AddSingleton<IPrivateFileStorage, PrivateFileStorage>();
+builder.Services.AddHostedService<FileDeletionSweeper>();
 builder.WebHost.ConfigureKestrel(options =>
 {
     options.Limits.MaxRequestBodySize = 100 * 1024 * 1024;
