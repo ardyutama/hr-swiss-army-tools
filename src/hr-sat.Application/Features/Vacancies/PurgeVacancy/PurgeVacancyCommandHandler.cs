@@ -1,6 +1,5 @@
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Messaging;
-using hr_sat.Application.Abstractions.Storage;
 using hr_sat.Domain;
 using hr_sat.Domain.Vacancies;
 using Microsoft.EntityFrameworkCore;
@@ -9,7 +8,7 @@ namespace hr_sat.Application.Features.Vacancies;
 
 internal sealed class PurgeVacancyCommandHandler(
     IApplicationDbContext dbContext,
-    IPrivateFileStorage fileStorage)
+    TimeProvider timeProvider)
     : ICommandHandler<PurgeVacancyCommand>
 {
     public async Task<Result> Handle(
@@ -41,12 +40,18 @@ internal sealed class PurgeVacancyCommandHandler(
             return VacancyErrors.NotFound(command.Id);
         }
 
-        await transaction.CommitAsync(cancellationToken);
-
+        var enqueuedAt = timeProvider.GetUtcNow();
         foreach (var storageKey in sourceStorageKeys.Concat(documentStorageKeys))
         {
-            await fileStorage.DeleteAsync(storageKey, CancellationToken.None);
+            dbContext.PendingFileDeletions.Add(new PendingFileDeletion
+            {
+                StorageKey = storageKey,
+                EnqueuedAt = enqueuedAt
+            });
         }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         return Result.Success();
     }

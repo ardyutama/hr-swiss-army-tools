@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Storage;
 using hr_sat.Domain.Candidates;
+using Microsoft.Extensions.Logging;
 
 namespace hr_sat.Application.Features.Candidates.Import;
 
@@ -10,7 +11,8 @@ internal sealed class ImportFilePreparer(
     IReadOnlySet<string> existingHashKeys,
     IApplicationDbContext dbContext,
     IPrivateFileStorage fileStorage,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ILogger<ImportFilePreparer> logger)
 {
     private const long MaxFileSizeBytes = 25 * 1024 * 1024;
     private static readonly string[] AcceptedContentTypes =
@@ -150,7 +152,7 @@ internal sealed class ImportFilePreparer(
                 storedDocuments);
             if (candidateResult.IsFailure)
             {
-                await DeleteStoredFilesAsync(fileStorage, fileStorageKeys);
+                await DeleteStoredFilesAsync(fileStorageKeys);
                 return ImportFileOutcome.Failed(originalFilename, "The imported email is invalid.");
             }
 
@@ -161,17 +163,17 @@ internal sealed class ImportFilePreparer(
         }
         catch (OperationCanceledException)
         {
-            await DeleteStoredFilesAsync(fileStorage, fileStorageKeys);
+            await DeleteStoredFilesAsync(fileStorageKeys);
             throw;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            await DeleteStoredFilesAsync(fileStorage, fileStorageKeys);
+            await DeleteStoredFilesAsync(fileStorageKeys);
             return ImportFileOutcome.Failed(originalFilename, "The imported files could not be stored.");
         }
     }
 
-    public Task DeleteStoredFilesAsync() => DeleteStoredFilesAsync(fileStorage, storedKeys);
+    public Task DeleteStoredFilesAsync() => DeleteStoredFilesAsync(storedKeys);
 
     private static bool IsAcceptedContentType(string? contentType)
     {
@@ -190,9 +192,7 @@ internal sealed class ImportFilePreparer(
         return Path.GetFileName(normalizedFilename);
     }
 
-    private static async Task DeleteStoredFilesAsync(
-        IPrivateFileStorage fileStorage,
-        IEnumerable<string> storageKeys)
+    private async Task DeleteStoredFilesAsync(IEnumerable<string> storageKeys)
     {
         foreach (var storageKey in storageKeys.Distinct(StringComparer.Ordinal))
         {
@@ -200,13 +200,21 @@ internal sealed class ImportFilePreparer(
             {
                 await fileStorage.DeleteAsync(storageKey, CancellationToken.None);
             }
-            catch (IOException)
+            catch (Exception exception) when (exception is not OperationCanceledException)
             {
-            }
-            catch (UnauthorizedAccessException)
-            {
+                logger.LogError(
+                    exception,
+                    "Failed to delete stored file {StorageKey} during import compensation; enqueuing a pending deletion.",
+                    storageKey);
+                dbContext.PendingFileDeletions.Add(new PendingFileDeletion
+                {
+                    StorageKey = storageKey,
+                    EnqueuedAt = timeProvider.GetUtcNow()
+                });
             }
         }
+
+        await dbContext.SaveChangesAsync(CancellationToken.None);
     }
 }
 

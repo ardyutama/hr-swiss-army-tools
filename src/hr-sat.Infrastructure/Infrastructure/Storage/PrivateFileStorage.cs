@@ -96,8 +96,41 @@ public sealed class PrivateFileStorage : IPrivateFileStorage
     public Task DeleteAsync(string storageKey, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        TryDelete(GetSafePath(storageKey));
+        File.Delete(GetSafePath(storageKey));
         return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<string>> ListStorageKeysAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!Directory.Exists(_rootPath))
+        {
+            return Task.FromResult<IReadOnlyList<string>>([]);
+        }
+
+        var keys = Directory
+            .EnumerateFiles(_rootPath, "*", SearchOption.AllDirectories)
+            .OrderBy(File.GetLastWriteTimeUtc)
+            .Select(path => Path.GetRelativePath(_rootPath, path))
+            .Select(relativePath => relativePath.Replace(Path.DirectorySeparatorChar, '/'))
+            .ToArray();
+        return Task.FromResult<IReadOnlyList<string>>(keys);
+    }
+
+    public Task<bool> IsOlderThanAsync(
+        string storageKey,
+        TimeSpan threshold,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var filePath = GetSafePath(storageKey);
+        if (!File.Exists(filePath))
+        {
+            return Task.FromResult(false);
+        }
+
+        var lastWriteUtc = File.GetLastWriteTimeUtc(filePath);
+        return Task.FromResult(lastWriteUtc <= DateTime.UtcNow - threshold);
     }
 
     private string GetSafePath(string storageKey)

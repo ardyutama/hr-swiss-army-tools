@@ -2,6 +2,7 @@ using System.Text;
 using hr_sat.Application.Features.Candidates.Import;
 using hr_sat.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
 using Xunit;
 
@@ -22,7 +23,8 @@ public sealed class ImportCandidatesHandlerTests
         var handler = new ImportCandidatesCommandHandler(
             dbContext,
             storage,
-            new FixedTimeProvider(new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero)));
+            new FixedTimeProvider(new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero)),
+            NullLogger<ImportFilePreparer>.Instance);
 
         var result = await handler.Handle(
             new ImportCandidatesCommand(
@@ -52,7 +54,8 @@ public sealed class ImportCandidatesHandlerTests
         var handler = new ImportCandidatesCommandHandler(
             dbContext,
             new TestFileStorage(),
-            new FixedTimeProvider(DateTimeOffset.UtcNow));
+            new FixedTimeProvider(DateTimeOffset.UtcNow),
+            NullLogger<ImportFilePreparer>.Instance);
 
         var result = await handler.Handle(
             new ImportCandidatesCommand(999, []),
@@ -72,7 +75,8 @@ public sealed class ImportCandidatesHandlerTests
         var handler = new ImportCandidatesCommandHandler(
             dbContext,
             new TestFileStorage(),
-            new FixedTimeProvider(DateTimeOffset.UtcNow));
+            new FixedTimeProvider(DateTimeOffset.UtcNow),
+            NullLogger<ImportFilePreparer>.Instance);
 
         var result = await handler.Handle(
             new ImportCandidatesCommand(vacancy.Id, []),

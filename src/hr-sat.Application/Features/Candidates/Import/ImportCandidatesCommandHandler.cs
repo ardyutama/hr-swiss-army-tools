@@ -4,13 +4,15 @@ using hr_sat.Application.Abstractions.Storage;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace hr_sat.Application.Features.Candidates.Import;
 
 internal sealed class ImportCandidatesCommandHandler(
     IApplicationDbContext dbContext,
     IPrivateFileStorage fileStorage,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ILogger<ImportFilePreparer> filePreparerLogger)
     : ICommandHandler<ImportCandidatesCommand, ImportCandidatesResponse>
 {
     public async Task<Result<ImportCandidatesResponse>> Handle(
@@ -44,7 +46,8 @@ internal sealed class ImportCandidatesCommandHandler(
             existingHashKeys,
             dbContext,
             fileStorage,
-            timeProvider);
+            timeProvider,
+            filePreparerLogger);
         var files = command.Files!;
         var outcomes = new List<ImportFileOutcome>(files.Count);
 

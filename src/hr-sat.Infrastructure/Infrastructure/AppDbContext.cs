@@ -17,6 +17,7 @@ public sealed class AppDbContext(
     public DbSet<VacancyRequirement> VacancyRequirements => Set<VacancyRequirement>();
     public DbSet<Candidate> Candidates => Set<Candidate>();
     public DbSet<CvDocument> CvDocuments => Set<CvDocument>();
+    public DbSet<PendingFileDeletion> PendingFileDeletions => Set<PendingFileDeletion>();
 
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken) =>
         Database.BeginTransactionAsync(cancellationToken);

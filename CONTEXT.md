@@ -32,6 +32,10 @@ _Avoid_: Archived vacancy, deleted vacancy
 The explicit, irreversible removal of a vacancy together with all candidate information it owns.
 _Avoid_: Delete, archive
 
+**Candidate Removal**:
+The explicit, irreversible removal of one candidate together with all information it owns.
+_Avoid_: Delete, erase
+
 **Candidate**:
 One person's submission to one vacancy, created from one source email; the same person submitted to another vacancy is a different candidate.
 _Avoid_: Talent, shared person, global candidate

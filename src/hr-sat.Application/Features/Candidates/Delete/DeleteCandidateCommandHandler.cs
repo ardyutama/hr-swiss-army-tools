@@ -1,6 +1,5 @@
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Messaging;
-using hr_sat.Application.Abstractions.Storage;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
 using Microsoft.EntityFrameworkCore;
@@ -9,7 +8,7 @@ namespace hr_sat.Application.Features.Candidates.Delete;
 
 internal sealed class DeleteCandidateCommandHandler(
     IApplicationDbContext dbContext,
-    IPrivateFileStorage fileStorage)
+    TimeProvider timeProvider)
     : ICommandHandler<DeleteCandidateCommand>
 {
     public async Task<Result> Handle(
@@ -51,12 +50,18 @@ internal sealed class DeleteCandidateCommandHandler(
             .Where(candidate => candidate.Id == command.CandidateId)
             .ExecuteDeleteAsync(cancellationToken);
 
-        await transaction.CommitAsync(cancellationToken);
-
+        var enqueuedAt = timeProvider.GetUtcNow();
         foreach (var storageKey in documentStorageKeys.Prepend(sourceStorageKey))
         {
-            await fileStorage.DeleteAsync(storageKey, CancellationToken.None);
+            dbContext.PendingFileDeletions.Add(new PendingFileDeletion
+            {
+                StorageKey = storageKey,
+                EnqueuedAt = enqueuedAt
+            });
         }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         return Result.Success();
     }

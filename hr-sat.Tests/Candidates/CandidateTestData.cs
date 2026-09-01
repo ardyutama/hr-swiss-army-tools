@@ -122,4 +122,19 @@ internal sealed class TestFileStorage : IPrivateFileStorage
         files.Remove(storageKey);
         return Task.CompletedTask;
     }
+
+    public Task<IReadOnlyList<string>> ListStorageKeysAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<IReadOnlyList<string>>(files.Keys.ToArray());
+    }
+
+    public Task<bool> IsOlderThanAsync(
+        string storageKey,
+        TimeSpan threshold,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(true);
+    }
 }
