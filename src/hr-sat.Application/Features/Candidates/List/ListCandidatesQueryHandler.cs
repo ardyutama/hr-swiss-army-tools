@@ -1,5 +1,6 @@
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Messaging;
+using hr_sat.Application.Features.Candidates.Shared;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
 using Microsoft.EntityFrameworkCore;
@@ -22,24 +23,22 @@ internal sealed class ListCandidatesQueryHandler(IApplicationDbContext dbContext
                 CandidateErrors.NotFound(query.VacancyId));
         }
 
+        var requirementPhrases = await dbContext.VacancyRequirements
+            .AsNoTracking()
+            .Where(requirement => requirement.VacancyId == query.VacancyId)
+            .OrderBy(requirement => requirement.Position)
+            .Select(requirement => requirement.Phrase)
+            .ToListAsync(cancellationToken);
         var candidates = await dbContext.Candidates
             .AsNoTracking()
+            .Include(candidate => candidate.Skills)
             .Where(candidate => candidate.VacancyId == query.VacancyId)
             .OrderBy(candidate => candidate.ImportedAt)
             .ThenBy(candidate => candidate.Id)
-            .Select(candidate => new CandidateSummaryResponse(
-                candidate.Id,
-                candidate.FullName,
-                candidate.ContactEmail,
-                candidate.Notes,
-                candidate.ReviewStatus.ToString().ToLowerInvariant(),
-                candidate.ExtractionStatus.ToString().ToLowerInvariant(),
-                candidate.SourceSenderName,
-                candidate.SourceSenderEmail,
-                candidate.SourceSubject,
-                candidate.SourceSentAt))
             .ToListAsync(cancellationToken);
 
-        return candidates;
+        return candidates
+            .Select(candidate => CandidateSummaryResponse.From(candidate, requirementPhrases))
+            .ToList();
     }
 }

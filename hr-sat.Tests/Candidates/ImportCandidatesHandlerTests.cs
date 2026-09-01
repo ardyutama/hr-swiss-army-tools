@@ -24,7 +24,8 @@ public sealed class ImportCandidatesHandlerTests
             dbContext,
             storage,
             new FixedTimeProvider(new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero)),
-            NullLogger<ImportFilePreparer>.Instance);
+            NullLogger<ImportFilePreparer>.Instance,
+            CandidateTestData.CreateExtractionService());
 
         var result = await handler.Handle(
             new ImportCandidatesCommand(
@@ -55,7 +56,8 @@ public sealed class ImportCandidatesHandlerTests
             dbContext,
             new TestFileStorage(),
             new FixedTimeProvider(DateTimeOffset.UtcNow),
-            NullLogger<ImportFilePreparer>.Instance);
+            NullLogger<ImportFilePreparer>.Instance,
+            CandidateTestData.CreateExtractionService());
 
         var result = await handler.Handle(
             new ImportCandidatesCommand(999, []),
@@ -76,7 +78,8 @@ public sealed class ImportCandidatesHandlerTests
             dbContext,
             new TestFileStorage(),
             new FixedTimeProvider(DateTimeOffset.UtcNow),
-            NullLogger<ImportFilePreparer>.Instance);
+            NullLogger<ImportFilePreparer>.Instance,
+            CandidateTestData.CreateExtractionService());
 
         var result = await handler.Handle(
             new ImportCandidatesCommand(vacancy.Id, []),

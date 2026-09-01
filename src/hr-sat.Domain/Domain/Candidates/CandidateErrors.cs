@@ -10,4 +10,8 @@ public static class CandidateErrors
 
     public static ValidationError Invalid(IReadOnlyDictionary<string, string[]> errors) =>
         new("Candidates.Invalid", "The candidate is invalid.", errors);
+
+    public static Error ExtractionFailed() => Error.Problem(
+        "Candidates.ExtractionFailed",
+        "The primary CV did not contain a readable text layer.");
 }

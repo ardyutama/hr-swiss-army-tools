@@ -3,6 +3,7 @@ using hr_sat.Application.Abstractions.Messaging;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 using hr_sat.Application.Abstractions.Behaviors;
+using hr_sat.Application.Features.Candidates.Shared;
 
 namespace hr_sat.Application;
 
@@ -30,6 +31,7 @@ public static class DependencyInjection
         services.TryDecorate(typeof(ICommandHandler<>), typeof(ValidationDecorator<>));
         services.TryDecorate(typeof(ICommandHandler<,>), typeof(ValidationDecorator<,>));
         services.AddScoped<IDomainEventDispatcher, DomainEventDispatcher>();
+        services.AddScoped<CandidateCvExtractionService>();
 
         return services;
     }

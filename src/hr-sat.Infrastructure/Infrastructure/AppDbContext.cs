@@ -17,6 +17,7 @@ public sealed class AppDbContext(
     public DbSet<VacancyRequirement> VacancyRequirements => Set<VacancyRequirement>();
     public DbSet<Candidate> Candidates => Set<Candidate>();
     public DbSet<CvDocument> CvDocuments => Set<CvDocument>();
+    public DbSet<CandidateSkill> CandidateSkills => Set<CandidateSkill>();
     public DbSet<PendingFileDeletion> PendingFileDeletions => Set<PendingFileDeletion>();
 
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken) =>
@@ -78,5 +79,6 @@ public sealed class AppDbContext(
         modelBuilder.Entity<VacancyRequirement>().Ignore(item => item.DomainEvents);
         modelBuilder.Entity<Candidate>().Ignore(item => item.DomainEvents);
         modelBuilder.Entity<CvDocument>().Ignore(item => item.DomainEvents);
+        modelBuilder.Entity<CandidateSkill>().Ignore(item => item.DomainEvents);
     }
 }

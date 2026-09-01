@@ -31,4 +31,6 @@ public sealed class CvDocument : Entity
     public string StorageKey { get; private set; } = string.Empty;
     public long SizeBytes { get; private set; }
     public byte[] Sha256 { get; private set; } = [];
+
+    internal void SetPrimary(bool isPrimary) => IsPrimary = isPrimary;
 }

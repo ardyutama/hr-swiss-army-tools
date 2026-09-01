@@ -3,6 +3,7 @@ using hr_sat.Application.Abstractions.Messaging;
 using hr_sat.Application.Abstractions.Storage;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
+using hr_sat.Application.Features.Candidates.Shared;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -12,7 +13,8 @@ internal sealed class ImportCandidatesCommandHandler(
     IApplicationDbContext dbContext,
     IPrivateFileStorage fileStorage,
     TimeProvider timeProvider,
-    ILogger<ImportFilePreparer> filePreparerLogger)
+    ILogger<ImportFilePreparer> filePreparerLogger,
+    CandidateCvExtractionService extractionService)
     : ICommandHandler<ImportCandidatesCommand, ImportCandidatesResponse>
 {
     public async Task<Result<ImportCandidatesResponse>> Handle(
@@ -47,7 +49,8 @@ internal sealed class ImportCandidatesCommandHandler(
             dbContext,
             fileStorage,
             timeProvider,
-            filePreparerLogger);
+            filePreparerLogger,
+            extractionService);
         var files = command.Files!;
         var outcomes = new List<ImportFileOutcome>(files.Count);
 
@@ -69,7 +72,9 @@ internal sealed class ImportCandidatesCommandHandler(
 
         return new ImportCandidatesResponse(
             outcomes
-                .Select(outcome => outcome.ToResponse(command.VacancyId))
+                .Select(outcome => outcome.ToResponse(
+                    command.VacancyId,
+                    vacancy.Requirements.Select(requirement => requirement.Phrase)))
                 .ToList());
     }
 }

@@ -1,5 +1,7 @@
+using hr_sat.Application.Features.Candidates.Extract;
 using hr_sat.Application.Features.Candidates.Delete;
 using hr_sat.Application.Features.Candidates.Import;
+using hr_sat.Application.Features.Candidates.SelectPrimaryCv;
 using Shouldly;
 using Xunit;
 
@@ -79,6 +81,79 @@ public sealed class CandidateValidatorsTests
             .Validate(new ImportCandidatesCommand(
                 1,
                 [new ImportCandidateFile("candidate.eml", "message/rfc822", 1, content)]));
+
+        result.IsValid.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void US_18_Extract_candidate_requires_a_positive_vacancy_id()
+    {
+        var result = new ExtractCandidateCommandValidator()
+            .Validate(new ExtractCandidateCommand(0, 1));
+
+        result.IsValid.ShouldBeFalse();
+        result.Errors.Select(error => error.PropertyName)
+            .ShouldContain(nameof(ExtractCandidateCommand.VacancyId));
+    }
+
+    [Fact]
+    public void US_18_Extract_candidate_requires_a_positive_candidate_id()
+    {
+        var result = new ExtractCandidateCommandValidator()
+            .Validate(new ExtractCandidateCommand(1, 0));
+
+        result.IsValid.ShouldBeFalse();
+        result.Errors.Select(error => error.PropertyName)
+            .ShouldContain(nameof(ExtractCandidateCommand.CandidateId));
+    }
+
+    [Fact]
+    public void US_18_Extract_candidate_accepts_positive_ids()
+    {
+        var result = new ExtractCandidateCommandValidator()
+            .Validate(new ExtractCandidateCommand(1, 2));
+
+        result.IsValid.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void US_18_Select_primary_cv_requires_a_positive_vacancy_id()
+    {
+        var result = new SelectPrimaryCvCommandValidator()
+            .Validate(new SelectPrimaryCvCommand(0, 1, 2));
+
+        result.IsValid.ShouldBeFalse();
+        result.Errors.Select(error => error.PropertyName)
+            .ShouldContain(nameof(SelectPrimaryCvCommand.VacancyId));
+    }
+
+    [Fact]
+    public void US_18_Select_primary_cv_requires_a_positive_candidate_id()
+    {
+        var result = new SelectPrimaryCvCommandValidator()
+            .Validate(new SelectPrimaryCvCommand(1, 0, 2));
+
+        result.IsValid.ShouldBeFalse();
+        result.Errors.Select(error => error.PropertyName)
+            .ShouldContain(nameof(SelectPrimaryCvCommand.CandidateId));
+    }
+
+    [Fact]
+    public void US_18_Select_primary_cv_requires_a_positive_document_id()
+    {
+        var result = new SelectPrimaryCvCommandValidator()
+            .Validate(new SelectPrimaryCvCommand(1, 2, 0));
+
+        result.IsValid.ShouldBeFalse();
+        result.Errors.Select(error => error.PropertyName)
+            .ShouldContain(nameof(SelectPrimaryCvCommand.DocumentId));
+    }
+
+    [Fact]
+    public void US_18_Select_primary_cv_accepts_positive_ids()
+    {
+        var result = new SelectPrimaryCvCommandValidator()
+            .Validate(new SelectPrimaryCvCommand(1, 2, 3));
 
         result.IsValid.ShouldBeTrue();
     }

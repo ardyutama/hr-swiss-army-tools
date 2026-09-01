@@ -1,7 +1,9 @@
 using hr_sat.Application;
 using hr_sat.Application.Abstractions.Data;
+using hr_sat.Application.Abstractions.Extraction;
 using hr_sat.Application.Abstractions.Storage;
 using hr_sat.Infrastructure;
+using hr_sat.Infrastructure.Extraction;
 using hr_sat.Infrastructure.Storage;
 using hr_sat.Web.Api;
 using Microsoft.AspNetCore.Http.Features;
@@ -15,6 +17,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddApplication();
 builder.Services.AddEndpoints();
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+builder.Services.AddSingleton<IPdfTextExtractor, PdfPigTextExtractor>();
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Database")));
 builder.Services.AddScoped<IApplicationDbContext>(

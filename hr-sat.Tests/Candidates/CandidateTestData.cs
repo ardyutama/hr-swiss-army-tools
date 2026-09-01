@@ -1,9 +1,12 @@
 using System.Security.Cryptography;
+using hr_sat.Application.Abstractions.Extraction;
 using hr_sat.Application.Abstractions.Storage;
 using hr_sat.Application.Features.Candidates.Import;
+using hr_sat.Application.Features.Candidates.Shared;
 using hr_sat.Domain.Candidates;
 using hr_sat.Domain.Vacancies;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace hr_sat.Tests.Candidates;
 
@@ -76,6 +79,11 @@ internal static class CandidateTestData
 
         return (vacancy, candidate);
     }
+
+    public static CandidateCvExtractionService CreateExtractionService(string text = "") =>
+        new(
+            new TestPdfTextExtractor(text),
+            NullLogger<CandidateCvExtractionService>.Instance);
 }
 
 internal sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
@@ -91,6 +99,8 @@ internal sealed class TestFileStorage : IPrivateFileStorage
 
     public IReadOnlyDictionary<string, byte[]> Files => files;
     public IReadOnlyList<string> DeletedKeys => deletedKeys;
+
+    public void Add(string storageKey, byte[] content) => files[storageKey] = content.ToArray();
 
     public Task<StoredFile> StoreAsync(
         ReadOnlyMemory<byte> content,
@@ -136,5 +146,16 @@ internal sealed class TestFileStorage : IPrivateFileStorage
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult(true);
+    }
+}
+
+internal sealed class TestPdfTextExtractor(string text) : IPdfTextExtractor
+{
+    public Task<string> ExtractTextAsync(
+        Stream content,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(text);
     }
 }

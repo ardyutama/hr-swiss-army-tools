@@ -22,6 +22,7 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
     public DbSet<VacancyRequirement> VacancyRequirements => Set<VacancyRequirement>();
     public DbSet<Candidate> Candidates => Set<Candidate>();
     public DbSet<CvDocument> CvDocuments => Set<CvDocument>();
+    public DbSet<CandidateSkill> CandidateSkills => Set<CandidateSkill>();
     public DbSet<PendingFileDeletion> PendingFileDeletions => Set<PendingFileDeletion>();
 
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken) =>
@@ -88,7 +89,13 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
                 .WithOne()
                 .HasForeignKey(document => document.CandidateId)
                 .OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(candidate => candidate.Skills)
+                .WithOne()
+                .HasForeignKey(skill => skill.CandidateId)
+                .OnDelete(DeleteBehavior.Cascade);
             entity.Navigation(candidate => candidate.CvDocuments)
+                .UsePropertyAccessMode(PropertyAccessMode.Field);
+            entity.Navigation(candidate => candidate.Skills)
                 .UsePropertyAccessMode(PropertyAccessMode.Field);
         });
 
@@ -96,6 +103,12 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
         {
             entity.HasKey(document => document.Id);
             entity.Property(document => document.Id).ValueGeneratedOnAdd();
+        });
+
+        modelBuilder.Entity<CandidateSkill>(entity =>
+        {
+            entity.HasKey(skill => skill.Id);
+            entity.Property(skill => skill.Id).ValueGeneratedOnAdd();
         });
 
         modelBuilder.Entity<PendingFileDeletion>(entity =>

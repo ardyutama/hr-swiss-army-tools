@@ -5,6 +5,7 @@ namespace hr_sat.Domain.Candidates;
 public sealed class Candidate : Entity
 {
     private readonly List<CvDocument> _cvDocuments = [];
+    private readonly List<CandidateSkill> _skills = [];
 
     private Candidate()
     {
@@ -56,6 +57,91 @@ public sealed class Candidate : Entity
     public byte[] SourceSha256 { get; private set; } = [];
     public DateTimeOffset ImportedAt { get; private set; }
     public IReadOnlyList<CvDocument> CvDocuments => _cvDocuments;
+    public IReadOnlyList<CandidateSkill> Skills => _skills;
+
+    internal Result ApplyExtraction(CandidateExtraction extraction)
+    {
+        ArgumentNullException.ThrowIfNull(extraction);
+
+        var errors = new Dictionary<string, string[]>();
+        ValidateOptionalText(errors, "fullName", extraction.FullName, 300);
+        ValidateOptionalText(errors, "contactEmail", extraction.ContactEmail, 320);
+        ValidateOptionalText(errors, "contactPhone", extraction.ContactPhone, 100);
+
+        var skills = extraction.Skills ?? [];
+        if (skills.Any(skill => skill is null || skill.Trim().Length is < 1 or > 200))
+        {
+            errors["skills"] = [
+                "Each candidate skill must contain between 1 and 200 characters after trimming."
+            ];
+        }
+        else if (skills
+            .GroupBy(skill => skill.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Any(group => group.Count() > 1))
+        {
+            errors["skills"] = [
+                "Candidate skills must be unique after trimming and ignoring case."
+            ];
+        }
+
+        if (errors.Count > 0)
+        {
+            return CandidateErrors.Invalid(errors);
+        }
+
+        FullName = TrimOptional(extraction.FullName);
+        ContactEmail = TrimOptional(extraction.ContactEmail);
+        ContactPhone = TrimOptional(extraction.ContactPhone);
+        _skills.Clear();
+
+        var position = 1;
+        foreach (var skill in skills)
+        {
+            _skills.Add(new CandidateSkill(skill.Trim(), position));
+            position++;
+        }
+
+        ExtractionStatus = CandidateExtractionStatus.Succeeded;
+        return Result.Success();
+    }
+
+    internal void MarkExtractionFailed()
+    {
+        FullName = null;
+        ContactEmail = null;
+        ContactPhone = null;
+        _skills.Clear();
+        ExtractionStatus = CandidateExtractionStatus.Failed;
+    }
+
+    internal void MarkExtractionPending()
+    {
+        FullName = null;
+        ContactEmail = null;
+        ContactPhone = null;
+        _skills.Clear();
+        ExtractionStatus = CandidateExtractionStatus.Pending;
+    }
+
+    internal Result SelectPrimaryCv(long documentId)
+    {
+        var document = _cvDocuments.SingleOrDefault(item => item.Id == documentId);
+        if (document is null)
+        {
+            return CandidateErrors.Invalid(new Dictionary<string, string[]>
+            {
+                ["documentId"] = ["The CV document does not belong to this candidate."]
+            });
+        }
+
+        foreach (var cvDocument in _cvDocuments)
+        {
+            cvDocument.SetPrimary(cvDocument.Id == documentId);
+        }
+
+        MarkExtractionPending();
+        return Result.Success();
+    }
 
     internal static Result<Candidate> Import(
         long vacancyId,
@@ -222,6 +308,9 @@ public sealed class Candidate : Entity
             errors[field] = [$"The value must contain between 1 and {maximumLength} characters after trimming."];
         }
     }
+
+    private static string? TrimOptional(string? value) =>
+        value is null ? null : value.Trim();
 
     private static Result ValidateDocument(StoredCvDocument document)
     {

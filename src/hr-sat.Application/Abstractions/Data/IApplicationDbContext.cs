@@ -11,6 +11,7 @@ public interface IApplicationDbContext
     DbSet<VacancyRequirement> VacancyRequirements { get; }
     DbSet<Candidate> Candidates { get; }
     DbSet<CvDocument> CvDocuments { get; }
+    DbSet<CandidateSkill> CandidateSkills { get; }
     DbSet<PendingFileDeletion> PendingFileDeletions { get; }
 
     Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken);

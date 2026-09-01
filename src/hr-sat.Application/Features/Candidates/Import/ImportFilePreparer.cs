@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Storage;
 using hr_sat.Domain.Candidates;
+using hr_sat.Application.Features.Candidates.Shared;
 using Microsoft.Extensions.Logging;
 
 namespace hr_sat.Application.Features.Candidates.Import;
@@ -12,7 +13,8 @@ internal sealed class ImportFilePreparer(
     IApplicationDbContext dbContext,
     IPrivateFileStorage fileStorage,
     TimeProvider timeProvider,
-    ILogger<ImportFilePreparer> logger)
+    ILogger<ImportFilePreparer> logger,
+    CandidateCvExtractionService extractionService)
 {
     private const long MaxFileSizeBytes = 25 * 1024 * 1024;
     private static readonly string[] AcceptedContentTypes =
@@ -157,6 +159,16 @@ internal sealed class ImportFilePreparer(
             }
 
             var candidate = candidateResult.Value;
+            var primaryDocument = candidate.CvDocuments.SingleOrDefault(document => document.IsPrimary);
+            if (primaryDocument is not null)
+            {
+                await extractionService.TryApplyAsync(
+                    candidate,
+                    fileStorage,
+                    primaryDocument.StorageKey,
+                    cancellationToken);
+            }
+
             dbContext.Candidates.Add(candidate);
             batchHashKeys.Add(sourceHashKey);
             return ImportFileOutcome.Imported(originalFilename, candidate);
@@ -233,9 +245,11 @@ internal sealed record ImportFileOutcome(
     public static ImportFileOutcome Failed(string fileName, string error) =>
         new(fileName, "failed", error, null);
 
-    public ImportFileResponse ToResponse(long vacancyId) => new(
+    public ImportFileResponse ToResponse(
+        long vacancyId,
+        IEnumerable<string> requirements) => new(
         FileName,
         Status,
         Error,
-        Candidate is null ? null : CandidateImportResponse.From(vacancyId, Candidate));
+        Candidate is null ? null : CandidateDetailsResponse.From(vacancyId, Candidate, requirements));
 }

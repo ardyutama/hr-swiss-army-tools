@@ -72,7 +72,7 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
                 Assert.Null(alice.ContactEmail);
                 Assert.Null(alice.Notes);
                 Assert.Equal("new", alice.ReviewStatus);
-                Assert.Equal("pending", alice.ExtractionStatus);
+                Assert.Equal("failed", alice.ExtractionStatus);
                 Assert.Equal("Alice Applicant", alice.SourceSenderName);
                 Assert.Equal("alice@example.com", alice.SourceSenderEmail);
                 Assert.Equal("Alice application", alice.SourceSubject);
@@ -87,7 +87,7 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
                 Assert.Null(bob.ContactEmail);
                 Assert.Null(bob.Notes);
                 Assert.Equal("new", bob.ReviewStatus);
-                Assert.Equal("pending", bob.ExtractionStatus);
+                Assert.Equal("failed", bob.ExtractionStatus);
                 Assert.Equal("Bob Applicant", bob.SourceSenderName);
                 Assert.Equal("bob@example.com", bob.SourceSenderEmail);
                 Assert.Equal("Bob application", bob.SourceSubject);
