@@ -1,7 +1,9 @@
 # Vue Client Development
 
 This guide applies to every change under `hr-sat.client/`, including Vue single-file
-components, composables, API clients, shared UI, routing, configuration, and client tests.
+components, composables, API clients, shared client helpers, routing, configuration, and
+client tests. Nuxt UI v4 is the UI source of truth and Tailwind CSS v4 is the styling system;
+the migration decision is recorded in `docs/adr/0007-nuxt-ui-as-ui-source-of-truth.md`.
 It supplements the generic Vue guidance in `.agents/skills/`; repository decisions in this
 guide and `docs/agents/workflow.md` are the local source of truth when they differ.
 
@@ -41,9 +43,9 @@ guide and `docs/agents/workflow.md` are the local source of truth when they diff
   composables, API client, validation, formatting, and feature components. Pages compose
   feature modules; features never import from pages or from a sibling feature's internals
   (cross-feature imports use the feature's root modules only).
-- Keep `hr-sat.client/src/shared/` as the thin shared kernel for reusable UI, HTTP, and
-  validation helpers. Feature state and feature-specific API behavior stay in the feature
-  folder.
+- Keep `hr-sat.client/src/shared/` as the thin shared kernel for reusable HTTP and validation
+  helpers. Use Nuxt UI components directly for visual UI; do not add an `App*` wrapper layer.
+  Feature state and feature-specific API behavior stay in the feature folder.
 - Use Vue 3 Composition API with `<script setup lang="ts">` for new components. Keep
   Options API and untyped JavaScript out of new client code.
 - Keep route-level views thin: compose the feature, connect routing, and pass contracts;
@@ -83,9 +85,10 @@ guide and `docs/agents/workflow.md` are the local source of truth when they diff
 - Use `<style scoped>` and class selectors for component styles. Keep resets, typography,
   design tokens, and app-wide rules in `src/style.css`; use `:deep()` only at a deliberate
   component boundary and preserve established shared-component patterns.
-- Reuse primitives from `src/shared/ui/` before adding a parallel button, dialog, field, or
-  icon pattern. Keep accessibility behavior, keyboard interaction, loading states, and
-  disabled states part of the component contract.
+- Compose visual UI from Nuxt UI v4 primitives (`UButton`, `UModal`, `UForm`, `UAlert`, and
+  related components) and use Iconify lucide icons through `UIcon` or component icon props.
+  Do not recreate deleted shared UI wrappers. Keep accessibility behavior, keyboard
+  interaction, loading states, and disabled states part of the component contract.
 
 ### API, routing, and tests
 

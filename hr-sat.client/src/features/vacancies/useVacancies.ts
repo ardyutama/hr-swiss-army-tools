@@ -1,5 +1,5 @@
 import { computed, onMounted, shallowRef } from 'vue'
-import { toast } from 'vue-sonner'
+import { useToast } from '@nuxt/ui/composables/useToast'
 import { fieldErrorsOf, firstNonFieldError } from '@/shared/validation'
 import {
   createVacancy,
@@ -16,6 +16,7 @@ import { vacancyFormFieldKeys } from './validation'
 export type VacanciesViewState = 'loading' | 'error' | 'empty' | 'ready'
 
 export function useVacancies() {
+  const toast = useToast()
   const vacancies = shallowRef<VacancySummary[] | null>(null)
   const loadError = shallowRef<string | null>(null)
   const saving = shallowRef(false)
@@ -87,14 +88,14 @@ export function useVacancies() {
     try {
       if (editingId) {
         await updateVacancy(editingId, payload)
-        toast.success(`Vacancy "${payload.title}" updated successfully`)
+        toast.add({ title: `Vacancy "${payload.title}" updated successfully`, color: 'success' })
       } else {
         await createVacancy(payload)
-        toast.success('Vacancy created successfully')
+        toast.add({ title: 'Vacancy created successfully', color: 'success' })
       }
       await load()
     } catch (error) {
-      toast.error(saveErrorMessage(error, editingId !== null))
+      toast.add({ title: saveErrorMessage(error, editingId !== null), color: 'error' })
       throw error
     } finally {
       saving.value = false
@@ -109,7 +110,7 @@ export function useVacancies() {
     removing.value = true
     try {
       await deleteVacancy(vacancy.id)
-      toast.success(`Vacancy "${vacancy.title}" deleted successfully`, { closeButton: true })
+      toast.add({ title: `Vacancy "${vacancy.title}" deleted successfully`, color: 'success' })
       await load()
     } finally {
       removing.value = false

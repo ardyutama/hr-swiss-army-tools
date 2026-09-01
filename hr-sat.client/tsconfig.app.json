@@ -1,6 +1,12 @@
 {
   "extends": "@vue/tsconfig/tsconfig.dom.json",
-  "include": ["env.d.ts", "src/**/*", "src/**/*.vue"],
+  "include": [
+    "env.d.ts",
+    "components.d.ts",
+    "auto-imports.d.ts",
+    "src/**/*",
+    "src/**/*.vue"
+  ],
   "exclude": ["src/**/__tests__/*"],
   "compilerOptions": {
     // Test globals (describe/it/expect via explicit imports) and DOM shims for specs.

@@ -1,14 +1,12 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { toast } from 'vue-sonner'
 
 import VacancyListView from './VacancyListView.vue'
 
-vi.mock('vue-sonner', () => ({
-  toast: {
-    error: vi.fn(),
-    success: vi.fn(),
-  },
+const toastAdd = vi.fn()
+
+vi.mock('@nuxt/ui/composables/useToast', () => ({
+  useToast: () => ({ add: toastAdd }),
 }))
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -122,7 +120,7 @@ describe('VacancyListView', () => {
       'input[placeholder="e.g. Senior Welder"]',
     )
     const requirementInput = document.body.querySelector<HTMLInputElement>(
-      '.vform__requirement-row input',
+      'input[aria-label="Requirement 1"]',
     )
     expect(titleInput).not.toBeNull()
     expect(requirementInput).not.toBeNull()
@@ -134,7 +132,9 @@ describe('VacancyListView', () => {
     dialogButton('Create vacancy')?.click()
     await flushPromises()
 
-    expect(toast.success).toHaveBeenCalledWith('Vacancy created successfully')
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Vacancy created successfully', color: 'success' }),
+    )
     expect(wrapper.text()).toContain('Senior Welder')
     wrapper.unmount()
   })
@@ -193,7 +193,7 @@ describe('VacancyListView', () => {
 
     // Requirements are prefilled in position order.
     const requirementValues = Array.from(
-      document.body.querySelectorAll<HTMLInputElement>('.vform__requirement-row input'),
+      document.body.querySelectorAll<HTMLInputElement>('input[aria-label^="Requirement "]'),
     ).map((input) => input.value)
     expect(requirementValues).toEqual(['MIG welding', 'Blueprint reading'])
 

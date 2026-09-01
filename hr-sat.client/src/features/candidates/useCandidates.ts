@@ -1,11 +1,12 @@
 import { computed, shallowRef, watch, type Ref } from 'vue'
-import { toast } from 'vue-sonner'
+import { useToast } from '@nuxt/ui/composables/useToast'
 import { deleteCandidate, listCandidates, type CandidateSummary } from '@/features/candidates/api'
 import { candidateDisplayName } from '@/features/candidates/format'
 
 export type CandidatesViewState = 'loading' | 'error' | 'empty' | 'ready'
 
 export function useCandidates(vacancyId: Ref<string>) {
+  const toast = useToast()
   const candidates = shallowRef<CandidateSummary[] | null>(null)
   const loadError = shallowRef<string | null>(null)
   const removing = shallowRef(false)
@@ -58,8 +59,9 @@ export function useCandidates(vacancyId: Ref<string>) {
     removing.value = true
     try {
       await deleteCandidate(vacancyId.value, candidate.id)
-      toast.success(`Candidate "${candidateDisplayName(candidate)}" deleted successfully`, {
-        closeButton: true,
+      toast.add({
+        title: `Candidate "${candidateDisplayName(candidate)}" deleted successfully`,
+        color: 'success',
       })
       await load()
     } finally {
