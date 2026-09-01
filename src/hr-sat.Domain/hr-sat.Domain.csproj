@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>hr_sat.Domain</RootNamespace>
+    <AssemblyName>hr-sat.Domain</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="hr-sat.Application" />
+    <InternalsVisibleTo Include="hr-sat.Tests" />
+  </ItemGroup>
+
+</Project>
