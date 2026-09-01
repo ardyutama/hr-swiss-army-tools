@@ -61,6 +61,7 @@ function candidateSummary(id: number, overrides: Partial<Record<string, unknown>
     notes: null,
     reviewStatus: 'new',
     extractionStatus: 'pending',
+    match: { matchedRequirements: 2, totalRequirements: 3 },
     sourceSenderName: 'Alice Applicant',
     sourceSenderEmail: 'alice@example.com',
     sourceSubject: 'Application for Welder',
@@ -75,6 +76,7 @@ function bobSummary() {
     sourceSenderEmail: 'bob@example.com',
     sourceSubject: 'Bob application',
     reviewStatus: 'shortlisted',
+    extractionStatus: 'failed',
     notes: 'Strong MIG experience',
   })
 }
@@ -313,6 +315,9 @@ describe('VacancyDetailView', () => {
 
     expect(wrapper.text()).toContain('Alice Applicant')
     expect(wrapper.text()).toContain('Bob Builder')
+    expect(wrapper.text()).toContain('2 / 3')
+    expect(wrapper.text()).toContain('Extraction pending')
+    expect(wrapper.text()).toContain('Extraction failed')
     expect(wrapper.text()).toContain('New')
     expect(wrapper.text()).toContain('Shortlisted')
     expect(wrapper.text()).toContain('Strong MIG experience')

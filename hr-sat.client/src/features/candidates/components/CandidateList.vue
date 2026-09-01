@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { CandidateReviewStatus, CandidateSummary } from '../api'
+import type {
+  CandidateExtractionStatus,
+  CandidateReviewStatus,
+  CandidateSummary,
+} from '../api'
 import { candidateDisplayName } from '../format'
 
 const props = withDefaults(
@@ -27,6 +31,18 @@ const reviewStatusColors: Record<CandidateReviewStatus, 'success' | 'error' | 'n
   flagged: 'neutral',
   shortlisted: 'success',
   rejected: 'error',
+}
+
+const extractionStatusLabels: Record<CandidateExtractionStatus, string> = {
+  pending: 'Extraction pending',
+  succeeded: 'Extraction complete',
+  failed: 'Extraction failed',
+}
+
+const extractionStatusColors: Record<CandidateExtractionStatus, 'success' | 'error' | 'neutral'> = {
+  pending: 'neutral',
+  succeeded: 'success',
+  failed: 'error',
 }
 
 // Column proportions applied via <colgroup> so the semantic table keeps a fixed layout.
@@ -58,12 +74,22 @@ const columnWidths = computed(() =>
       <tbody>
         <tr v-for="candidate in candidates" :key="candidate.id" class="crow group">
           <td class="ctable__col crow__name border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
-            <span class="crow__name-text block truncate text-sm font-semibold text-highlighted">{{ candidateDisplayName(candidate) }}</span>
+            <div class="flex min-w-0 flex-col items-start gap-1">
+              <span class="crow__name-text block max-w-full truncate text-sm font-semibold text-highlighted">{{ candidateDisplayName(candidate) }}</span>
+              <UBadge
+                :color="extractionStatusColors[candidate.extractionStatus]"
+                variant="subtle"
+                size="xs"
+              >
+                {{ extractionStatusLabels[candidate.extractionStatus] }}
+              </UBadge>
+            </div>
           </td>
 
           <td class="ctable__col border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
-            <!-- Real match status lands with PDF extraction (ticket 05). -->
-            <span class="crow__placeholder text-xs text-muted">—</span>
+            <span class="crow__match text-sm tabular-nums text-highlighted">
+              {{ candidate.match.matchedRequirements }} / {{ candidate.match.totalRequirements }}
+            </span>
           </td>
 
           <td class="ctable__col border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
@@ -106,17 +132,5 @@ const columnWidths = computed(() =>
 <style scoped>
 .crow:last-child .ctable__col {
   border-bottom: none;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
 }
 </style>
