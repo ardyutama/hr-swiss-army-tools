@@ -9,7 +9,7 @@ internal sealed class Update : IEndpoint
     {
         app.MapPut("/api/vacancies/{id:long}", async (
             long id,
-            Request request,
+            UpdateRequest request,
             ICommandHandler<UpdateVacancyCommand, VacancyDetailsResponse> handler,
             CancellationToken cancellationToken) =>
         {
@@ -26,9 +26,4 @@ internal sealed class Update : IEndpoint
         .WithTags(Tags.Vacancies)
         .WithName("UpdateVacancy");
     }
-
-    public sealed record Request(
-        string? Title,
-        DateOnly OpenedOn,
-        IReadOnlyList<string?>? Requirements);
 }
