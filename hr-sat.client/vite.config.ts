@@ -9,6 +9,7 @@ export default defineConfig({
     plugins: [
         plugin(),
         ui({
+            colorMode: false,
             ui: {
                 colors: {
                     primary: 'blue',

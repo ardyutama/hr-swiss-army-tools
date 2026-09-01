@@ -157,7 +157,7 @@ async function confirmDeleteCandidate() {
         </div>
         <div class="h-1.5 overflow-hidden rounded-full bg-muted">
           <div
-            class="h-full rounded-full bg-primary transition-[width] duration-300"
+            class="h-full rounded-full bg-primary"
             :style="{ width: `${progress}%` }"
           />
         </div>
@@ -168,14 +168,29 @@ async function confirmDeleteCandidate() {
         :class="candidatesViewState === 'ready' ? 'p-0' : 'p-3'"
         aria-label="Candidates"
       >
+        <!-- Shape-matched table skeleton (ADR-0008 decision 14) -->
         <div
           v-if="candidatesViewState === 'loading'"
-          class="flex flex-col gap-3 p-4"
+          class="flex flex-col p-2"
           aria-busy="true"
           aria-label="Loading candidates"
         >
-          <USkeleton class="h-4 w-3/5" />
-          <USkeleton class="h-4 w-2/5" />
+          <div class="flex items-center gap-4 border-b border-default px-3 pb-3 pt-1">
+            <USkeleton class="h-3 w-24" />
+            <USkeleton class="h-3 w-20" />
+            <USkeleton class="h-3 w-28" />
+            <USkeleton class="h-3 w-16" />
+          </div>
+          <div
+            v-for="n in 4"
+            :key="n"
+            class="flex items-center gap-4 border-b border-default px-3 py-4 last:border-b-0"
+          >
+            <USkeleton class="h-4 w-1/4" />
+            <USkeleton class="h-4 w-12" />
+            <USkeleton class="h-4 w-1/3" />
+            <USkeleton class="h-5 w-20 rounded-full" />
+          </div>
         </div>
 
         <UAlert

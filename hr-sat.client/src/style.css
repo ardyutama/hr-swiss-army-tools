@@ -1,12 +1,12 @@
 @import 'tailwindcss';
 @import '@nuxt/ui';
-@import '@fontsource/inter/400.css';
-@import '@fontsource/inter/500.css';
-@import '@fontsource/inter/600.css';
-@import '@fontsource/inter/700.css';
+@import '@fontsource/geist/400.css';
+@import '@fontsource/geist/500.css';
+@import '@fontsource/geist/600.css';
+@import '@fontsource/geist/700.css';
 
 @theme {
-  --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Geist', 'Segoe UI', system-ui, -apple-system, sans-serif;
 
   --color-app-background: #f7f6f3;
   --color-ink: #1e2430;
@@ -53,5 +53,17 @@ h3 {
 
 button {
   font-family: inherit;
+}
+
+/* ADR-0008 decision 5: restrained motion — honor reduced-motion preferences. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 

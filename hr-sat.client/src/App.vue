@@ -1,8 +1,7 @@
 <script setup lang="ts">
 interface NavItem {
   label: string
-  to?: string
-  soon?: boolean
+  to: string
 }
 
 interface NavSection {
@@ -10,13 +9,11 @@ interface NavSection {
   items: NavItem[]
 }
 
+// ADR-0008 decision 15: no dead UI — upcoming nav items live as tickets, not placeholders.
 const navSections: NavSection[] = [
   {
     label: 'Sorting CV',
-    items: [
-      { label: 'Vacancies', to: '/' },
-      { label: 'Templates', soon: true },
-    ],
+    items: [{ label: 'Vacancies', to: '/' }],
   },
 ]
 </script>
@@ -37,25 +34,12 @@ const navSections: NavSection[] = [
             <ul class="m-0 flex list-none flex-col gap-1 p-0">
               <li v-for="item in section.items" :key="item.label">
                 <RouterLink
-                  v-if="item.to"
                   :to="item.to"
                   exact-active-class="bg-primary font-semibold text-sidebar-active"
                   class="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground no-underline transition-colors hover:bg-white/10"
                 >
                   {{ item.label }}
                 </RouterLink>
-                <span
-                  v-else
-                  class="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70"
-                >
-                  {{ item.label }}
-                  <span
-                    v-if="item.soon"
-                    class="rounded-full border border-white/20 px-1.5 py-0.5 text-[0.68rem]"
-                  >
-                    soon
-                  </span>
-                </span>
               </li>
             </ul>
           </section>
