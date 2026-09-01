@@ -2,10 +2,21 @@ import { fileURLToPath, URL } from 'node:url';
 
 import { defineConfig } from 'vitest/config';
 import plugin from '@vitejs/plugin-vue';
+import ui from '@nuxt/ui/vite';
 
 // https://vitejs.dev/config/
 export default defineConfig({
-    plugins: [plugin()],
+    plugins: [
+        plugin(),
+        ui({
+            ui: {
+                colors: {
+                    primary: 'blue',
+                    neutral: 'zinc'
+                }
+            }
+        })
+    ],
     resolve: {
         alias: {
             '@': fileURLToPath(new URL('./src', import.meta.url))

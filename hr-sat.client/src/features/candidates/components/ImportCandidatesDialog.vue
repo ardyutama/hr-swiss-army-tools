@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import AppDialog from '@/shared/ui/AppDialog.vue'
 import ImportDropZone from './ImportDropZone.vue'
 
 withDefaults(
@@ -18,27 +17,33 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <AppDialog :open="open" title="Import .eml files" @close="emit('close')">
-    <div class="import-dialog">
-      <ImportDropZone :busy="busy" @files="(files) => emit('files', files)" />
-      <p v-if="error" class="import-dialog__error" role="alert">{{ error }}</p>
-    </div>
-  </AppDialog>
+  <UModal
+    :open="open"
+    title="Import .eml files"
+    :dismissible="!busy"
+    @update:open="(value) => { if (!value) emit('close') }"
+  >
+    <template #body>
+      <div class="flex flex-col">
+        <ImportDropZone :busy="busy" @files="(files) => emit('files', files)" />
+        <UAlert
+          v-if="error"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-triangle-alert"
+          :title="error"
+          role="alert"
+          class="mt-3"
+        />
+      </div>
+    </template>
+
+    <template #footer>
+      <div class="flex justify-end">
+        <UButton color="neutral" variant="outline" :disabled="busy" @click="emit('close')">
+          Cancel
+        </UButton>
+      </div>
+    </template>
+  </UModal>
 </template>
-
-<style scoped>
-.import-dialog {
-  display: flex;
-  flex-direction: column;
-}
-
-.import-dialog__error {
-  margin: var(--space-3) 0 0;
-  padding: var(--space-3);
-  border-radius: var(--radius-sm);
-  background: var(--danger-soft);
-  color: var(--danger);
-  font-size: var(--text-sm);
-  font-weight: 500;
-}
-</style>

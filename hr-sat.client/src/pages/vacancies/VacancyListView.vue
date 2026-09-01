@@ -1,8 +1,5 @@
 <script setup lang="ts">
 import { shallowRef, useTemplateRef } from 'vue'
-import AppButton from '@/shared/ui/AppButton.vue'
-import AppIcon from '@/shared/ui/AppIcon.vue'
-import StatCard from '@/shared/ui/StatCard.vue'
 import VacancyTable from '@/features/vacancies/components/VacancyTable.vue'
 import VacancyFormDialog from '@/features/vacancies/components/VacancyFormDialog.vue'
 import ConfirmDeleteDialog from '@/features/vacancies/components/ConfirmDeleteDialog.vue'
@@ -84,57 +81,77 @@ async function confirmDelete() {
 </script>
 
 <template>
-  <div class="vacancy-page">
-    <header class="vacancy-page__top">
-      <div class="vacancy-page__heading">
-        <h1 class="vacancy-page__title">Vacancies</h1>
-        <p class="vacancy-page__subtitle">
+  <div class="flex flex-col gap-6">
+    <header class="flex items-start justify-between gap-4">
+      <div class="min-w-0">
+        <h1 class="text-2xl font-bold tracking-tight">Vacancies</h1>
+        <p class="mt-1 text-sm text-muted">
           Each vacancy collects and sorts its own candidates.
         </p>
       </div>
-      <AppButton class="vacancy-page__add" @click="openCreate">
-        <AppIcon name="plus" :size="16" />
+      <UButton icon="i-lucide-plus" class="shrink-0 mt-1" @click="openCreate">
         Add vacancy
-      </AppButton>
+      </UButton>
     </header>
 
-    <section class="vacancy-page__stats" aria-label="Vacancy statistics">
-      <StatCard label="Open vacancies" :value="openCount" />
-      <StatCard label="CVs to sort" :value="cvsToSort" hint="across all vacancies" />
+    <section class="flex gap-4 flex-wrap" aria-label="Vacancy statistics">
+      <UCard class="flex-1 min-w-44 max-w-64">
+        <div class="flex flex-col gap-1">
+          <span class="text-sm font-medium text-muted">Open vacancies</span>
+          <span class="text-2xl font-bold tracking-tight text-highlighted">{{ openCount }}</span>
+        </div>
+      </UCard>
+      <UCard class="flex-1 min-w-44 max-w-64">
+        <div class="flex flex-col gap-1">
+          <span class="text-sm font-medium text-muted">CVs to sort</span>
+          <span class="text-2xl font-bold tracking-tight text-highlighted">{{ cvsToSort }}</span>
+          <span class="text-xs text-dimmed">across all vacancies</span>
+        </div>
+      </UCard>
     </section>
 
-    <section class="vacancy-page__panel">
+    <section class="rounded-xl border border-default bg-default shadow-sm py-2 min-h-88">
       <!-- Loading -->
-      <div v-if="viewState === 'loading'" class="vacancy-page__loading" aria-busy="true" aria-label="Loading vacancies">
-        <div v-for="n in 4" :key="n" class="skeleton-row">
-          <span class="skeleton skeleton--title" />
-          <span class="skeleton skeleton--chip" />
-          <span class="skeleton skeleton--bar" />
-          <span class="skeleton skeleton--date" />
+      <div
+        v-if="viewState === 'loading'"
+        class="flex flex-col"
+        aria-busy="true"
+        aria-label="Loading vacancies"
+      >
+        <div
+          v-for="n in 4"
+          :key="n"
+          class="flex items-center gap-4 px-5 py-4 border-b border-default last:border-b-0"
+        >
+          <USkeleton class="h-4 w-1/3" />
+          <USkeleton class="h-5 w-16 rounded-full" />
+          <USkeleton class="h-2 w-1/4 rounded-full" />
+          <USkeleton class="h-4 w-20" />
         </div>
       </div>
 
       <!-- Error -->
-      <div v-else-if="viewState === 'error'" class="vacancy-page__state" role="alert">
-        <p class="vacancy-page__state-title">Couldn't load vacancies</p>
-        <p class="vacancy-page__state-text">{{ loadError }}</p>
-        <AppButton variant="ghost" @click="load">Try again</AppButton>
-      </div>
+      <UAlert
+        v-else-if="viewState === 'error'"
+        color="error"
+        variant="subtle"
+        icon="i-lucide-triangle-alert"
+        title="Couldn't load vacancies"
+        :description="loadError ?? undefined"
+        class="m-5"
+        role="alert"
+        :actions="[{ label: 'Try again', color: 'error', variant: 'outline', onClick: load }]"
+      />
 
       <!-- Empty -->
-      <div v-else-if="viewState === 'empty'" class="vacancy-page__state vacancy-page__state--empty">
-        <span class="vacancy-page__empty-icon">
-          <AppIcon name="briefcase" :size="30" />
-        </span>
-        <p class="vacancy-page__state-title">No vacancies yet</p>
-        <p class="vacancy-page__state-text">
-          Create your first vacancy to start collecting and sorting CVs.
-        </p>
-        <AppButton @click="openCreate">
-          <AppIcon name="plus" :size="16" />
-          Add your first vacancy
-        </AppButton>
-      </div>
+      <UEmpty
+        v-else-if="viewState === 'empty'"
+        icon="i-lucide-briefcase"
+        title="No vacancies yet"
+        description="Create your first vacancy to start collecting and sorting CVs."
+        class="min-h-88"
+        :actions="[{ label: 'Add your first vacancy', icon: 'i-lucide-plus', onClick: openCreate }]"
+      />
 
       <!-- Data -->
       <VacancyTable v-else :rows="vacancies ?? []" @edit="openEdit" @remove="requestDelete" />
@@ -159,156 +176,3 @@ async function confirmDelete() {
     />
   </div>
 </template>
-
-<style scoped>
-.vacancy-page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-}
-
-.vacancy-page__top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
-
-.vacancy-page__heading {
-  min-width: 0;
-}
-
-.vacancy-page__title {
-  font-size: var(--text-2xl);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.vacancy-page__subtitle {
-  margin: var(--space-1) 0 0;
-  color: var(--muted);
-  font-size: var(--text-sm);
-}
-
-.vacancy-page__add {
-  flex-shrink: 0;
-  margin-top: var(--space-1);
-}
-
-.vacancy-page__stats {
-  display: flex;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-}
-
-.vacancy-page__panel {
-  --vtable-columns: minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr) 5rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: var(--space-2) 0;
-  min-height: 22rem;
-}
-
-/* States */
-.vacancy-page__state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: var(--space-2);
-  padding: var(--space-10) var(--space-6);
-  min-height: 22rem;
-}
-
-.vacancy-page__state-title {
-  margin: 0;
-  font-size: var(--text-lg);
-  font-weight: 600;
-  color: var(--text);
-}
-
-.vacancy-page__state-text {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--text-sm);
-  max-width: 26rem;
-}
-
-.vacancy-page__state .btn {
-  margin-top: var(--space-3);
-}
-
-.vacancy-page__empty-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 4rem;
-  height: 4rem;
-  border-radius: var(--radius);
-  background: var(--accent-soft);
-  color: var(--accent);
-  margin-bottom: var(--space-2);
-}
-
-/* Loading skeleton */
-.vacancy-page__loading {
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-2) 0;
-}
-
-.skeleton-row {
-  display: grid;
-  grid-template-columns: var(--vtable-columns);
-  gap: var(--space-4);
-  align-items: center;
-  padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--border);
-}
-
-.skeleton-row:last-child {
-  border-bottom: none;
-}
-
-.skeleton {
-  display: block;
-  height: 0.8rem;
-  border-radius: var(--radius-pill);
-  background: linear-gradient(90deg, var(--border) 25%, var(--surface-subtle) 50%, var(--border) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s infinite;
-}
-
-.skeleton--title {
-  width: 55%;
-  height: 1rem;
-}
-
-.skeleton--chip {
-  width: 4rem;
-  height: 1.3rem;
-}
-
-.skeleton--bar {
-  width: 80%;
-}
-
-.skeleton--date {
-  width: 5rem;
-}
-
-@keyframes shimmer {
-  to {
-    background-position: -200% 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .skeleton {
-    animation: none;
-  }
-}
-</style>

@@ -1,16 +1,15 @@
 <script setup lang="ts">
-import { computed, reactive, shallowRef, watch } from 'vue'
-import AppButton from '@/shared/ui/AppButton.vue'
-import AppDialog from '@/shared/ui/AppDialog.vue'
-import AppField from '@/shared/ui/AppField.vue'
-import AppIcon from '@/shared/ui/AppIcon.vue'
-import { fieldErrorsOf, formErrorsOnly, type FieldErrors } from '@/shared/validation'
+import { computed, reactive, shallowRef, useTemplateRef, watch } from 'vue'
+import type { FormSubmitEvent } from '@nuxt/ui'
+import { fieldErrorsOf, formErrorsOnly } from '@/shared/validation'
 import type { VacancyDetails, VacancySummary, VacancyWritePayload } from '../api'
 import {
   vacancyFormFieldKeys,
+  vacancyFormSchema,
   vacancyRequirementValues,
-  type VacancyFormValues,
-  validateVacancyForm,
+  vacancyServerFieldNames,
+  type VacancyFormOutput,
+  type VacancyRequirementRow,
 } from '../validation'
 
 const props = defineProps<{
@@ -28,24 +27,19 @@ const emit = defineEmits<{
 const isEdit = computed(() => props.vacancy !== null)
 const dialogTitle = computed(() => (isEdit.value ? 'Edit vacancy' : 'Add vacancy'))
 
-interface RequirementRow {
-  id: number
-  value: string
-}
-
 let nextRequirementId = 0
 
-function requirementRow(value = ''): RequirementRow {
+function requirementRow(value = ''): VacancyRequirementRow {
   return { id: nextRequirementId++, value }
 }
 
 const form = reactive({
   title: '',
   openedOn: '',
-  requirements: [requirementRow()] as RequirementRow[],
+  requirements: [requirementRow()] as VacancyRequirementRow[],
 })
 
-const fieldErrors = shallowRef<FieldErrors>({})
+const formRef = useTemplateRef('formRef')
 const initialFormPayload = shallowRef<VacancyWritePayload | null>(null)
 
 function resetForm() {
@@ -53,22 +47,13 @@ function resetForm() {
   form.openedOn = props.vacancy?.openedOn ?? todayIso()
   form.requirements = [requirementRow()]
   initialFormPayload.value = null
-  fieldErrors.value = {}
 }
 
-function currentFormValues(): VacancyFormValues {
+function payloadFromOutput(output: VacancyFormOutput): VacancyWritePayload {
   return {
-    title: form.title,
-    openedOn: form.openedOn,
-    requirements: form.requirements.map((row) => row.value),
-  }
-}
-
-function payloadFromFormValues(values: VacancyFormValues): VacancyWritePayload {
-  return {
-    title: values.title.trim(),
-    openedOn: values.openedOn,
-    requirements: vacancyRequirementValues(values.requirements),
+    title: output.title.trim(),
+    openedOn: output.openedOn,
+    requirements: vacancyRequirementValues(output.requirements.map((row) => row.value)),
   }
 }
 
@@ -107,11 +92,11 @@ watch(
       requirements.length > 0
         ? requirements.map((r) => requirementRow(r.phrase))
         : [requirementRow()]
-    initialFormPayload.value = payloadFromFormValues({
+    initialFormPayload.value = {
       title: details.title,
       openedOn: details.openedOn,
       requirements: requirements.map((requirement) => requirement.phrase),
-    })
+    }
   },
 )
 
@@ -130,18 +115,8 @@ function removeRequirement(index: number) {
   form.requirements.splice(index, 1)
 }
 
-function firstError(key: string): string | undefined {
-  return fieldErrors.value[key]?.[0]
-}
-
-function submit() {
-  const values = currentFormValues()
-  const clientErrors = validateVacancyForm(values)
-  fieldErrors.value = clientErrors
-  if (Object.keys(clientErrors).length > 0) {
-    return
-  }
-  const payload = payloadFromFormValues(values)
+function onSubmit(event: FormSubmitEvent<VacancyFormOutput>) {
+  const payload = payloadFromOutput(event.data)
   if (
     isEdit.value &&
     props.vacancy &&
@@ -158,146 +133,102 @@ defineExpose({
   /** Routes a failed save's ValidationProblem back onto the fields it names. */
   applyServerErrors(error: unknown) {
     const serverErrors = fieldErrorsOf(error)
-    if (serverErrors) {
-      fieldErrors.value = formErrorsOnly(serverErrors, vacancyFormFieldKeys)
+    if (!serverErrors) {
+      return
     }
+    const formErrors = formErrorsOnly(serverErrors, vacancyFormFieldKeys)
+    formRef.value?.setErrors(
+      Object.entries(formErrors).flatMap(([key, messages]) =>
+        messages.map((message) => ({
+          name: vacancyServerFieldNames[key] ?? key,
+          message,
+        })),
+      ),
+    )
   },
 })
 </script>
 
 <template>
-  <AppDialog :open="open" :title="dialogTitle" @close="emit('close')">
-    <form class="vform" novalidate @submit.prevent="submit">
-      <AppField label="Vacancy title" :error="firstError('title')">
-        <template #default="{ id }">
-          <input
-            :id="id"
+  <UModal
+    :open="open"
+    :title="dialogTitle"
+    :dismissible="!saving"
+    @update:open="(value) => { if (!value) emit('close') }"
+  >
+    <template #body>
+      <UForm
+        ref="formRef"
+        :schema="vacancyFormSchema"
+        :state="form"
+        class="flex flex-col gap-5"
+        @submit="onSubmit"
+      >
+        <UFormField label="Vacancy title" name="title">
+          <UInput
             v-model="form.title"
-            type="text"
             placeholder="e.g. Senior Welder"
             maxlength="200"
             autocomplete="off"
+            class="w-full"
           />
-        </template>
-      </AppField>
+        </UFormField>
 
-      <AppField label="Opening date" :error="firstError('openedon')">
-        <template #default="{ id }">
-          <input :id="id" v-model="form.openedOn" type="date" />
-        </template>
-      </AppField>
+        <UFormField label="Opening date" name="openedOn">
+          <UInput v-model="form.openedOn" type="date" class="w-full" />
+        </UFormField>
 
-      <AppField
-        label="Skill requirements"
-        :error="firstError('requirements')"
-        hint="CVs are sorted against these. Add at least one."
-      >
-        <template #default>
-          <div class="vform__requirements">
+        <UFormField
+          label="Skill requirements"
+          name="requirements"
+          hint="CVs are sorted against these. Add at least one."
+        >
+          <div class="flex flex-col gap-2 w-full">
             <div
               v-for="(row, index) in form.requirements"
               :key="row.id"
-              class="vform__requirement-row"
+              class="flex items-center gap-2"
             >
-              <input
+              <UInput
                 v-model="row.value"
-                type="text"
                 :placeholder="`Requirement ${index + 1}`"
                 maxlength="200"
                 autocomplete="off"
                 :aria-label="`Requirement ${index + 1}`"
+                class="flex-1"
               />
-              <button
-                type="button"
-                class="vform__remove-req"
+              <UButton
+                icon="i-lucide-x"
+                color="neutral"
+                variant="ghost"
                 :aria-label="`Remove requirement ${index + 1}`"
                 :disabled="form.requirements.length === 1"
                 @click="removeRequirement(index)"
-              >
-                <AppIcon name="close" :size="16" />
-              </button>
+              />
             </div>
-            <button type="button" class="vform__add-req" @click="addRequirement">
-              <AppIcon name="plus" :size="16" />
+            <UButton
+              icon="i-lucide-plus"
+              color="primary"
+              variant="outline"
+              class="self-start border-dashed"
+              @click="addRequirement"
+            >
               Add requirement
-            </button>
+            </UButton>
           </div>
-        </template>
-      </AppField>
-    </form>
+        </UFormField>
+      </UForm>
+    </template>
 
     <template #footer>
-      <AppButton variant="ghost" :disabled="saving" @click="emit('close')">Cancel</AppButton>
-      <AppButton :loading="saving" @click="submit">
-        {{ isEdit ? 'Save changes' : 'Create vacancy' }}
-      </AppButton>
+      <div class="flex justify-end gap-2">
+        <UButton color="neutral" variant="outline" :disabled="saving" @click="emit('close')">
+          Cancel
+        </UButton>
+        <UButton :loading="saving" @click="formRef?.submit()">
+          {{ isEdit ? 'Save changes' : 'Create vacancy' }}
+        </UButton>
+      </div>
     </template>
-  </AppDialog>
+  </UModal>
 </template>
-
-<style scoped>
-.vform {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-}
-
-.vform__requirements {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.vform__requirement-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.vform__remove-req {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  flex-shrink: 0;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.vform__remove-req:hover:not(:disabled) {
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-
-.vform__remove-req:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.vform__add-req {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  align-self: flex-start;
-  margin-top: var(--space-1);
-  padding: 0.4rem 0.75rem;
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--accent);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.vform__add-req:hover {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-}
-</style>

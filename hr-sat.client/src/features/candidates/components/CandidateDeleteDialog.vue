@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import ConfirmDialog from '@/shared/ui/ConfirmDialog.vue'
 import type { CandidateSummary } from '../api'
 import { candidateDisplayName } from '../format'
 
@@ -20,31 +19,37 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <ConfirmDialog
+  <UModal
     :open="open"
     title="Delete candidate"
-    confirm-label="Delete candidate"
-    :confirming="deleting"
-    :error="error"
-    @close="emit('close')"
-    @confirm="emit('confirm')"
+    :dismissible="!deleting"
+    @update:open="(value) => { if (!value) emit('close') }"
   >
-    <p class="confirm__text">
-      Delete <strong>{{ candidate ? candidateDisplayName(candidate) : '' }}</strong
-      >? This permanently removes the candidate and their CV documents and can't be undone.
-    </p>
-  </ConfirmDialog>
+    <template #body>
+      <p class="confirm__text text-base leading-relaxed text-highlighted">
+        Delete <strong>{{ candidate ? candidateDisplayName(candidate) : '' }}</strong
+        >? This permanently removes the candidate and their CV documents and can't be undone.
+      </p>
+      <UAlert
+        v-if="error"
+        color="error"
+        variant="subtle"
+        icon="i-lucide-triangle-alert"
+        :title="error"
+        role="alert"
+        class="mt-3"
+      />
+    </template>
+
+    <template #footer>
+      <div class="flex justify-end gap-2">
+        <UButton color="neutral" variant="outline" :disabled="deleting" @click="emit('close')">
+          Cancel
+        </UButton>
+        <UButton color="error" :loading="deleting" @click="emit('confirm')">
+          Delete candidate
+        </UButton>
+      </div>
+    </template>
+  </UModal>
 </template>
-
-<style scoped>
-.confirm__text {
-  margin: 0;
-  font-size: var(--text-base);
-  color: var(--text);
-  line-height: 1.6;
-}
-
-.confirm__text strong {
-  font-weight: 600;
-}
-</style>

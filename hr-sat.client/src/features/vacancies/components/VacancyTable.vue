@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import IconButton from '@/shared/ui/IconButton.vue'
 import StatusBadge from './StatusBadge.vue'
 import type { VacancySummary } from '../api'
 import { formatDate, progressPercent } from '../format'
@@ -15,192 +14,85 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="vtable">
-    <div class="vtable__head">
-      <span class="vtable__col vtable__col--role">Vacancy</span>
-      <span class="vtable__col vtable__col--status">Status</span>
-      <span class="vtable__col vtable__col--progress">Candidates</span>
-      <span class="vtable__col vtable__col--date">Opened</span>
-      <span class="vtable__col vtable__col--actions"><span class="sr-only">Actions</span></span>
-    </div>
+  <div class="overflow-x-auto">
+    <div class="vtable flex min-w-[52rem] flex-col">
+      <div class="vtable__head grid grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,1fr)_5rem] items-center gap-4 border-b border-default px-5 pb-3">
+        <span class="vtable__col vtable__col--role text-xs font-semibold uppercase tracking-[0.06em] text-muted">Vacancy</span>
+        <span class="vtable__col vtable__col--status text-xs font-semibold uppercase tracking-[0.06em] text-muted">Status</span>
+        <span class="vtable__col vtable__col--progress text-xs font-semibold uppercase tracking-[0.06em] text-muted">Candidates</span>
+        <span class="vtable__col vtable__col--date text-xs font-semibold uppercase tracking-[0.06em] text-muted">Opened</span>
+        <span class="vtable__col vtable__col--actions text-xs font-semibold uppercase tracking-[0.06em] text-muted"><span class="sr-only">Actions</span></span>
+      </div>
 
-    <ul class="vtable__body">
-      <li v-for="row in rows" :key="row.id" class="vrow">
-        <div class="vtable__col vtable__col--role">
-          <RouterLink
-            class="vrow__title vrow__title--link"
-            :to="{ name: 'vacancy-detail', params: { id: row.id } }"
-          >
-            {{ row.title }}
-          </RouterLink>
-        </div>
+      <ul class="vtable__body m-0 list-none p-0">
+        <li v-for="row in rows" :key="row.id" class="vrow group grid grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,1fr)_5rem] items-center gap-4 border-b border-default px-5 py-4 transition-colors last:border-b-0 hover:bg-muted">
+          <div class="vtable__col vtable__col--role min-w-0">
+            <RouterLink
+              class="vrow__title vrow__title--link block truncate text-base font-semibold text-highlighted no-underline hover:text-primary hover:underline"
+              :to="{ name: 'vacancy-detail', params: { id: row.id } }"
+            >
+              {{ row.title }}
+            </RouterLink>
+          </div>
 
-        <div class="vtable__col vtable__col--status">
-          <StatusBadge :status="row.status" />
-        </div>
+          <div class="vtable__col vtable__col--status">
+            <StatusBadge :status="row.status" />
+          </div>
 
-        <div class="vtable__col vtable__col--progress">
-          <div class="vrow__progress">
-            <div class="vrow__progress-track">
-              <div class="vrow__progress-bar" :style="{ width: `${progressPercent(row.progress)}%` }" />
+          <div class="vtable__col vtable__col--progress">
+            <div class="vrow__progress flex items-center gap-3">
+              <div class="vrow__progress-track h-1.5 min-w-14 flex-1 overflow-hidden rounded-full bg-muted">
+                <div
+                  class="vrow__progress-bar h-full rounded-full bg-primary transition-[width] duration-300"
+                  :style="{ width: `${progressPercent(row.progress)}%` }"
+                />
+              </div>
+              <span class="vrow__progress-text whitespace-nowrap text-sm font-medium tabular-nums text-muted">
+                {{ row.progress.processedCandidates }}/{{ row.progress.totalCandidates }}
+              </span>
             </div>
-            <span class="vrow__progress-text">
-              {{ row.progress.processedCandidates }}/{{ row.progress.totalCandidates }}
-            </span>
           </div>
-        </div>
 
-        <div class="vtable__col vtable__col--date">
-          <span class="vrow__date">{{ formatDate(row.openedOn) }}</span>
-        </div>
-
-        <div class="vtable__col vtable__col--actions">
-          <div v-if="row.status === 'open'" class="vrow__actions">
-            <IconButton icon="pencil" label="Edit vacancy" @click="emit('edit', row)" />
-            <IconButton icon="trash" label="Delete vacancy" variant="danger" @click="emit('remove', row)" />
+          <div class="vtable__col vtable__col--date">
+            <span class="vrow__date whitespace-nowrap text-sm text-muted">{{ formatDate(row.openedOn) }}</span>
           </div>
-        </div>
-      </li>
-    </ul>
+
+          <div class="vtable__col vtable__col--actions">
+            <div
+              v-if="row.status === 'open'"
+              class="vrow__actions flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+            >
+              <UButton
+                icon="i-lucide-pencil"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                aria-label="Edit vacancy"
+                title="Edit vacancy"
+                @click="emit('edit', row)"
+              />
+              <UButton
+                icon="i-lucide-trash-2"
+                color="error"
+                variant="ghost"
+                size="sm"
+                aria-label="Delete vacancy"
+                title="Delete vacancy"
+                @click="emit('remove', row)"
+              />
+            </div>
+          </div>
+        </li>
+      </ul>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.vtable {
-  display: flex;
-  flex-direction: column;
-}
-
-.vtable__head {
-  display: grid;
-  grid-template-columns: var(--vtable-columns, minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr) 5rem);
-  gap: var(--space-4);
-  align-items: center;
-  padding: 0 var(--space-5) var(--space-3);
-  border-bottom: 1px solid var(--border);
-}
-
-.vtable__head .vtable__col {
-  font-size: var(--text-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-}
-
-.vtable__body {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.vrow {
-  display: grid;
-  grid-template-columns: var(--vtable-columns, minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr) 5rem);
-  gap: var(--space-4);
-  align-items: center;
-  padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--border);
-  transition: background 0.15s ease;
-}
-
-.vrow:last-child {
-  border-bottom: none;
-}
-
-.vrow:hover {
-  background: var(--surface-subtle);
-}
-
-.vtable__col--role {
-  min-width: 0;
-}
-
-.vrow__title {
-  display: block;
-  font-size: var(--text-base);
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.vrow__title--link {
-  text-decoration: none;
-  border-radius: var(--radius-sm);
-}
-
-.vrow__title--link:hover {
-  color: var(--accent);
-  text-decoration: underline;
-}
-
-.vrow__progress {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.vrow__progress-track {
-  flex: 1;
-  min-width: 3.5rem;
-  height: 0.4rem;
-  border-radius: var(--radius-pill);
-  background: var(--neutral-chip-bg);
-  overflow: hidden;
-}
-
-.vrow__progress-bar {
-  height: 100%;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  transition: width 0.3s ease;
-}
-
-.vrow__progress-text {
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.vrow__date {
-  font-size: var(--text-sm);
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.vrow__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-1);
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.vrow:hover .vrow__actions,
-.vrow:focus-within .vrow__actions {
-  opacity: 1;
-}
-
 @media (hover: none) {
   .vrow__actions {
     opacity: 1;
   }
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
 }
 </style>
 

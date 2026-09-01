@@ -1,14 +1,12 @@
 import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { toast } from 'vue-sonner'
 
 import VacancyDetailView from './VacancyDetailView.vue'
 
-vi.mock('vue-sonner', () => ({
-  toast: {
-    error: vi.fn(),
-    success: vi.fn(),
-  },
+const toastAdd = vi.fn()
+
+vi.mock('@nuxt/ui/composables/useToast', () => ({
+  useToast: () => ({ add: toastAdd }),
 }))
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -189,9 +187,11 @@ describe('VacancyDetailView', () => {
     expect(wrapper.text()).toContain('broken.eml')
     expect(wrapper.text()).toContain('Failed')
     expect(wrapper.text()).toContain('at least one valid PDF attachment')
-    expect(toast.success).toHaveBeenCalledWith(
-      'Import complete: 1 imported, 1 failed',
-      expect.anything(),
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Import complete: 1 imported, 1 failed',
+        color: 'success',
+      }),
     )
     wrapper.unmount()
   })
@@ -272,7 +272,7 @@ describe('VacancyDetailView', () => {
     // The dialog stays open with the failure visible next to the drop zone.
     expect(document.body.textContent).toContain('At least one .eml file is required.')
     expect(document.body.querySelector('.dropzone')).not.toBeNull()
-    expect(toast.success).not.toHaveBeenCalled()
+    expect(toastAdd).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 
@@ -364,9 +364,11 @@ describe('VacancyDetailView', () => {
     await flushPromises()
 
     expect(deleted).toBe(true)
-    expect(toast.success).toHaveBeenCalledWith(
-      'Candidate "Bob Builder" deleted successfully',
-      expect.anything(),
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Candidate "Bob Builder" deleted successfully',
+        color: 'success',
+      }),
     )
     expect(wrapper.text()).toContain('Alice Applicant')
     expect(wrapper.text()).not.toContain('Bob Builder')
@@ -400,7 +402,7 @@ describe('VacancyDetailView', () => {
     expect(document.body.textContent).toContain('API request failed with status 500')
     expect(document.body.textContent).toContain("can't be undone")
     expect(wrapper.text()).toContain('Bob Builder')
-    expect(toast.success).not.toHaveBeenCalled()
+    expect(toastAdd).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 

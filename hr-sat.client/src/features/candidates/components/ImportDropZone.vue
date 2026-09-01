@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { shallowRef, useTemplateRef } from 'vue'
-import AppButton from '@/shared/ui/AppButton.vue'
-import AppIcon from '@/shared/ui/AppIcon.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -78,8 +76,11 @@ function emitFiles(files: File[]) {
 
 <template>
   <div
-    class="dropzone"
-    :class="{ 'dropzone--active': dragOver, 'dropzone--busy': busy }"
+    class="dropzone flex min-h-60 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-accented bg-muted p-10 text-center transition-colors"
+    :class="{
+      'dropzone--active border-primary bg-primary/10': dragOver,
+      'dropzone--busy border-solid': busy,
+    }"
     role="region"
     aria-label="Import .eml files"
     @dragenter.prevent="onDragEnter"
@@ -87,20 +88,30 @@ function emitFiles(files: File[]) {
     @dragleave.prevent="onDragLeave"
     @drop.prevent="onDrop"
   >
-    <span class="dropzone__icon" aria-hidden="true">
-      <AppIcon name="upload" :size="26" />
+    <span
+      class="dropzone__icon mb-2 inline-flex size-14 items-center justify-center rounded-xl bg-primary/10 text-primary"
+      :class="{ 'bg-default': dragOver }"
+      aria-hidden="true"
+    >
+      <UIcon name="i-lucide-upload" class="size-7" />
     </span>
-    <p class="dropzone__title">Drop eml export to import the data</p>
-    <p class="dropzone__hint">
+    <p class="dropzone__title text-lg font-semibold text-highlighted">Drop eml export to import the data</p>
+    <p class="dropzone__hint max-w-md text-sm text-muted">
       Each email becomes a candidate of this vacancy; PDF attachments are kept as CV documents.
     </p>
-    <AppButton variant="ghost" :disabled="disabled" :loading="busy" @click="openFilePicker">
+    <UButton
+      color="neutral"
+      variant="outline"
+      :disabled="disabled"
+      :loading="busy"
+      @click="openFilePicker"
+    >
       {{ busy ? 'Importing…' : 'Choose .eml files' }}
-    </AppButton>
+    </UButton>
     <input
       ref="fileInput"
       type="file"
-      class="dropzone__input"
+      class="sr-only"
       accept=".eml"
       multiple
       :disabled="disabled || busy"
@@ -109,75 +120,3 @@ function emitFiles(files: File[]) {
     />
   </div>
 </template>
-
-<style scoped>
-.dropzone {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  text-align: center;
-  padding: var(--space-10) var(--space-6);
-  min-height: 15rem;
-  background: var(--surface-subtle);
-  border: 2px dashed var(--border-strong);
-  border-radius: var(--radius);
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.dropzone--active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.dropzone--busy {
-  border-style: solid;
-}
-
-.dropzone__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 3.5rem;
-  height: 3.5rem;
-  border-radius: var(--radius);
-  background: var(--accent-soft);
-  color: var(--accent);
-  margin-bottom: var(--space-2);
-}
-
-.dropzone--active .dropzone__icon {
-  background: var(--surface);
-}
-
-.dropzone__title {
-  margin: 0;
-  font-size: var(--text-lg);
-  font-weight: 600;
-  color: var(--text);
-}
-
-.dropzone__hint {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--text-sm);
-  max-width: 30rem;
-}
-
-.dropzone .btn {
-  margin-top: var(--space-3);
-}
-
-.dropzone__input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-</style>

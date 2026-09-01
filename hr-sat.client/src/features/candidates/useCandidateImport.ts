@@ -1,5 +1,5 @@
 import { shallowRef, watch, type Ref } from 'vue'
-import { toast } from 'vue-sonner'
+import { useToast } from '@nuxt/ui/composables/useToast'
 import { fieldErrorsOf, firstNonFieldError } from '@/shared/validation'
 import {
   importCandidates,
@@ -9,6 +9,7 @@ import {
 } from '@/features/candidates/api'
 
 export function useCandidateImport(vacancyId: Ref<string>) {
+  const toast = useToast()
   const importing = shallowRef(false)
   const importError = shallowRef<string | null>(null)
   const results = shallowRef<ImportFileResult[] | null>(null)
@@ -44,25 +45,25 @@ export function useCandidateImport(vacancyId: Ref<string>) {
     importError.value = null
   }
 
-  return { importing, importError, results, importFiles, clearError }
-}
-
-function announceResults(results: ImportFileResult[]): void {
-  const countOf = (status: ImportFileStatus) =>
-    results.filter((result) => result.status === status).length
-  const imported = countOf('imported')
-  const skipped = countOf('skipped')
-  const failed = countOf('failed')
-  const summary = [
-    `${imported} imported`,
-    ...(skipped > 0 ? [`${skipped} skipped`] : []),
-    ...(failed > 0 ? [`${failed} failed`] : []),
-  ].join(', ')
-  if (imported > 0) {
-    toast.success(`Import complete: ${summary}`, { closeButton: true })
-  } else {
-    toast.error(`No candidates imported: ${summary}`, { closeButton: true })
+  function announceResults(importResults: ImportFileResult[]): void {
+    const countOf = (status: ImportFileStatus) =>
+      importResults.filter((result) => result.status === status).length
+    const imported = countOf('imported')
+    const skipped = countOf('skipped')
+    const failed = countOf('failed')
+    const summary = [
+      `${imported} imported`,
+      ...(skipped > 0 ? [`${skipped} skipped`] : []),
+      ...(failed > 0 ? [`${failed} failed`] : []),
+    ].join(', ')
+    if (imported > 0) {
+      toast.add({ title: `Import complete: ${summary}`, color: 'success' })
+    } else {
+      toast.add({ title: `No candidates imported: ${summary}`, color: 'error' })
+    }
   }
+
+  return { importing, importError, results, importFiles, clearError }
 }
 
 function describeError(error: unknown): string {
