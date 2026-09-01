@@ -1,4 +1,6 @@
 # AGENTS.md
+## Commit rules
+Don't commit the changes automatically, I'll push myself.
 
 ## Architecture contract
 

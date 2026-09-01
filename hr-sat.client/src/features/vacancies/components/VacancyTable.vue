@@ -11,39 +11,47 @@ const emit = defineEmits<{
   edit: [row: VacancySummary]
   remove: [row: VacancySummary]
 }>()
+
+// Column proportions applied via <colgroup> so the semantic table keeps a fixed layout.
+const columnWidths = ['32%', '13%', '25%', '13%', '5rem']
 </script>
 
 <template>
   <div class="overflow-x-auto">
-    <div class="vtable flex min-w-[52rem] flex-col">
-      <div class="vtable__head grid grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,1fr)_5rem] items-center gap-4 border-b border-default px-5 pb-3">
-        <span class="vtable__col vtable__col--role text-xs font-semibold uppercase tracking-[0.06em] text-muted">Vacancy</span>
-        <span class="vtable__col vtable__col--status text-xs font-semibold uppercase tracking-[0.06em] text-muted">Status</span>
-        <span class="vtable__col vtable__col--progress text-xs font-semibold uppercase tracking-[0.06em] text-muted">Candidates</span>
-        <span class="vtable__col vtable__col--date text-xs font-semibold uppercase tracking-[0.06em] text-muted">Opened</span>
-        <span class="vtable__col vtable__col--actions text-xs font-semibold uppercase tracking-[0.06em] text-muted"><span class="sr-only">Actions</span></span>
-      </div>
+    <table class="vtable w-full min-w-[52rem] table-fixed border-collapse">
+      <colgroup>
+        <col v-for="width in columnWidths" :key="width" :style="{ width }" />
+      </colgroup>
+      <thead class="vtable__head">
+        <tr>
+          <th scope="col" class="vtable__col vtable__col--role border-b border-default px-2 pb-3 pt-0 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5">Vacancy</th>
+          <th scope="col" class="vtable__col vtable__col--status border-b border-default px-2 pb-3 pt-0 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5">Status</th>
+          <th scope="col" class="vtable__col vtable__col--progress border-b border-default px-2 pb-3 pt-0 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5">Candidates</th>
+          <th scope="col" class="vtable__col vtable__col--date border-b border-default px-2 pb-3 pt-0 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5">Opened</th>
+          <th scope="col" class="vtable__col vtable__col--actions border-b border-default px-2 pb-3 pt-0 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
 
-      <ul class="vtable__body m-0 list-none p-0">
-        <li v-for="row in rows" :key="row.id" class="vrow group grid grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,1fr)_5rem] items-center gap-4 border-b border-default px-5 py-4 transition-colors last:border-b-0 hover:bg-muted">
-          <div class="vtable__col vtable__col--role min-w-0">
+      <tbody>
+        <tr v-for="row in rows" :key="row.id" class="vrow group">
+          <td class="vtable__col vtable__col--role border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
             <RouterLink
               class="vrow__title vrow__title--link block truncate text-base font-semibold text-highlighted no-underline hover:text-primary hover:underline"
               :to="{ name: 'vacancy-detail', params: { id: row.id } }"
             >
               {{ row.title }}
             </RouterLink>
-          </div>
+          </td>
 
-          <div class="vtable__col vtable__col--status">
+          <td class="vtable__col vtable__col--status border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
             <StatusBadge :status="row.status" />
-          </div>
+          </td>
 
-          <div class="vtable__col vtable__col--progress">
+          <td class="vtable__col vtable__col--progress border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
             <div class="vrow__progress flex items-center gap-3">
               <div class="vrow__progress-track h-1.5 min-w-14 flex-1 overflow-hidden rounded-full bg-muted">
                 <div
-                  class="vrow__progress-bar h-full rounded-full bg-primary transition-[width] duration-300"
+                  class="vrow__progress-bar h-full rounded-full bg-primary"
                   :style="{ width: `${progressPercent(row.progress)}%` }"
                 />
               </div>
@@ -51,13 +59,13 @@ const emit = defineEmits<{
                 {{ row.progress.processedCandidates }}/{{ row.progress.totalCandidates }}
               </span>
             </div>
-          </div>
+          </td>
 
-          <div class="vtable__col vtable__col--date">
+          <td class="vtable__col vtable__col--date border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
             <span class="vrow__date whitespace-nowrap text-sm text-muted">{{ formatDate(row.openedOn) }}</span>
-          </div>
+          </td>
 
-          <div class="vtable__col vtable__col--actions">
+          <td class="vtable__col vtable__col--actions border-b border-default px-2 py-4 text-right align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
             <div
               v-if="row.status === 'open'"
               class="vrow__actions flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
@@ -81,14 +89,18 @@ const emit = defineEmits<{
                 @click="emit('remove', row)"
               />
             </div>
-          </div>
-        </li>
-      </ul>
-    </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 </template>
 
 <style scoped>
+.vrow:last-child .vtable__col {
+  border-bottom: none;
+}
+
 @media (hover: none) {
   .vrow__actions {
     opacity: 1;
