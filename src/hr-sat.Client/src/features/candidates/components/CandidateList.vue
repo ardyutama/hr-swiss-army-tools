@@ -9,6 +9,7 @@ import { candidateDisplayName } from '../format'
 
 const props = withDefaults(
   defineProps<{
+    vacancyId: string
     candidates: CandidateSummary[]
     readonly?: boolean
   }>(),
@@ -62,7 +63,7 @@ const columnWidths = computed(() =>
       <thead class="ctable__head">
         <tr>
           <th class="ctable__col border-b border-default px-2 pb-3 pt-2 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5" scope="col">Candidate</th>
-          <th class="ctable__col border-b border-default px-2 pb-3 pt-2 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5" scope="col">Match Status</th>
+          <th class="ctable__col border-b border-default px-2 pb-3 pt-2 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5" scope="col">Match</th>
           <th class="ctable__col border-b border-default px-2 pb-3 pt-2 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5" scope="col">Notes</th>
           <th class="ctable__col border-b border-default px-2 pb-3 pt-2 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5" scope="col">Status</th>
           <th v-if="!readonly" class="ctable__col ctable__col--actions border-b border-default px-2 pb-3 pt-0 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5" scope="col">
@@ -75,7 +76,12 @@ const columnWidths = computed(() =>
         <tr v-for="candidate in candidates" :key="candidate.id" class="crow group">
           <td class="ctable__col crow__name border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
             <div class="flex min-w-0 flex-col items-start gap-1">
-              <span class="crow__name-text block max-w-full truncate text-sm font-semibold text-highlighted">{{ candidateDisplayName(candidate) }}</span>
+              <RouterLink
+                :to="{ name: 'candidate-review', params: { id: props.vacancyId, candidateId: candidate.id } }"
+                class="crow__name-text block max-w-full truncate rounded-sm text-sm font-semibold text-highlighted no-underline hover:underline"
+              >
+                {{ candidateDisplayName(candidate) }}
+              </RouterLink>
               <UBadge
                 :color="extractionStatusColors[candidate.extractionStatus]"
                 variant="subtle"

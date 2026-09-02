@@ -26,6 +26,9 @@ discipline only — not hero/bento/marquee rules.
    background `#f7f6f3`, ink `#1e2430`, sidebar `#202634`/`#c2c9d6`, primary `#4361a8`,
    success `#1c7c43`, error `#c94f4f`, radius 12px — as the locked palette. One accent
    (primary blue) per screen; status colors reserved for semantic state only.
+   **Amendment (2026-09-02, S4 design session)**: add one warm amber token
+   (`#b45309`, Tailwind amber-700) used *only* for the Flagged state in the review
+   workspace; all other statuses keep their existing colors.
 3. **Density**: working-dense (5–6/10): compact table rows, ≥40px hit targets, generous
    whitespace *between* sections, not inside rows.
 4. **Shape lock**: one radius scale — 12px on cards/dialogs/inputs, full-pill on badges
@@ -40,7 +43,7 @@ discipline only — not hero/bento/marquee rules.
    data column (requirements, candidate details, email, notes) is the supporting
    checklist at ~40–45%.
 8. **Review action bar**: mouse-first buttons with visible keyboard hints (`kbd` chips:
-   `←`/`→` navigate, `A`/`F`/`R` decide). Hit targets ≥40px on this bar. Power users
+   `←`/`→` navigate, `S`/`F`/`R` decide). Hit targets ≥40px on this bar. Power users
    grow into shortcuts; nobody needs a tutorial.
 9. **Notes commit contract**: a review decision (Shortlist/Flag/Reject) silently saves
    pending notes; Prev/Next navigation auto-saves too. No explicit Save dependency, no

@@ -24,6 +24,9 @@
   --color-error-soft: #fbecec;
   --color-error-hover: #a93e3e;
 
+  /* ADR-0008 #2 amendment: one warm amber, used only for the Flagged review state. */
+  --color-warning: #b45309;
+
   --radius-default: 12px;
 }
 

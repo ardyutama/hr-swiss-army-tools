@@ -225,6 +225,7 @@ async function confirmDeleteCandidate() {
 
         <CandidateList
           v-else
+          :vacancy-id="id"
           :candidates="candidates ?? []"
           :readonly="isClosed"
           @remove="requestDeleteCandidate"

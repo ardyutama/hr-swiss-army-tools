@@ -309,7 +309,7 @@ describe('VacancyDetailView', () => {
     // One row per candidate under the sketch's columns.
     const header = wrapper.find('.ctable__head')
     expect(header.text()).toContain('Candidate')
-    expect(header.text()).toContain('Match Status')
+    expect(header.text()).toContain('Match')
     expect(header.text()).toContain('Notes')
     expect(header.text()).toContain('Status')
 
