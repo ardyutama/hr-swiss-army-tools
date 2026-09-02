@@ -40,7 +40,7 @@ the patterns those articles recommend:
 - The domain-validation exception convention stays: `DomainValidationException` +
   `DomainValidationExceptionHandler` remains the single path from business-rule failure
   to RFC 7807 response, in place of a Result-pattern rewrite.
-- The slice layout contract is executable: `hr-sat.Server.Tests/Architecture/` enforces
+- The slice layout contract is executable: `tests/hr-sat.Tests/Architecture/` enforces
   slice isolation, domain purity, and the public surface of `Features/`.
 
 ## Consequences

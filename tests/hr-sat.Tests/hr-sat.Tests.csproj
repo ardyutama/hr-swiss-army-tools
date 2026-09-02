@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\src\hr-sat.Web.Api\hr-sat.Web.Api.csproj" />
+    <ProjectReference Include="..\..\src\hr-sat.Web.Api\hr-sat.Web.Api.csproj" />
   </ItemGroup>
 
 </Project>
