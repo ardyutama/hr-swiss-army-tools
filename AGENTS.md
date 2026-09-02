@@ -11,8 +11,8 @@ a full vertical slice: schema → API → client → seam tests, in `docs/agents
 
 ### Frontend slice layout
 
-One user flow = one page under `hr-sat.client/src/pages/<page>/` plus one feature module
-under `hr-sat.client/src/features/<feature>/`.
+One user flow = one page under `src/hr-sat.client/src/pages/<page>/` plus one feature module
+under `src/hr-sat.client/src/features/<feature>/`.
 
 `src/pages/<page>/`:
 

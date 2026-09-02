@@ -4,7 +4,9 @@
     <Project Path="src/hr-sat.Application/hr-sat.Application.csproj" />
     <Project Path="src/hr-sat.Infrastructure/hr-sat.Infrastructure.csproj" />
     <Project Path="src/hr-sat.Web.Api/hr-sat.Web.Api.csproj" />
+    <Project Path="src/hr-sat.client/hr-sat.client.esproj" />
   </Folder>
-  <Project Path="hr-sat.client/hr-sat.client.esproj" />
-  <Project Path="hr-sat.Tests/hr-sat.Tests.csproj" />
+  <Folder Name="/tests/">
+    <Project Path="tests/hr-sat.Tests/hr-sat.Tests.csproj" />
+  </Folder>
 </Solution>

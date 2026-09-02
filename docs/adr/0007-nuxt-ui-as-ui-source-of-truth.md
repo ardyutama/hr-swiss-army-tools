@@ -7,9 +7,9 @@ Accepted (2026-09-01).
 ## Context
 
 The client shipped a hand-rolled design system: nine bespoke wrappers in
-`hr-sat.client/src/shared/ui/` (`AppButton`, `AppDialog`, `AppField`, `AppIcon`,
+`src/hr-sat.client/src/shared/ui/` (`AppButton`, `AppDialog`, `AppField`, `AppIcon`,
 `AppShell`, `AppSidebar`, `ConfirmDialog`, `IconButton`, `StatCard`) styled by a custom
-property design system in `hr-sat.client/src/style.css`, plus `vue-sonner` for toasts.
+property design system in `src/hr-sat.client/src/style.css`, plus `vue-sonner` for toasts.
 Every new flow component meant styling from scratch against those tokens, and the
 wrappers re-implemented accessibility and interaction behavior (focus traps, keyboard
 handling, ARIA wiring) that mature libraries already solve.
@@ -30,7 +30,7 @@ The alternatives considered:
 
 ## Decision
 
-- Nuxt UI v4 is the single source of truth for UI components in `hr-sat.client/`.
+- Nuxt UI v4 is the single source of truth for UI components in `src/hr-sat.client/`.
   Feature and page code import `U*` components directly (via the plugin's
   auto-imports); no repo-level `App*` wrapper layer is reintroduced.
 - Tailwind CSS v4 is the styling system. Design tokens live in `@theme` in
