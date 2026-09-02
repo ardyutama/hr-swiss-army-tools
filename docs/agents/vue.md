@@ -1,6 +1,6 @@
 # Vue Client Development
 
-This guide applies to every change under `src/hr-sat.client/`, including Vue single-file
+This guide applies to every change under `src/hr-sat.Client/`, including Vue single-file
 components, composables, API clients, shared client helpers, routing, configuration, and
 client tests. Nuxt UI v4 is the UI source of truth and Tailwind CSS v4 is the styling system;
 the migration decision is recorded in `docs/adr/0007-nuxt-ui-as-ui-source-of-truth.md`.
@@ -38,12 +38,14 @@ guide and `docs/agents/workflow.md` are the local source of truth when they diff
 
 ### Architecture
 
-- Put route views in `src/hr-sat.client/src/pages/<page>/` — one thin view per route plus its
-  seam test — and feature behavior in `src/hr-sat.client/src/features/<feature>/`:
+- Put route views in `src/hr-sat.Client/src/pages/<page>/` — one thin view per route plus its
+  seam test — and feature behavior in `src/hr-sat.Client/src/features/<feature>/`:
   composables, API client, validation, formatting, and feature components. Pages compose
   feature modules; features never import from pages or from a sibling feature's internals
   (cross-feature imports use the feature's root modules only).
-- Keep `src/hr-sat.client/src/shared/` as the thin shared kernel for reusable HTTP and validation
+- Keep the project name `hr-sat.Client` with PascalCase `Client`; use kebab-case for client
+  feature and page directories and PascalCase for Vue component filenames.
+- Keep `src/hr-sat.Client/src/shared/` as the thin shared kernel for reusable HTTP and validation
   helpers. Use Nuxt UI components directly for visual UI; do not add an `App*` wrapper layer.
   Feature state and feature-specific API behavior stay in the feature folder.
 - Use Vue 3 Composition API with `<script setup lang="ts">` for new components. Keep
@@ -107,7 +109,7 @@ guide and `docs/agents/workflow.md` are the local source of truth when they diff
 - For teleported dialogs, assert against `document.body` and clear teleported content
   between tests.
 - Oxlint is the sole client linter. Keep type checking with `vue-tsc` and use the scripts in
-  `hr-sat.client/package.json` for linting, type checking, tests, and builds; do not add a
+  `hr-sat.Client/package.json` for linting, type checking, tests, and builds; do not add a
   second lint stack without revisiting ADR 0001.
 
 ## Completion Check

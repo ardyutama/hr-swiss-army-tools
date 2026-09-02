@@ -11,8 +11,8 @@ a full vertical slice: schema → API → client → seam tests, in `docs/agents
 
 ### Frontend slice layout
 
-One user flow = one page under `src/hr-sat.client/src/pages/<page>/` plus one feature module
-under `src/hr-sat.client/src/features/<feature>/`.
+One user flow = one page under `src/hr-sat.Client/src/pages/<page>/` plus one feature module
+under `src/hr-sat.Client/src/features/<feature>/`.
 
 `src/pages/<page>/`:
 
@@ -48,7 +48,7 @@ playbooks for the matching task.
 
 ### Vue client development
 
-For client-side work in `hr-sat.client/` (Vue SFCs, composables, router, shared UI, Vite
+For client-side work in `src/hr-sat.Client/` (Vue SFCs, composables, router, shared UI, Vite
 configuration, or frontend tests), read `docs/agents/vue.md`. It defines the repository's
 frontend rules and points to the required Vue, router, and testing best-practice skills.
 Nuxt UI v4 is the client UI source of truth: import its components directly, style with
