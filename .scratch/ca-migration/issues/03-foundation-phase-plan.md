@@ -27,6 +27,6 @@ Decide the ordered foundation phases and their exact contents. Candidate phases
 
 Also decide: does `hr-sat.Server.csproj` retire entirely (Web.Api inherits the
 composition root and `wwwroot` client serving), and what happens to the
-`hr-sat.client.esproj` F5 pairing.
+`hr-sat.Client.esproj` F5 pairing.
 
 ## Comments

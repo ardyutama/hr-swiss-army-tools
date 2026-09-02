@@ -46,6 +46,12 @@ src/Web.Api/           composition root plus minimal-API endpoints mirrored per 
                        at Endpoints/{Feature}/{UseCase}.cs
 ```
 
+### Naming and placement
+
+- Keep product project names in the `hr-sat.{Module}` form, including `hr-sat.Client`.
+- Place product projects under `src/` and test projects under `tests/`.
+- Name backend feature folders with plural domain nouns from `CONTEXT.md`, use-case folders `{Verb}{Entity}`, and endpoint files under `Endpoints/{Feature}/{UseCase}/`.
+
 Within a slice folder, keep **one type per file**, each file named exactly after the type
 it holds (`UpdateVacancyCommand.cs`, `UpdateVacancyCommandValidator.cs`,
 `UpdateVacancyCommandHandler.cs`). The command/query record, its validator, and the
