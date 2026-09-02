@@ -8,6 +8,7 @@ import { candidateDisplayName, formatReceivedAt } from '../format'
 
 withDefaults(
   defineProps<{
+    vacancyId: string
     candidates: CandidateSummary[]
     requirements: string[]
     receivedSort: ReceivedSort

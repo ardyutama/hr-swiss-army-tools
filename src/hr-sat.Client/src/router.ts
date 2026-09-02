@@ -14,5 +14,11 @@ export const router = createRouter({
       component: () => import('@/pages/vacancy-detail/VacancyDetailView.vue'),
       props: true,
     },
+    {
+      path: '/vacancies/:id/review/:candidateId',
+      name: 'candidate-review',
+      component: () => import('@/pages/review/ReviewView.vue'),
+      props: true,
+    },
   ],
 })
