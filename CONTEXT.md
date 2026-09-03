@@ -57,7 +57,7 @@ The one CV document selected as the candidate's main document for extraction and
 _Avoid_: First attachment
 
 **Extraction Status**:
-Whether candidate details extraction is pending, succeeded, or failed, independently of manual review.
+Whether text and candidate details extraction from the primary CV is pending, succeeded, or failed, independently of manual review.
 _Avoid_: Review status, import status
 
 **Review Status**:
@@ -77,12 +77,12 @@ A candidate HR has decided not to advance and may contact using the rejected tem
 _Avoid_: Deleted candidate
 
 **Candidate Details**:
-The editable candidate name and contact information initially extracted from the primary CV for this submission.
+The editable candidate name and contact information initially extracted from the primary CV's extracted text for this submission.
 _Avoid_: Source sender, master person profile
 
-**Candidate Skill**:
-A distinct, editable, ordered phrase initially extracted from a candidate's primary CV.
-_Avoid_: Vacancy requirement, global skill
+**Extracted Text**:
+The full text extracted from a CV document at import and retained for requirement matching.
+_Avoid_: Raw PDF content, OCR cache
 
 **Vacancy Progress**:
 The number of shortlisted and rejected candidates compared with all candidates in a vacancy.
@@ -93,8 +93,8 @@ Optional editable subject and body text owned by one vacancy for either shortlis
 _Avoid_: Uploaded template file, shared template
 
 **Requirement Match**:
-An exact match between a vacancy requirement and a candidate skill after trimming and case-insensitive comparison.
-_Avoid_: Fuzzy match, review decision
+A case-insensitive, trim-normalized, word-boundary phrase match between a vacancy requirement and the primary CV's extracted text; punctuation-bearing tokens such as "C#" or ".NET" follow an explicit token rule.
+_Avoid_: Fuzzy match, stemming, review decision
 
 **Match**:
 The current number of a vacancy's requirements matched by a candidate compared with the vacancy's total requirements.
