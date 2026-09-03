@@ -1,5 +1,9 @@
 # MVP V1 Spec — Sorting CV
 
+Iterations: **V1** = this spec (workspace + candidate tracking, no parsing). **V2** = hire
+tracking for batch recruitment (`.scratch/v2/`). **V3** = CV text extraction and
+requirement matching (`.scratch/v3/`, ADR-0009).
+
 ## Problem Statement
 
 HR staff in a traditional company receive job applications as plain emails with PDF
@@ -12,10 +16,10 @@ mixed and design-heavy formats, and one inbox serves many different job requirem
 A browser-based tool with one workspace per vacancy. HR creates a vacancy (title, date,
 skills requirements), drops exported `.eml` files into it, and reviews the resulting
 candidates in a side-by-side workspace: multi-page PDF viewer next to the vacancy's
-requirements and the candidate's extracted data. Each candidate gets a status
-(new → reviewed → shortlisted / flagged / rejected), notes, and a match status. Closing the
-loop is one action: per-vacancy shortlisted/rejected email templates, reusable across
-vacancies, sent to all candidates at once.
+requirements (a manual checklist) and the candidate's details. Each candidate gets a status
+(new / flagged / shortlisted / rejected), notes, and contact closes the loop: per-vacancy
+shortlisted/rejected email templates, reusable across vacancies, sent to all candidates at
+once via `mailto:`.
 
 ## User Stories
 
@@ -50,9 +54,11 @@ through US-19. Non-functional: US-6, US-7, US-8.
 
 - **Vacancy**: title, date, status, skills requirements (list of lines). Progress is
   derived: candidates with a terminal review status / total candidates.
-- **Candidate**: belongs to a vacancy; source email (subject, body, sender); extracted data
-  (name, skills mentioned, email, phone); notes (free text); review status
-  (`new` / `reviewed` / `shortlisted` / `flagged` / `rejected`); match status.
+- **Candidate**: belongs to a vacancy; source email (subject, body, sender); candidate
+  details (name, email, phone) start empty and are entered manually — there is no parser
+  in V1; notes (free text); review status (`new` / `flagged` / `shortlisted` / `rejected`).
+  Display name falls back to sender name, then sender email, then email subject until a
+  name is typed.
 - **CV document**: PDF file extracted from the `.eml` attachment, stored per candidate;
   multi-page, served for the viewer.
 - **Email template**: per vacancy per kind (`shortlisted` / `rejected`); a template can be
@@ -63,11 +69,11 @@ through US-19. Non-functional: US-6, US-7, US-8.
 - Import path is **`.eml` drag-and-drop** (screen S2). No live mailbox connection in V1.
 - Each `.eml` yields one candidate: subject, body, sender, and PDF attachment(s).
 
-### Extraction and match status
+### Review without parsing (V1)
 
-- PDF text extraction pulls name, email, phone, and mentioned skills.
-- **Match status (V1)**: keyword overlap between the candidate's extracted skills and the
-  vacancy's skills requirements; HR judgement always wins — the review actions are manual.
+- No PDF text extraction in V1: candidate details are typed by HR in the review workspace.
+- Vacancy requirements display as a manual checklist next to the PDF; there is no computed
+  match. Extraction and requirement matching are V3 (ADR-0009, `.scratch/v3/`).
 
 ### Contact / sending
 
@@ -89,15 +95,19 @@ through US-19. Non-functional: US-6, US-7, US-8.
 
 ## Out of Scope
 
+- PDF text extraction, candidate-skill extraction, and any computed match (V3, ADR-0009).
+- Hire tracking: needed hires, hired/runaway/declined outcomes, shortage (V2,
+  `.scratch/v2/`).
 - Live mailbox integration (IMAP/Graph).
 - Server-side email sending (SMTP) and delivery tracking.
 - The "Maybe final" queue/worker architecture from `docs/discovery/04-architecture.md`.
 - The two "No Idea" placeholder slots on the vacancy list screen.
 - Auth / multi-user roles (single HR user assumption for V1).
-- Ratings/scores beyond the match status.
+- Ratings/scores.
 
 ## Further Notes
 
-- The riskiest slice is PDF extraction from design-heavy CVs; it is isolated in its own
-  ticket so candidate listing and review don't depend on extraction being perfect.
+- The riskiest slice — PDF extraction from design-heavy CVs — moved out of V1 entirely
+  (V3, gated by an OCR spike). V1's manual-entry path (ticket 08) stays load-bearing even
+  after V3 lands: it is the failure UX for unparseable CVs.
 - UI behaviour follows `docs/discovery/05-ui-sketches.md`.

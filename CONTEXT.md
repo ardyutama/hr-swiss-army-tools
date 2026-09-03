@@ -48,11 +48,11 @@ _Avoid_: Candidate contact
 A PDF attachment retained from a candidate's source email; a candidate may have several CV documents.
 _Avoid_: Non-PDF attachment, source email
 
-**Primary CV**:
+**Primary CV** (deferred to V3):
 The one CV document selected as the candidate's main document for extraction and review.
 _Avoid_: First attachment
 
-**Extraction Status**:
+**Extraction Status** (deferred to V3):
 Whether candidate details extraction is pending, succeeded, or failed, independently of manual review.
 _Avoid_: Review status, import status
 
@@ -72,13 +72,9 @@ _Avoid_: Accepted candidate
 A candidate HR has decided not to advance and may contact using the rejected template.
 _Avoid_: Deleted candidate
 
-**Candidate Details**:
-The editable candidate name and contact information initially extracted from the primary CV for this submission.
+**Candidate Details** (deferred to V3):
+The editable candidate name and contact information initially extracted from the primary CV for this submission. In V1 these fields start empty and are entered manually.
 _Avoid_: Source sender, master person profile
-
-**Candidate Skill**:
-A distinct, editable, ordered phrase initially extracted from a candidate's primary CV.
-_Avoid_: Vacancy requirement, global skill
 
 **Vacancy Progress**:
 The number of shortlisted and rejected candidates compared with all candidates in a vacancy.
@@ -88,14 +84,34 @@ _Avoid_: Flagged count, match score
 Optional editable subject and body text owned by one vacancy for either shortlisted or rejected candidates; reuse creates an independent copy.
 _Avoid_: Uploaded template file, shared template
 
-**Requirement Match**:
-An exact match between a vacancy requirement and a candidate skill after trimming and case-insensitive comparison.
-_Avoid_: Fuzzy match, review decision
+**Requirement Match** (deferred to V3):
+A case-insensitive word-boundary phrase match of a vacancy requirement against the primary CV's full extracted text, per ADR-0009.
+_Avoid_: Fuzzy match, review decision, extracted skill
 
-**Match**:
+**Match** (deferred to V3):
 The current number of a vacancy's requirements matched by a candidate compared with the vacancy's total requirements.
 _Avoid_: Match status, stored score
 
 **Prepared Message**:
 A personalized message generated from an email template for one candidate for HR to send using their email client.
 _Avoid_: Sent email, bulk email
+
+**Needed Hires**:
+The number of people a vacancy must ultimately hire, recorded on the vacancy; a vacancy stays open until that many hires are active.
+_Avoid_: Headcount request, batch size
+
+**Hired Candidate**:
+A shortlisted candidate who has started the job; the hire is active until they are marked as runaway.
+_Avoid_: Accepted candidate, permanent employee
+
+**Runaway**:
+A hired candidate who no-showed, quit, or went unreachable while the vacancy is still open; the event reopens one needed-hire slot and is marked manually by HR when informed.
+_Avoid_: Terminated employee, failed candidate
+
+**Declined**:
+The outcome when a candidate turns down the offer; it does not reopen a needed-hire slot the way a runaway does.
+_Avoid_: Rejected candidate, withdrawn candidate
+
+**Shortage**:
+A vacancy's needed hires minus its active hires; the number of slots still to fill, which increases again when a runaway is recorded.
+_Avoid_: Gap, match score, vacancy progress
