@@ -60,8 +60,6 @@ function candidateSummary(id: number, overrides: Partial<Record<string, unknown>
     contactEmail: null,
     notes: null,
     reviewStatus: 'new',
-    extractionStatus: 'pending',
-    match: { matchedRequirements: 2, totalRequirements: 3 },
     sourceSenderName: 'Alice Applicant',
     sourceSenderEmail: 'alice@example.com',
     sourceSubject: 'Application for Welder',
@@ -76,7 +74,6 @@ function bobSummary() {
     sourceSenderEmail: 'bob@example.com',
     sourceSubject: 'Bob application',
     reviewStatus: 'shortlisted',
-    extractionStatus: 'failed',
     notes: 'Strong MIG experience',
   })
 }
@@ -278,16 +275,26 @@ describe('VacancyDetailView', () => {
     wrapper.unmount()
   })
 
-  it('US-14: HR sees the whole pipeline at a glance — name, match status, notes, and status per candidate', async () => {
+  it('US-14: HR sees the whole pipeline at a glance — name, notes, and status per candidate', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input)
       if (url.endsWith('/candidates')) {
-        return Promise.resolve(jsonResponse([candidateSummary(1), bobSummary()]))
+        return Promise.resolve(
+          jsonResponse([
+            candidateSummary(1),
+            bobSummary(),
+            candidateSummary(3, {
+              sourceSenderName: null,
+              sourceSenderEmail: null,
+              sourceSubject: 'CV submission via web form',
+            }),
+          ]),
+        )
       }
       return Promise.resolve(
         jsonResponse(
           vacancyDetails({
-            progress: { processedCandidates: 1, totalCandidates: 2 },
+            progress: { processedCandidates: 1, totalCandidates: 3 },
           }),
         ),
       )
@@ -306,29 +313,29 @@ describe('VacancyDetailView', () => {
     expect(sendAll).toBeDefined()
     expect((sendAll!.element as HTMLButtonElement).disabled).toBe(true)
 
-    // One row per candidate under the sketch's columns.
+    // One row per candidate under the sketch's columns — V1 has no match/extraction columns.
     const header = wrapper.find('.ctable__head')
     expect(header.text()).toContain('Candidate')
-    expect(header.text()).toContain('Match Status')
     expect(header.text()).toContain('Notes')
     expect(header.text()).toContain('Status')
+    expect(header.text()).not.toContain('Match Status')
 
+    // Display name falls back to the sender, then to the email subject.
     expect(wrapper.text()).toContain('Alice Applicant')
     expect(wrapper.text()).toContain('Bob Builder')
-    expect(wrapper.text()).toContain('2 / 3')
-    expect(wrapper.text()).toContain('Extraction pending')
-    expect(wrapper.text()).toContain('Extraction failed')
+    expect(wrapper.text()).toContain('CV submission via web form')
     expect(wrapper.text()).toContain('New')
     expect(wrapper.text()).toContain('Shortlisted')
     expect(wrapper.text()).toContain('Strong MIG experience')
+    expect(wrapper.text()).not.toContain('Extraction pending')
 
     // Send is a placeholder until templates exist; Delete is available.
     const sendButtons = wrapper.findAll('button[aria-label*="Send email"]')
-    expect(sendButtons).toHaveLength(2)
+    expect(sendButtons).toHaveLength(3)
     expect(
       sendButtons.every((button) => (button.element as HTMLButtonElement).disabled),
     ).toBe(true)
-    expect(wrapper.findAll('button[aria-label="Delete candidate"]')).toHaveLength(2)
+    expect(wrapper.findAll('button[aria-label="Delete candidate"]')).toHaveLength(3)
 
     // The drop zone only lives inside the import dialog, which starts closed.
     expect(wrapper.find('.dropzone').exists()).toBe(false)

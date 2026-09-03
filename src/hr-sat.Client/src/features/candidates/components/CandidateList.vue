@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type {
-  CandidateExtractionStatus,
   CandidateReviewStatus,
   CandidateSummary,
 } from '../api'
@@ -33,23 +32,11 @@ const reviewStatusColors: Record<CandidateReviewStatus, 'success' | 'error' | 'n
   rejected: 'error',
 }
 
-const extractionStatusLabels: Record<CandidateExtractionStatus, string> = {
-  pending: 'Extraction pending',
-  succeeded: 'Extraction complete',
-  failed: 'Extraction failed',
-}
-
-const extractionStatusColors: Record<CandidateExtractionStatus, 'success' | 'error' | 'neutral'> = {
-  pending: 'neutral',
-  succeeded: 'success',
-  failed: 'error',
-}
-
 // Column proportions applied via <colgroup> so the semantic table keeps a fixed layout.
 const columnWidths = computed(() =>
   props.readonly
-    ? ['34%', '19%', '30%', '17%']
-    : ['30%', '17%', '26%', '14%', '4.5rem'],
+    ? ['46%', '34%', '20%']
+    : ['42%', '30%', '17%', '4.5rem'],
 )
 </script>
 
@@ -62,7 +49,6 @@ const columnWidths = computed(() =>
       <thead class="ctable__head">
         <tr>
           <th class="ctable__col border-b border-default px-2 pb-3 pt-2 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5" scope="col">Candidate</th>
-          <th class="ctable__col border-b border-default px-2 pb-3 pt-2 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5" scope="col">Match Status</th>
           <th class="ctable__col border-b border-default px-2 pb-3 pt-2 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5" scope="col">Notes</th>
           <th class="ctable__col border-b border-default px-2 pb-3 pt-2 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5" scope="col">Status</th>
           <th v-if="!readonly" class="ctable__col ctable__col--actions border-b border-default px-2 pb-3 pt-0 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5" scope="col">
@@ -74,22 +60,7 @@ const columnWidths = computed(() =>
       <tbody>
         <tr v-for="candidate in candidates" :key="candidate.id" class="crow group">
           <td class="ctable__col crow__name border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
-            <div class="flex min-w-0 flex-col items-start gap-1">
-              <span class="crow__name-text block max-w-full truncate text-sm font-semibold text-highlighted">{{ candidateDisplayName(candidate) }}</span>
-              <UBadge
-                :color="extractionStatusColors[candidate.extractionStatus]"
-                variant="subtle"
-                size="xs"
-              >
-                {{ extractionStatusLabels[candidate.extractionStatus] }}
-              </UBadge>
-            </div>
-          </td>
-
-          <td class="ctable__col border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
-            <span class="crow__match text-sm tabular-nums text-highlighted">
-              {{ candidate.match.matchedRequirements }} / {{ candidate.match.totalRequirements }}
-            </span>
+            <span class="crow__name-text block max-w-full truncate text-sm font-semibold text-highlighted">{{ candidateDisplayName(candidate) }}</span>
           </td>
 
           <td class="ctable__col border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">

@@ -33,7 +33,6 @@ internal sealed class ListCandidatesQueryHandler(IApplicationDbContext dbContext
                 candidate.ContactEmail,
                 candidate.Notes,
                 candidate.ReviewStatus.ToString().ToLowerInvariant(),
-                candidate.ExtractionStatus.ToString().ToLowerInvariant(),
                 candidate.SourceSenderName,
                 candidate.SourceSenderEmail,
                 candidate.SourceSubject,

@@ -48,6 +48,10 @@ _Avoid_: Candidate email, live mailbox message
 The sender recorded by the source email, who may differ from the candidate.
 _Avoid_: Candidate contact
 
+**Candidate Display Name**:
+The display-only name for a candidate in lists: the typed name, else the source sender name, else the source sender email, else the source email subject; the stored name stays empty until HR types it.
+_Avoid_: Extracted name, sender-only fallback
+
 **CV Document**:
 A PDF attachment retained from a candidate's source email; a candidate may have several CV documents.
 _Avoid_: Non-PDF attachment, source email
