@@ -36,7 +36,8 @@ internal sealed class ListCandidatesQueryHandler(IApplicationDbContext dbContext
                 candidate.SourceSenderName,
                 candidate.SourceSenderEmail,
                 candidate.SourceSubject,
-                candidate.SourceSentAt))
+                candidate.SourceSentAt,
+                candidate.CvDocuments.Count))
             .ToListAsync(cancellationToken);
 
         return candidates;

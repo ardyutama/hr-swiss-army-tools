@@ -37,6 +37,22 @@ public sealed class ListCandidatesHandlerTests
     }
 
     [Fact]
+    public async Task Handle_Should_IncludeCvDocumentCount_WhenVacancyExists() // US-14: HR sees at a glance whether a candidate has a CV
+    {
+        await using var dbContext = new TestDbContext();
+        var (vacancy, _) = await CandidateTestData.SeedCandidateAsync(dbContext);
+        var handler = new ListCandidatesQueryHandler(dbContext);
+
+        var result = await handler.Handle(
+            new ListCandidatesQuery(vacancy.Id),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        var candidate = result.Value.ShouldHaveSingleItem();
+        candidate.CvDocumentCount.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task Handle_Should_ReturnNotFound_WhenVacancyDoesNotExist() // US-14: HR cannot review candidates for an unknown vacancy
     {
         await using var dbContext = new TestDbContext();

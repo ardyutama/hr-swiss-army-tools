@@ -9,4 +9,5 @@ internal sealed record CandidateSummaryResponse(
     string? SourceSenderName,
     string? SourceSenderEmail,
     string? SourceSubject,
-    DateTimeOffset? SourceSentAt);
+    DateTimeOffset? SourceSentAt,
+    int CvDocumentCount);

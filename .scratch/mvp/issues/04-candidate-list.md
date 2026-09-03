@@ -11,10 +11,23 @@ to all candidate" button (disabled until ticket 06).
 
 **Status:** in-progress
 
-- [ ] List candidates of a vacancy: display name (sender fallback), notes, review status
+- [x] List candidates of a vacancy: display name (sender fallback), notes, review status
 - [x] Delete a candidate
-- [ ] Row opens the review workspace for that candidate — deferred: review route
-      lands with ticket 05-review-workspace
+- [x] Review-status filter chips (New/Flagged/Shortlisted/Rejected/All) with live counts;
+      active chip highlighted, chips uniform otherwise; combined with search = AND semantics
+- [x] Client-side search input (display name / sender email / subject) in one toolbar row
+      above the table: chips left, search right
+- [x] Shared "No candidates match" empty state with Clear filters when filter/search
+      yields zero (distinct from the true no-candidates empty state, which stays the
+      Import .eml prompt)
+- [x] "Received" date column (source sent-at), oldest-first default; clickable header
+      toggles oldest/newest (only sortable column)
+- [x] CV presence column: paperclip when a CV document exists, "No CV" warning badge when
+      the source email had no PDF
+- [x] "Status" column renamed "Review status"
+- [x] Column order: Candidate | Received | CV | Notes | Review status | Actions
+- [x] Whole-row click opens the review workspace (chevron affordance, action buttons stop
+      propagation) — route wired when ticket 05-review-workspace lands
 - [x] Header shows vacancy title with date and a (disabled) "Send Email to all candidate" button
 - [x] Backend and frontend tests pass (written after implementation)
 
@@ -25,3 +38,13 @@ now offers a button that opens the same dialog.
 **Amendment (2026-09-03, V1 re-slice):** the match column is removed — V1 has no
 extraction (match returns in V3, ADR-0009). Display name is a sender-fallback display rule
 only; the stored name stays empty until typed.
+
+**Amendment (2026-09-03, page-improvement grilling, round 1 settled):** V1 scope grows:
+review-status filter chips with live counts; client-side name/sender/subject search;
+"Received" (source sent-at) date column, oldest-first default with toggle; whole-row click
+opens the review workspace (chevron affordance, wired when ticket 05 lands); CV presence
+indicator (paperclip / "No CV" badge); "Status" column renamed "Review status". **Batch
+selection (multi-row checkbox actions) explicitly deferred** — revisit only if HR deletes
+in batches in practice. Duplicate submissions stay silent: when one person sends more than
+one source email to the same vacancy, each email imports as its own candidate — no detect,
+warn, or merge — and HR resolves duplicates through review and Candidate Removal.

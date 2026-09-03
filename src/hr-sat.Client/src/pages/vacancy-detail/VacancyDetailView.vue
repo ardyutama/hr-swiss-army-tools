@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed, shallowRef, toRef } from 'vue'
+import { useRouter } from 'vue-router'
 import StatusBadge from '@/features/vacancies/components/StatusBadge.vue'
 import ImportCandidatesDialog from '@/features/candidates/components/ImportCandidatesDialog.vue'
 import CandidateDeleteDialog from '@/features/candidates/components/CandidateDeleteDialog.vue'
 import ImportResultList from '@/features/candidates/components/ImportResultList.vue'
 import CandidateList from '@/features/candidates/components/CandidateList.vue'
+import CandidateToolbar from '@/features/candidates/components/CandidateToolbar.vue'
 import { useVacancyDetail } from '@/features/vacancy-detail/useVacancyDetail'
 import { useCandidateImport } from '@/features/candidates/useCandidateImport'
 import { useCandidates } from '@/features/candidates/useCandidates'
+import { useCandidateFilter } from '@/features/candidates/useCandidateFilter'
 import { formatDate, progressPercent } from '@/features/vacancies/format'
 import type { CandidateSummary } from '@/features/candidates/api'
 
@@ -15,6 +18,7 @@ const props = defineProps<{
   id: string
 }>()
 
+const router = useRouter()
 const vacancyId = toRef(props, 'id')
 const { vacancy, loadError, viewState, load } = useVacancyDetail(vacancyId)
 const { importing, importError, results, importFiles, clearError } = useCandidateImport(vacancyId)
@@ -26,6 +30,15 @@ const {
   load: loadCandidates,
   remove,
 } = useCandidates(vacancyId)
+const {
+  status: statusFilter,
+  query: searchQuery,
+  receivedSort,
+  statusCounts,
+  filteredCandidates,
+  toggleReceivedSort,
+  clearFilters,
+} = useCandidateFilter(candidates)
 
 const importOpen = shallowRef(false)
 const deleteOpen = shallowRef(false)
@@ -79,6 +92,18 @@ async function confirmDeleteCandidate() {
   } catch (error) {
     deleteError.value = error instanceof Error ? error.message : 'Failed to delete candidate'
   }
+}
+
+// The review route is added by ticket 05; until then the push resolves nowhere.
+function openReview(candidate: CandidateSummary) {
+  if (!router.hasRoute('candidate-review')) {
+    return
+  }
+
+  void router.push({
+    name: 'candidate-review',
+    params: { id: props.id, candidateId: candidate.id },
+  })
 }
 </script>
 
@@ -223,12 +248,33 @@ async function confirmDeleteCandidate() {
           />
         </template>
 
-        <CandidateList
-          v-else
-          :candidates="candidates ?? []"
-          :readonly="isClosed"
-          @remove="requestDeleteCandidate"
-        />
+        <template v-else>
+          <div class="border-b border-default px-5 py-3">
+            <CandidateToolbar
+              v-model:status="statusFilter"
+              v-model:query="searchQuery"
+              :counts="statusCounts"
+              :total="(candidates ?? []).length"
+            />
+          </div>
+          <UEmpty
+            v-if="filteredCandidates.length === 0"
+            icon="i-lucide-search-x"
+            title="No candidates match"
+            description="Try a different search or clear the filters."
+            class="min-h-40 px-6 py-10"
+            :actions="[{ label: 'Clear filters', icon: 'i-lucide-x', onClick: clearFilters }]"
+          />
+          <CandidateList
+            v-else
+            :candidates="filteredCandidates"
+            :received-sort="receivedSort"
+            :readonly="isClosed"
+            @remove="requestDeleteCandidate"
+            @review="openReview"
+            @toggle-received-sort="toggleReceivedSort"
+          />
+        </template>
       </section>
 
       <section

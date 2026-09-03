@@ -62,6 +62,7 @@ export interface CandidateSummary {
   sourceSenderEmail: string | null
   sourceSubject: string | null
   sourceSentAt: string | null
+  cvDocumentCount: number
 }
 
 export function listCandidates(vacancyId: string): Promise<CandidateSummary[]> {

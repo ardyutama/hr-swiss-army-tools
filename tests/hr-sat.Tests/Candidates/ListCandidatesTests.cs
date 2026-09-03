@@ -78,6 +78,7 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
                 Assert.Equal(
                     new DateTimeOffset(2026, 8, 29, 10, 0, 0, TimeSpan.Zero),
                     alice.SourceSentAt);
+                Assert.Equal(1, alice.CvDocumentCount);
             },
             bob =>
             {
@@ -92,6 +93,7 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
                 Assert.Equal(
                     new DateTimeOffset(2026, 8, 29, 10, 0, 0, TimeSpan.Zero),
                     bob.SourceSentAt);
+                Assert.Equal(1, bob.CvDocumentCount);
             });
     }
 
@@ -154,5 +156,6 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
         string? SourceSenderName,
         string? SourceSenderEmail,
         string? SourceSubject,
-        DateTimeOffset? SourceSentAt);
+        DateTimeOffset? SourceSentAt,
+        int CvDocumentCount);
 }

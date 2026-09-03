@@ -1,5 +1,6 @@
 import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createMemoryHistory, createRouter } from 'vue-router'
 
 import VacancyDetailView from './VacancyDetailView.vue'
 
@@ -64,6 +65,7 @@ function candidateSummary(id: number, overrides: Partial<Record<string, unknown>
     sourceSenderEmail: 'alice@example.com',
     sourceSubject: 'Application for Welder',
     sourceSentAt: '2026-08-28T09:00:00Z',
+    cvDocumentCount: 1,
     ...overrides,
   }
 }
@@ -79,14 +81,30 @@ function bobSummary() {
 }
 
 function mountView(id = '1') {
-  return mount(VacancyDetailView, {
+  // A memory-history router with a stub review route stands in for the real router;
+  // the candidate-review route itself is wired by ticket 05.
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', name: 'vacancy-list', component: { template: '<div />' } },
+      { path: '/vacancies/:id', name: 'vacancy-detail', component: { template: '<div />' } },
+      {
+        path: '/vacancies/:id/review/:candidateId',
+        name: 'candidate-review',
+        component: { template: '<div />' },
+      },
+    ],
+  })
+  const wrapper = mount(VacancyDetailView, {
     props: { id },
     global: {
+      plugins: [router],
       stubs: {
         RouterLink: { template: '<a><slot /></a>' },
       },
     },
   })
+  return { router, wrapper }
 }
 
 function bodyElement(selector: string): Element {
@@ -166,7 +184,7 @@ describe('VacancyDetailView', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const wrapper = mountView()
+    const { wrapper } = mountView()
     await flushPromises()
     expect(wrapper.text()).toContain('Welder')
 
@@ -229,7 +247,7 @@ describe('VacancyDetailView', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const wrapper = mountView()
+    const { wrapper } = mountView()
     await flushPromises()
 
     const progress = () => wrapper.find('[aria-label="Vacancy progress"]').text()
@@ -261,7 +279,7 @@ describe('VacancyDetailView', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const wrapper = mountView()
+    const { wrapper } = mountView()
     await flushPromises()
 
     await openImportDialog(wrapper)
@@ -301,7 +319,7 @@ describe('VacancyDetailView', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const wrapper = mountView()
+    const { wrapper } = mountView()
     await flushPromises()
 
     // Header: vacancy title with date and the send-all action parked for email templates.
@@ -313,12 +331,17 @@ describe('VacancyDetailView', () => {
     expect(sendAll).toBeDefined()
     expect((sendAll!.element as HTMLButtonElement).disabled).toBe(true)
 
-    // One row per candidate under the sketch's columns — V1 has no match/extraction columns.
-    const header = wrapper.find('.ctable__head')
-    expect(header.text()).toContain('Candidate')
-    expect(header.text()).toContain('Notes')
-    expect(header.text()).toContain('Status')
-    expect(header.text()).not.toContain('Match Status')
+    // Column order per the S3 sketch: Candidate | Received | CV | Notes | Review status | Actions.
+    const headerCells = wrapper.findAll('.ctable__head th')
+    expect(headerCells.map((cell) => cell.text())).toEqual([
+      'Candidate',
+      'Received',
+      'CV',
+      'Notes',
+      'Review status',
+      'Actions',
+    ])
+    expect(wrapper.find('.ctable__head').text()).not.toContain('Match Status')
 
     // Display name falls back to the sender, then to the email subject.
     expect(wrapper.text()).toContain('Alice Applicant')
@@ -360,7 +383,7 @@ describe('VacancyDetailView', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const wrapper = mountView()
+    const { wrapper } = mountView()
     await flushPromises()
 
     const bobRow = wrapper.findAll('.crow').find((row) => row.text().includes('Bob Builder'))
@@ -400,7 +423,7 @@ describe('VacancyDetailView', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const wrapper = mountView()
+    const { wrapper } = mountView()
     await flushPromises()
 
     const bobRow = wrapper.findAll('.crow').find((row) => row.text().includes('Bob Builder'))
@@ -444,7 +467,7 @@ describe('VacancyDetailView', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const wrapper = mountView()
+    const { wrapper } = mountView()
     await flushPromises()
     expect(wrapper.text()).toContain('No candidates yet')
     expect(wrapper.find('.crow').exists()).toBe(false)
@@ -474,7 +497,7 @@ describe('VacancyDetailView', () => {
       }),
     )
 
-    const wrapper = mountView()
+    const { wrapper } = mountView()
     await flushPromises()
 
     expect(wrapper.text()).toContain('Closed')
@@ -507,12 +530,237 @@ describe('VacancyDetailView', () => {
       }),
     )
 
-    const wrapper = mountView()
+    const { wrapper } = mountView()
     await flushPromises()
 
     expect(wrapper.text()).toContain('Alice Applicant')
     expect(wrapper.findAll('button[aria-label="Delete candidate"]')).toHaveLength(0)
     expect(wrapper.findAll('button[aria-label*="Send email"]')).toHaveLength(0)
+    wrapper.unmount()
+  })
+
+  it('US-14: HR filters by review-status chips with live counts, combined AND with search', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/candidates')) {
+        return Promise.resolve(
+          jsonResponse([
+            candidateSummary(1),
+            bobSummary(),
+            candidateSummary(3, {
+              sourceSenderName: 'Carol Welder',
+              sourceSenderEmail: 'carol@example.com',
+              reviewStatus: 'shortlisted',
+            }),
+          ]),
+        )
+      }
+      return Promise.resolve(jsonResponse(vacancyDetails()))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const chips = () => wrapper.findAll('[aria-label="Filter by review status"] button')
+
+    // Live counts per chip; the full list shows before any filter is active.
+    expect(chips().map((chip) => chip.text().replace(/\s+/g, ' ').trim())).toEqual([
+      'All 3',
+      'New 1',
+      'Flagged 0',
+      'Shortlisted 2',
+      'Rejected 0',
+    ])
+    expect(wrapper.findAll('.crow')).toHaveLength(3)
+
+    // Only the active chip is highlighted.
+    await chips()[3]!.trigger('click')
+    expect(wrapper.findAll('.crow')).toHaveLength(2)
+    expect(wrapper.text()).not.toContain('Alice Applicant')
+    expect(chips()[3]!.attributes('aria-pressed')).toBe('true')
+    expect(chips()[0]!.attributes('aria-pressed')).toBe('false')
+
+    // Search narrows the filtered list further (AND semantics).
+    await wrapper.find('input[aria-label="Search candidates"]').setValue('bob')
+    const rows = wrapper.findAll('.crow')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.text()).toContain('Bob Builder')
+
+    // No match under the active filters shows the shared filter-empty state.
+    await wrapper.find('input[aria-label="Search candidates"]').setValue('alice')
+    expect(wrapper.findAll('.crow')).toHaveLength(0)
+    expect(wrapper.text()).toContain('No candidates match')
+    expect(wrapper.text()).not.toContain('No candidates yet')
+
+    // Clear filters restores the full list and resets the search input.
+    const clearButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Clear filters'))
+    await clearButton!.trigger('click')
+    expect(wrapper.findAll('.crow')).toHaveLength(3)
+    expect(
+      (wrapper.find('input[aria-label="Search candidates"]').element as HTMLInputElement).value,
+    ).toBe('')
+    expect(chips()[0]!.attributes('aria-pressed')).toBe('true')
+    wrapper.unmount()
+  })
+
+  it('US-14: HR searches candidates by sender email and email subject', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/candidates')) {
+        return Promise.resolve(
+          jsonResponse([
+            candidateSummary(1),
+            bobSummary(),
+            candidateSummary(3, {
+              sourceSenderName: null,
+              sourceSenderEmail: null,
+              sourceSubject: 'CV submission via web form',
+            }),
+          ]),
+        )
+      }
+      return Promise.resolve(jsonResponse(vacancyDetails()))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const search = wrapper.find('input[aria-label="Search candidates"]')
+
+    await search.setValue('bob@example.com')
+    expect(wrapper.findAll('.crow')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Bob Builder')
+    expect(wrapper.text()).not.toContain('Alice Applicant')
+
+    await search.setValue('web form')
+    expect(wrapper.findAll('.crow')).toHaveLength(1)
+    expect(wrapper.text()).toContain('CV submission via web form')
+
+    await search.setValue('')
+    expect(wrapper.findAll('.crow')).toHaveLength(3)
+    wrapper.unmount()
+  })
+
+  it('US-14: HR sorts by received date, oldest first by default, toggling to newest', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/candidates')) {
+        return Promise.resolve(
+          jsonResponse([
+            candidateSummary(1), // 2026-08-28
+            candidateSummary(2, {
+              sourceSenderName: 'Bob Builder',
+              sourceSentAt: '2026-08-30T15:30:00Z',
+            }),
+            candidateSummary(3, {
+              sourceSenderName: 'Carol Welder',
+              sourceSentAt: '2026-08-25T08:00:00Z',
+            }),
+            candidateSummary(4, {
+              sourceSenderName: 'Dave NoDate',
+              sourceSentAt: null,
+            }),
+          ]),
+        )
+      }
+      return Promise.resolve(jsonResponse(vacancyDetails()))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const names = () => wrapper.findAll('.crow__name-text').map((cell) => cell.text())
+    const sortHeader = () => wrapper.find('th[aria-sort]')
+
+    // Oldest first by default; a missing sent-at sinks to the bottom.
+    expect(sortHeader().attributes('aria-sort')).toBe('ascending')
+    expect(names()).toEqual(['Carol Welder', 'Alice Applicant', 'Bob Builder', 'Dave NoDate'])
+
+    await sortHeader().find('button').trigger('click')
+    expect(sortHeader().attributes('aria-sort')).toBe('descending')
+    expect(names()).toEqual(['Bob Builder', 'Alice Applicant', 'Carol Welder', 'Dave NoDate'])
+
+    await sortHeader().find('button').trigger('click')
+    expect(sortHeader().attributes('aria-sort')).toBe('ascending')
+    expect(names()).toEqual(['Carol Welder', 'Alice Applicant', 'Bob Builder', 'Dave NoDate'])
+    wrapper.unmount()
+  })
+
+  it('US-14: the CV column shows a paperclip when documents exist and a No CV badge otherwise', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/candidates')) {
+        return Promise.resolve(
+          jsonResponse([
+            candidateSummary(1),
+            candidateSummary(2, { sourceSenderName: 'Bob Builder', cvDocumentCount: 2 }),
+            candidateSummary(3, { sourceSenderName: 'Carol NoCv', cvDocumentCount: 0 }),
+          ]),
+        )
+      }
+      return Promise.resolve(jsonResponse(vacancyDetails()))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const cvCells = wrapper.findAll('.crow__cv')
+    expect(cvCells).toHaveLength(3)
+    expect(cvCells[0]!.text()).toContain('1 CV document')
+    expect(cvCells[1]!.text()).toContain('2 CV documents')
+    expect(cvCells[2]!.text()).toContain('No CV')
+    expect(cvCells[2]!.text()).not.toContain('CV document')
+    wrapper.unmount()
+  })
+
+  it('US-14: HR opens the review workspace by clicking a candidate row', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/candidates')) {
+        return Promise.resolve(jsonResponse([candidateSummary(1), bobSummary()]))
+      }
+      return Promise.resolve(jsonResponse(vacancyDetails()))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { wrapper, router } = mountView()
+    await flushPromises()
+
+    const bobRow = wrapper.findAll('.crow').find((row) => row.text().includes('Bob Builder'))
+    await bobRow!.trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.name).toBe('candidate-review')
+    expect(router.currentRoute.value.fullPath).toBe('/vacancies/1/review/2')
+    wrapper.unmount()
+  })
+
+  it('US-14: row action buttons do not navigate away from the list', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/candidates')) {
+        return Promise.resolve(jsonResponse([candidateSummary(1), bobSummary()]))
+      }
+      return Promise.resolve(jsonResponse(vacancyDetails()))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { wrapper, router } = mountView()
+    await flushPromises()
+
+    const bobRow = wrapper.findAll('.crow').find((row) => row.text().includes('Bob Builder'))
+    await bobRow!.find('button[aria-label="Delete candidate"]').trigger('click')
+    await flushPromises()
+
+    // The delete dialog opened instead of a navigation.
+    expect(document.body.textContent).toContain("can't be undone")
+    expect(router.currentRoute.value.fullPath).toBe('/')
     wrapper.unmount()
   })
 })
