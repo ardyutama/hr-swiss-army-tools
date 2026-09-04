@@ -63,6 +63,11 @@ Work items derive from `docs/discovery/03-user-stories.md` and live as local mar
 
 Flow-first test scope, traceability, and the critical spine: see `docs/agents/testing.md` (ADR 0003).
 
+Test locations:
+
+- Client: `src/hr-sat.Client/src/**/*.spec.ts` (Vitest; run from `src/hr-sat.Client/`).
+- Server: `tests/hr-sat.Tests/**/*.cs` (xUnit; project: `tests/hr-sat.Tests/hr-sat.Tests.csproj`).
+
 ### Triage labels
 
 Default canonical labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
