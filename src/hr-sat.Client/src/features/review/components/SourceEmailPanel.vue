@@ -43,13 +43,7 @@ const displayBody = computed(
     class="rounded-xl border border-default bg-default shadow-sm"
     aria-label="Source email"
   >
-    <div class="flex items-center gap-4 p-4 sm:p-5">
-      <div
-        class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary"
-        aria-hidden="true"
-      >
-        <UIcon name="i-lucide-mail" class="size-5" />
-      </div>
+    <div class="flex items-center gap-3 px-4 py-3">
       <div class="min-w-0 flex-1">
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
           <h2 class="text-xs font-semibold uppercase tracking-[0.06em] text-muted">
@@ -57,8 +51,8 @@ const displayBody = computed(
           </h2>
           <span v-if="sentAtLabel" class="text-xs text-muted">Received {{ sentAtLabel }}</span>
         </div>
-        <p class="mt-1 truncate text-sm font-semibold text-highlighted">{{ displaySubject }}</p>
-        <p class="mt-0.5 truncate text-xs text-muted">From {{ senderLabel }}</p>
+        <p class="mt-0.5 truncate text-sm font-semibold text-highlighted">{{ displaySubject }}</p>
+        <p class="truncate text-xs text-muted">From {{ senderLabel }}</p>
       </div>
       <UButton
         color="neutral"

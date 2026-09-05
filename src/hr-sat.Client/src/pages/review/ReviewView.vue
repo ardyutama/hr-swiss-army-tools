@@ -143,7 +143,7 @@ function onRequirementToggle(requirementId: number, confirmed: boolean) {
       <div class="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <!-- Left column scrolls independently; the viewer keeps a fixed height. -->
         <div
-          class="flex min-w-0 flex-col gap-5 lg:max-h-[calc(100vh-14rem)] lg:overflow-y-auto lg:pr-1"
+          class="flex min-w-0 flex-col gap-5 lg:overflow-y-auto lg:pr-1"
         >
           <RequirementsPanel
             :requirements="vacancy.requirements"

@@ -78,43 +78,43 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 <template>
   <div
-    class="sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-default bg-default px-4 py-3 shadow-lg"
+    class="sticky bottom-4 z-10 flex flex-col gap-2 rounded-xl border border-default bg-default px-4 py-3 shadow-lg"
     aria-label="Review actions"
   >
-    <UButton
-      color="neutral"
-      variant="outline"
-      class="min-h-10"
-      :disabled="!canPrev || busy"
-      @click="emit('prev')"
-    >
-      Prev
-      <kbd
-        class="ml-1 rounded border border-current/40 px-1.5 py-0.5 text-[0.65rem] font-semibold"
-        aria-hidden="true"
-      >←</kbd>
-    </UButton>
-
-    <div class="flex flex-wrap items-center gap-2">
+    <p v-if="error" class="m-0 w-full text-sm text-error" role="alert">{{ error }}</p>
+    <div class="flex flex-wrap items-center justify-between gap-3">
       <UButton
-        v-for="decision in decisions"
-        :key="decision.status"
-        :color="decision.color"
-        :variant="reviewStatus === decision.status ? 'solid' : 'outline'"
+        color="neutral"
+        variant="outline"
         class="min-h-10"
-        :disabled="busy"
-        @click="emit('decide', decision.status)"
+        :disabled="!canPrev || busy"
+        @click="emit('prev')"
       >
-        {{ decision.label }}
+        Prev
         <kbd
           class="ml-1 rounded border border-current/40 px-1.5 py-0.5 text-[0.65rem] font-semibold"
           aria-hidden="true"
-        >{{ decision.shortcut }}</kbd>
+        >←</kbd>
       </UButton>
-    </div>
 
-    <div class="flex items-center gap-3">
-      <p v-if="error" class="m-0 text-sm text-error" role="alert">{{ error }}</p>
+      <div class="flex flex-wrap items-center gap-2">
+        <UButton
+          v-for="decision in decisions"
+          :key="decision.status"
+          :color="decision.color"
+          :variant="reviewStatus === decision.status ? 'solid' : 'outline'"
+          class="min-h-10"
+          :disabled="busy"
+          @click="emit('decide', decision.status)"
+        >
+          {{ decision.label }}
+          <kbd
+            class="ml-1 rounded border border-current/40 px-1.5 py-0.5 text-[0.65rem] font-semibold"
+            aria-hidden="true"
+          >{{ decision.shortcut }}</kbd>
+        </UButton>
+      </div>
+
       <UButton
         color="neutral"
         variant="outline"

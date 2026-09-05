@@ -141,7 +141,7 @@ function submit() {
         <div class="flex items-center gap-2 text-sm text-muted">
           <UIcon name="i-lucide-mail" class="size-4 shrink-0" aria-hidden="true" />
           <dt class="sr-only">Email</dt>
-          <dd class="m-0 truncate">{{ candidate.contactEmail ?? '—' }}</dd>
+          <dd class="m-0 truncate">{{ candidate.contactEmail ?? 'Not saved' }}</dd>
         </div>
       </dl>
       <p v-if="!candidate.fullName || !candidate.contactEmail" class="mt-3 text-sm text-muted">

@@ -97,24 +97,75 @@ watch(
 </script>
 
 <template>
-  <section class="flex min-w-0 flex-col gap-3" aria-label="CV viewer">
-    <!-- Document switcher only appears when the candidate has several CVs. -->
-    <div v-if="documents.length > 1" class="flex items-center gap-2">
-      <select
-        :value="selectedDocument?.id"
-        aria-label="Choose CV document"
-        class="min-h-10 min-w-0 flex-1 truncate rounded-xl border border-default bg-default px-3 py-2 text-sm text-highlighted"
-        @change="selectDocument(Number(($event.target as HTMLSelectElement).value))"
+  <section class="flex min-w-0 flex-col" aria-label="CV viewer">
+    <div class="rounded-xl border border-default bg-default shadow-sm">
+      <!-- Toolbar at the top: page/zoom stay reachable while scrolling a tall PDF. -->
+      <div
+        v-if="selectedDocument"
+        class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-default p-2"
       >
-        <option v-for="document in documents" :key="document.id" :value="document.id">
-          {{ document.originalFilename }}
-        </option>
-      </select>
-      <UBadge v-if="selectedDocument?.isPrimary" color="primary" variant="subtle">Primary</UBadge>
-    </div>
+        <!-- Document switcher only appears when the candidate has several CVs. -->
+        <template v-if="documents.length > 1">
+          <select
+            :value="selectedDocument?.id"
+            aria-label="Choose CV document"
+            class="min-h-10 min-w-0 max-w-64 flex-1 truncate rounded-xl border border-default bg-default px-3 py-2 text-sm text-highlighted"
+            @change="selectDocument(Number(($event.target as HTMLSelectElement).value))"
+          >
+            <option v-for="document in documents" :key="document.id" :value="document.id">
+              {{ document.originalFilename }}
+            </option>
+          </select>
+          <UBadge v-if="selectedDocument?.isPrimary" color="primary" variant="subtle">
+            Primary
+          </UBadge>
+        </template>
 
-    <div class="rounded-xl border border-default bg-default p-3 shadow-sm">
-      <div ref="viewer" class="flex min-h-[32rem] items-start justify-center overflow-auto">
+        <div class="ml-auto flex items-center gap-1">
+          <UButton
+            icon="i-lucide-chevron-left"
+            color="neutral"
+            variant="outline"
+            :disabled="page <= 1"
+            aria-label="Previous page"
+            @click="goToPage(page - 1)"
+          />
+          <span class="min-w-14 text-center text-sm tabular-nums text-muted">
+            {{ page }} / {{ pageCount || '–' }}
+          </span>
+          <UButton
+            icon="i-lucide-chevron-right"
+            color="neutral"
+            variant="outline"
+            :disabled="pageCount === 0 || page >= pageCount"
+            aria-label="Next page"
+            @click="goToPage(page + 1)"
+          />
+        </div>
+        <div class="flex items-center gap-1">
+          <UButton
+            icon="i-lucide-minus"
+            color="neutral"
+            variant="outline"
+            :disabled="!canZoomOut"
+            aria-label="Zoom out"
+            @click="zoomBy(-0.25)"
+          />
+          <span class="min-w-12 text-center text-sm tabular-nums text-muted">
+            {{ zoomPercent }}
+          </span>
+          <UButton
+            icon="i-lucide-plus"
+            color="neutral"
+            variant="outline"
+            :disabled="!canZoomIn"
+            aria-label="Zoom in"
+            @click="zoomBy(0.25)"
+          />
+        </div>
+      </div>
+
+      <div ref="viewer" class="flex min-h-[32rem] items-start justify-center overflow-auto p-3">
         <template v-if="selectedDocument">
           <div
             v-if="failed"
@@ -142,49 +193,6 @@ watch(
           />
         </template>
         <p v-else class="self-center text-sm text-muted">This candidate has no CV document.</p>
-      </div>
-    </div>
-
-    <div v-if="selectedDocument" class="flex items-center justify-between gap-3">
-      <div class="flex items-center gap-1">
-        <UButton
-          icon="i-lucide-chevron-left"
-          color="neutral"
-          variant="outline"
-          :disabled="page <= 1"
-          aria-label="Previous page"
-          @click="goToPage(page - 1)"
-        />
-        <span class="min-w-14 text-center text-sm tabular-nums text-muted">
-          {{ page }} / {{ pageCount || '–' }}
-        </span>
-        <UButton
-          icon="i-lucide-chevron-right"
-          color="neutral"
-          variant="outline"
-          :disabled="pageCount === 0 || page >= pageCount"
-          aria-label="Next page"
-          @click="goToPage(page + 1)"
-        />
-      </div>
-      <div class="flex items-center gap-1">
-        <UButton
-          icon="i-lucide-minus"
-          color="neutral"
-          variant="outline"
-          :disabled="!canZoomOut"
-          aria-label="Zoom out"
-          @click="zoomBy(-0.25)"
-        />
-        <span class="min-w-12 text-center text-sm tabular-nums text-muted">{{ zoomPercent }}</span>
-        <UButton
-          icon="i-lucide-plus"
-          color="neutral"
-          variant="outline"
-          :disabled="!canZoomIn"
-          aria-label="Zoom in"
-          @click="zoomBy(0.25)"
-        />
       </div>
     </div>
   </section>

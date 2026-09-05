@@ -9,6 +9,7 @@ const notes = defineModel<string>({ default: '' })
 const props = defineProps<{
   saveState: NotesSaveState
   savedAt: Date | null
+  /** Gates the Save button only; no visible "unsaved" label (ADR-0008 #9). */
   dirty: boolean
 }>()
 
@@ -44,14 +45,13 @@ onMounted(autogrow)
         <span v-else-if="props.saveState === 'saved' && props.savedAt">
           Saved {{ formatClockTime(props.savedAt) }}
         </span>
-        <span v-else-if="props.dirty">Unsaved changes</span>
         <button
           v-else-if="props.saveState === 'error'"
           type="button"
           class="font-medium text-error underline underline-offset-2"
           @click="emit('save')"
         >
-          Not saved — click to retry
+          Not saved - click to retry
         </button>
       </p>
     </div>
