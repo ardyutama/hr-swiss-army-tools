@@ -435,7 +435,9 @@ describe('ReviewView', () => {
 
     expect(wrapper.text()).toContain('This candidate has no CV document.')
     await findButton(wrapper, 'Open').trigger('click')
-    expect(wrapper.text()).toContain('Please find my CV attached.')
+    const dialog = document.body.querySelector('[role="dialog"]')
+    expect(dialog).not.toBeNull()
+    expect(dialog?.textContent).toContain('Please find my CV attached.')
     wrapper.unmount()
   })
 })
