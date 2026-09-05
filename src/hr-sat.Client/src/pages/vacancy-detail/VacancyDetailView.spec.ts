@@ -312,6 +312,10 @@ describe('VacancyDetailView', () => {
       return Promise.resolve(
         jsonResponse(
           vacancyDetails({
+            requirements: [
+              { id: 11, phrase: 'MIG welding', position: 0 },
+              { id: 12, phrase: 'TIG welding', position: 1 },
+            ],
             progress: { processedCandidates: 1, totalCandidates: 3 },
           }),
         ),
@@ -347,6 +351,8 @@ describe('VacancyDetailView', () => {
     expect(wrapper.text()).toContain('Alice Applicant')
     expect(wrapper.text()).toContain('Bob Builder')
     expect(wrapper.text()).toContain('CV submission via web form')
+    expect(wrapper.find('[aria-label="Skills requirements"]').text()).toContain('MIG welding')
+    expect(wrapper.find('[aria-label="Skills requirements"]').text()).toContain('TIG welding')
     expect(wrapper.text()).toContain('New')
     expect(wrapper.text()).toContain('Shortlisted')
     expect(wrapper.text()).toContain('Strong MIG experience')

@@ -48,6 +48,7 @@ const deleteError = shallowRef<string | null>(null)
 const isClosed = computed(() => vacancy.value?.status === 'closed')
 
 const progress = computed(() => (vacancy.value ? progressPercent(vacancy.value.progress) : 0))
+const vacancyRequirements = computed(() => vacancy.value?.requirements.map((requirement) => requirement.phrase) ?? [])
 
 function openImport() {
   importOpen.value = true
@@ -268,6 +269,7 @@ function openReview(candidate: CandidateSummary) {
           <CandidateList
             v-else
             :candidates="filteredCandidates"
+            :requirements="vacancyRequirements"
             :received-sort="receivedSort"
             :readonly="isClosed"
             @remove="requestDeleteCandidate"

@@ -9,6 +9,7 @@ import { candidateDisplayName, formatReceivedAt } from '../format'
 withDefaults(
   defineProps<{
     candidates: CandidateSummary[]
+    requirements: string[]
     receivedSort: ReceivedSort
     readonly?: boolean
   }>(),
@@ -41,8 +42,32 @@ const columnWidths = ['24%', '14%', '8%', '28%', '12%', '7.5rem']
 </script>
 
 <template>
-  <div class="overflow-x-auto">
-    <table class="ctable w-full min-w-[56rem] table-fixed border-collapse">
+  <div>
+    <div
+      v-if="requirements.length > 0"
+      class="border-b border-default px-5 py-3"
+    >
+      <div
+        class="flex flex-wrap items-center gap-2"
+        role="group"
+        aria-label="Skills requirements"
+      >
+        <span class="shrink-0 text-xs font-semibold uppercase tracking-[0.06em] text-muted">Skills requirements</span>
+        <div class="flex flex-wrap gap-1.5">
+          <UBadge
+            v-for="requirement in requirements"
+            :key="requirement"
+            color="neutral"
+            variant="subtle"
+          >
+            {{ requirement }}
+          </UBadge>
+        </div>
+      </div>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="ctable w-full min-w-[56rem] table-fixed border-collapse">
       <colgroup>
         <col v-for="width in columnWidths" :key="width" :style="{ width }" />
       </colgroup>
@@ -149,7 +174,8 @@ const columnWidths = ['24%', '14%', '8%', '28%', '12%', '7.5rem']
           </td>
         </tr>
       </tbody>
-    </table>
+      </table>
+    </div>
   </div>
 </template>
 
