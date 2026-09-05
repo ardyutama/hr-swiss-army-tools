@@ -4,6 +4,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import ReviewView from './ReviewView.vue'
 
+const toastAdd = vi.fn()
+
+vi.mock('@nuxt/ui/composables/useToast', () => ({
+  useToast: () => ({ add: toastAdd }),
+}))
+
 // PDF.js cannot run under jsdom; stub the viewer's platform component so the
 // seam tests can still exercise pagination state through its `loaded` event.
 vi.mock('vue-pdf-embed', () => ({
@@ -123,7 +129,13 @@ function stubApi(
     if (method === 'PUT' && url.endsWith('/review')) {
       const id = Number(/\/candidates\/(\d+)\/review/.exec(url)?.[1])
       return Promise.resolve(
-        jsonResponse(candidateDetails(id, { reviewStatus: body?.reviewStatus, notes: body?.notes })),
+        jsonResponse(
+          candidateDetails(id, {
+            ...options.details?.[id],
+            reviewStatus: body?.reviewStatus,
+            notes: body?.notes,
+          }),
+        ),
       )
     }
     if (method === 'PUT' && url.endsWith('/notes')) {
@@ -244,6 +256,47 @@ describe('ReviewView', () => {
     expect(wrapper.text()).toContain('Bob Builder')
     expect(wrapper.text()).toContain('2 / 2')
     expect(wrapper.text()).toContain('1 / 2 reviewed')
+    wrapper.unmount()
+  })
+
+  it('US-17: HR must verify saved details before moving on from a shortlisted candidate', async () => {
+    const { requests } = stubApi({
+      details: { 1: candidateDetails(1, { fullName: null, contactEmail: null }) },
+    })
+    const { wrapper, router } = await mountReview()
+    await flushPromises()
+
+    await findButton(wrapper, 'Shortlist').trigger('click')
+    await flushPromises()
+
+    const reviewRequests = requests.filter(
+      (request) => request.method === 'PUT' && request.url.endsWith('/candidates/1/review'),
+    )
+    expect(reviewRequests).toHaveLength(0)
+    expect(router.currentRoute.value.params.candidateId).toBe('1')
+    expect(toastAdd).toHaveBeenCalledWith({
+      title:
+        'Candidate details are not saved. Verify the name and email before moving to the next candidate.',
+      color: 'warning',
+      class: 'review-details-warning-toast',
+    })
+    expect(wrapper.text()).not.toContain('Candidate details are not saved.')
+
+    await findButton(wrapper, 'Next').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.params.candidateId).toBe('1')
+
+    await findButton(wrapper, 'Edit').trigger('click')
+    await wrapper.find('input[aria-label="Candidate name"]').setValue('Jane Doe')
+    await wrapper.find('input[aria-label="Candidate email"]').setValue('jane.doe@mail.com')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    await findButton(wrapper, 'Next').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.params.candidateId).toBe('2')
     wrapper.unmount()
   })
 

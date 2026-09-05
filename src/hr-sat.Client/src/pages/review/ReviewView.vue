@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { toRef } from 'vue'
+import { toRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useToast } from '@nuxt/ui/composables/useToast'
 import ReviewHeader from '@/features/review/components/ReviewHeader.vue'
 import RequirementsPanel from '@/features/review/components/RequirementsPanel.vue'
 import CandidateDetailsPanel from '@/features/review/components/CandidateDetailsPanel.vue'
@@ -18,11 +19,13 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
+const toast = useToast()
 const {
   vacancy,
   candidate,
   loadError,
   viewState,
+  candidateDetailsWarning,
   position,
   total,
   previousCandidateId,
@@ -42,7 +45,18 @@ const {
   updateDetails,
   updateRequirementReview,
   decide,
+  advanceToNextCandidate,
 } = useReview(toRef(props, 'id'), toRef(props, 'candidateId'))
+
+watch(candidateDetailsWarning, (warning) => {
+  if (warning) {
+    toast.add({
+      title: warning,
+      color: 'warning',
+      class: 'review-details-warning-toast',
+    })
+  }
+})
 
 function goToCandidate(id: string | null) {
   if (id === null) {
@@ -59,9 +73,7 @@ async function onPrev() {
 }
 
 async function onNext() {
-  if (await saveNotes()) {
-    goToCandidate(nextCandidateId.value)
-  }
+  goToCandidate(await advanceToNextCandidate())
 }
 
 // Decision-as-commit: one call saves notes, sets the status, and auto-advances.
@@ -178,3 +190,15 @@ function onRequirementToggle(requirementId: number, confirmed: boolean) {
     </template>
   </div>
 </template>
+
+<style scoped>
+:global(.review-details-warning-toast) {
+  position: fixed !important;
+  top: 1rem !important;
+  right: 1rem !important;
+  bottom: auto !important;
+  left: auto !important;
+  width: min(24rem, calc(100vw - 2rem)) !important;
+  z-index: 101 !important;
+}
+</style>

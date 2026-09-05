@@ -41,6 +41,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
   const requirementError = shallowRef<string | null>(null)
   const deciding = shallowRef(false)
   const decisionError = shallowRef<string | null>(null)
+  const shortlistWarningActive = shallowRef(false)
 
   let contextToken = 0
   let detailsToken = 0
@@ -72,6 +73,23 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
       return 'loading'
     }
     return 'ready'
+  })
+
+  function hasCandidateDetails(current: CandidateDetails | null): boolean {
+    return Boolean(current?.fullName?.trim() && current.contactEmail?.trim())
+  }
+
+  const candidateDetailsWarning = computed(() => {
+    const current = candidate.value
+    if (
+      !current ||
+      (!shortlistWarningActive.value && current.reviewStatus !== 'shortlisted') ||
+      hasCandidateDetails(current)
+    ) {
+      return null
+    }
+
+    return 'Candidate details are not saved. Verify the name and email before moving to the next candidate.'
   })
 
   function patchSummary(updated: CandidateDetails) {
@@ -239,6 +257,13 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     }
   }
 
+  async function advanceToNextCandidate(): Promise<string | null> {
+    if (candidateDetailsWarning.value || !(await saveNotes())) {
+      return null
+    }
+    return nextCandidateId.value
+  }
+
   /**
    * Decision-as-commit (ADR-0008 #9): saves pending notes and sets the review
    * status in one call. Returns the next candidate id to auto-advance to, or
@@ -247,6 +272,10 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
   async function decide(status: CandidateReviewStatus): Promise<string | null> {
     const current = candidate.value
     if (!current || deciding.value) {
+      return null
+    }
+    if (status === 'shortlisted' && !hasCandidateDetails(current)) {
+      shortlistWarningActive.value = true
       return null
     }
     if (notesValidationError(notes.value) !== null) {
@@ -268,6 +297,10 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
       notesSaveState.value = 'saved'
       notesSavedAt.value = new Date()
       patchSummary(updated)
+      shortlistWarningActive.value = false
+      if (candidateDetailsWarning.value) {
+        return null
+      }
       return nextCandidateId.value
     } catch (error) {
       decisionError.value =
@@ -303,6 +336,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     () => {
       candidate.value = null
       notes.value = ''
+      shortlistWarningActive.value = false
       savingDetails.value = false
       detailsError.value = null
       savingRequirementId.value = null
@@ -318,6 +352,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     candidate,
     loadError,
     viewState,
+    candidateDetailsWarning,
     position,
     total,
     previousCandidateId,
@@ -337,6 +372,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
       await loadDetails()
     },
     saveNotes,
+    advanceToNextCandidate,
     updateDetails,
     updateRequirementReview,
     decide,
