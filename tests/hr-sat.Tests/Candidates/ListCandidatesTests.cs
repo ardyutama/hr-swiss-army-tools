@@ -97,6 +97,38 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
             });
     }
 
+    [Fact]
+    public async Task US_15_HR_can_open_an_imported_candidate_for_review()
+    {
+        using var client = factory.CreateClient();
+        var vacancyLocation = await CreateVacancyAsync(client);
+        using var form = new MultipartFormDataContent();
+        AddFile(
+            form,
+            CreateEml(
+                "Alice Applicant",
+                "alice@example.com",
+                "Alice application",
+                ("alice.pdf", Encoding.ASCII.GetBytes("%PDF-1.7\nAlice\n%%EOF"))),
+            "alice.eml");
+
+        var importResponse = await client.PostAsync($"{vacancyLocation}/candidates/import", form);
+        var imported = await importResponse.Content.ReadFromJsonAsync<ImportCandidatesResponse>();
+        Assert.NotNull(imported);
+        var candidateId = Assert.Single(imported.Results).Candidate!.Id;
+
+        var response = await client.GetAsync($"{vacancyLocation}/candidates/{candidateId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var candidate = await response.Content.ReadFromJsonAsync<CandidateDetails>();
+        Assert.NotNull(candidate);
+        Assert.Equal(candidateId, candidate.Id);
+        Assert.Equal("new", candidate.ReviewStatus);
+        Assert.Equal("Alice Applicant", candidate.SourceSenderName);
+        Assert.Equal("alice@example.com", candidate.SourceSenderEmail);
+        Assert.Single(candidate.Documents);
+    }
+
     private static async Task<string> CreateVacancyAsync(HttpClient client)
     {
         var response = await client.PostAsJsonAsync("/api/vacancies", new
@@ -158,4 +190,31 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
         string? SourceSubject,
         DateTimeOffset? SourceSentAt,
         int CvDocumentCount);
+
+    private sealed record ImportCandidatesResponse(IReadOnlyList<ImportFileResult> Results);
+
+    private sealed record ImportFileResult(string FileName, CandidateImportResult? Candidate);
+
+    private sealed record CandidateImportResult(long Id);
+
+    private sealed record CandidateDetails(
+        long Id,
+        string ReviewStatus,
+        string? FullName,
+        string? ContactEmail,
+        string? Notes,
+        string? SourceSenderName,
+        string? SourceSenderEmail,
+        string? SourceSubject,
+        string? SourceBodyText,
+        DateTimeOffset? SourceSentAt,
+        string SourceOriginalFilename,
+        IReadOnlyList<CvDocumentDetails> Documents);
+
+    private sealed record CvDocumentDetails(
+        long Id,
+        string OriginalFilename,
+        long SizeBytes,
+        bool IsPrimary,
+        string DownloadUrl);
 }

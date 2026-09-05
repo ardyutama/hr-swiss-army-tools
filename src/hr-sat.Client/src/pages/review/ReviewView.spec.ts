@@ -53,9 +53,6 @@ function candidateSummary(id: number) {
     contactPhone: null,
     notes: null,
     reviewStatus: 'new',
-    extractionStatus: 'succeeded',
-    skills: [],
-    match: { matchedRequirements: 0, totalRequirements: 3 },
     sourceSenderName: name,
     sourceSenderEmail: `candidate${id}@mail.com`,
     sourceSubject: `${name} application`,
@@ -68,17 +65,14 @@ function candidateDetails(id: number, overrides: Record<string, unknown> = {}) {
   return {
     id,
     reviewStatus: 'new',
-    extractionStatus: 'succeeded',
     fullName: name,
     contactEmail: `candidate${id}@mail.com`,
-    contactPhone: '555-0134',
     notes: null,
-    skills: [
-      { id: id * 100 + 1, phrase: 'Excel', position: 0 },
-      { id: id * 100 + 2, phrase: 'VAT reporting', position: 1 },
-      { id: id * 100 + 3, phrase: 'Python', position: 2 },
+    requirementReviews: [
+      { requirementId: 11, confirmed: id === 1 },
+      { requirementId: 12, confirmed: false },
+      { requirementId: 13, confirmed: false },
     ],
-    match: { matchedRequirements: 2, totalRequirements: 3 },
     sourceSenderName: name,
     sourceSenderEmail: `candidate${id}@mail.com`,
     sourceSubject: 'Applying for the role',
@@ -115,6 +109,17 @@ function stubApi(
     const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined
     requests.push({ url, method, body })
 
+    if (method === 'PUT' && url.endsWith('/details')) {
+      const id = Number(/\/candidates\/(\d+)\/details/.exec(url)?.[1])
+      return Promise.resolve(
+        jsonResponse(
+          candidateDetails(id, {
+            fullName: body?.fullName,
+            contactEmail: body?.contactEmail,
+          }),
+        ),
+      )
+    }
     if (method === 'PUT' && url.endsWith('/review')) {
       const id = Number(/\/candidates\/(\d+)\/review/.exec(url)?.[1])
       return Promise.resolve(
@@ -125,9 +130,21 @@ function stubApi(
       const id = Number(/\/candidates\/(\d+)\/notes/.exec(url)?.[1])
       return Promise.resolve(jsonResponse(candidateDetails(id, { notes: body?.notes })))
     }
-    if (method === 'POST' && url.endsWith('/extract')) {
-      const id = Number(/\/candidates\/(\d+)\/extract/.exec(url)?.[1])
-      return Promise.resolve(jsonResponse(candidateDetails(id)))
+    if (method === 'PUT' && url.includes('/requirement-reviews/')) {
+      const id = Number(/\/candidates\/(\d+)\/requirement-reviews/.exec(url)?.[1])
+      const requirementId = Number(/requirement-reviews\/(\d+)$/.exec(url)?.[1])
+      const details = candidateDetails(id)
+      return Promise.resolve(
+        jsonResponse(
+          candidateDetails(id, {
+            requirementReviews: details.requirementReviews.map((review) =>
+              review.requirementId === requirementId
+                ? { ...review, confirmed: body?.confirmed }
+                : review,
+            ),
+          }),
+        ),
+      )
     }
     const detailsMatch = /\/candidates\/(\d+)$/.exec(url)
     if (method === 'GET' && detailsMatch) {
@@ -197,7 +214,7 @@ describe('ReviewView', () => {
     expect(wrapper.text()).toContain('Jane Doe')
     expect(wrapper.text()).toContain('candidate1@mail.com')
     expect(wrapper.text()).toContain('1 / 2')
-    expect(wrapper.text()).toContain('2/3')
+    expect(wrapper.text()).toContain('1 / 3 confirmed')
     expect(wrapper.text()).toContain('Excel')
     expect(wrapper.text()).toContain('SAP')
     // The stubbed PDF reported five pages; pagination reflects it.
@@ -226,6 +243,7 @@ describe('ReviewView', () => {
     expect(router.currentRoute.value.params.candidateId).toBe('2')
     expect(wrapper.text()).toContain('Bob Builder')
     expect(wrapper.text()).toContain('2 / 2')
+    expect(wrapper.text()).toContain('1 / 2 reviewed')
     wrapper.unmount()
   })
 
@@ -249,7 +267,7 @@ describe('ReviewView', () => {
     wrapper.unmount()
   })
 
-  it('US-18: notes auto-save on blur with a Saving… to Saved whisper', async () => {
+  it('US-18: HR explicitly saves notes and sees a Saving… to Saved whisper', async () => {
     let resolveNotes: ((response: Response) => void) | undefined
     const notesGate = new Promise<Response>((resolve) => {
       resolveNotes = resolve
@@ -274,14 +292,59 @@ describe('ReviewView', () => {
 
     const notes = wrapper.find('textarea[aria-label="Candidate notes"]')
     await notes.setValue('Call back about SAP')
-    await notes.trigger('blur')
+    expect(
+      fetchMock.mock.calls.filter(
+        ([input, init]) => init?.method === 'PUT' && String(input).endsWith('/notes'),
+      ),
+    ).toHaveLength(0)
+
+    await findButton(wrapper, 'Save notes').trigger('click')
 
     expect(wrapper.text()).toContain('Saving…')
     resolveNotes!(jsonResponse(candidateDetails(1, { notes: 'Call back about SAP' })))
     await flushPromises()
 
     expect(wrapper.text()).toContain('Saved')
-    expect(wrapper.text()).not.toContain('Saving…')
+    wrapper.unmount()
+  })
+
+  it('US-17: HR saves a manual requirement confirmation beside the candidate', async () => {
+    const { requests } = stubApi()
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    const checkbox = wrapper.find('input[aria-label="Confirm VAT reporting requirement"]')
+    await checkbox.setValue(true)
+    await flushPromises()
+
+    const requirementRequest = requests.find((request) =>
+      request.url.endsWith('/requirement-reviews/12'),
+    )
+    expect(requirementRequest?.body).toEqual({ confirmed: true })
+    expect(wrapper.text()).toContain('2 / 3 confirmed')
+    wrapper.unmount()
+  })
+
+  it('US-17: HR edits the manually entered candidate details', async () => {
+    const { requests } = stubApi({
+      details: { 1: candidateDetails(1, { fullName: null, contactEmail: null }) },
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    await findButton(wrapper, 'Edit').trigger('click')
+    await wrapper.find('input[aria-label="Candidate name"]').setValue('Jane Updated')
+    await wrapper.find('input[aria-label="Candidate email"]').setValue('jane.updated@mail.com')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    const detailsRequest = requests.find((request) => request.url.endsWith('/candidates/1/details'))
+    expect(detailsRequest?.body).toEqual({
+      fullName: 'Jane Updated',
+      contactEmail: 'jane.updated@mail.com',
+    })
+    expect(wrapper.text()).toContain('Jane Updated')
+    expect(wrapper.text()).toContain('jane.updated@mail.com')
     wrapper.unmount()
   })
 
@@ -312,27 +375,14 @@ describe('ReviewView', () => {
     wrapper.unmount()
   })
 
-  it('US-18: a failed extraction offers an inline retry that restores the details', async () => {
-    const { requests } = stubApi({
-      details: {
-        1: candidateDetails(1, { extractionStatus: 'failed', skills: [], fullName: null }),
-      },
-    })
+  it('US-17: an email without a PDF remains reviewable with its source email', async () => {
+    stubApi({ details: { 1: candidateDetails(1, { documents: [] }) } })
     const { wrapper } = await mountReview()
     await flushPromises()
 
-    expect(wrapper.text()).toContain("Couldn't extract candidate details")
-    expect(wrapper.text()).not.toContain('Python')
-
-    await findButton(wrapper, 'Retry extraction').trigger('click')
-    await flushPromises()
-
-    expect(
-      requests.some(
-        (request) => request.method === 'POST' && request.url.endsWith('/candidates/1/extract'),
-      ),
-    ).toBe(true)
-    expect(wrapper.text()).toContain('Python')
+    expect(wrapper.text()).toContain('This candidate has no CV document.')
+    await findButton(wrapper, 'Open').trigger('click')
+    expect(wrapper.text()).toContain('Please find my CV attached.')
     wrapper.unmount()
   })
 })

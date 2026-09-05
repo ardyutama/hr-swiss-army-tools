@@ -21,6 +21,7 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
     public DbSet<Vacancy> Vacancies => Set<Vacancy>();
     public DbSet<VacancyRequirement> VacancyRequirements => Set<VacancyRequirement>();
     public DbSet<Candidate> Candidates => Set<Candidate>();
+    public DbSet<CandidateRequirementReview> CandidateRequirementReviews => Set<CandidateRequirementReview>();
     public DbSet<CvDocument> CvDocuments => Set<CvDocument>();
     public DbSet<PendingFileDeletion> PendingFileDeletions => Set<PendingFileDeletion>();
 
@@ -88,8 +89,24 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
                 .WithOne()
                 .HasForeignKey(document => document.CandidateId)
                 .OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(candidate => candidate.RequirementReviews)
+                .WithOne()
+                .HasForeignKey(review => review.CandidateId)
+                .OnDelete(DeleteBehavior.Cascade);
             entity.Navigation(candidate => candidate.CvDocuments)
                 .UsePropertyAccessMode(PropertyAccessMode.Field);
+            entity.Navigation(candidate => candidate.RequirementReviews)
+                .UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        modelBuilder.Entity<CandidateRequirementReview>(entity =>
+        {
+            entity.HasKey(review => review.Id);
+            entity.Property(review => review.Id).ValueGeneratedOnAdd();
+            entity.HasOne<VacancyRequirement>()
+                .WithMany()
+                .HasForeignKey(review => review.VacancyRequirementId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<CvDocument>(entity =>

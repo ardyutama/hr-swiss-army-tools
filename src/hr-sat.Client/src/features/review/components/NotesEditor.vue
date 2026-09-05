@@ -9,6 +9,7 @@ const notes = defineModel<string>({ default: '' })
 const props = defineProps<{
   saveState: NotesSaveState
   savedAt: Date | null
+  dirty: boolean
 }>()
 
 const emit = defineEmits<{
@@ -43,6 +44,7 @@ onMounted(autogrow)
         <span v-else-if="props.saveState === 'saved' && props.savedAt">
           Saved {{ formatClockTime(props.savedAt) }}
         </span>
+        <span v-else-if="props.dirty">Unsaved changes</span>
         <button
           v-else-if="props.saveState === 'error'"
           type="button"
@@ -61,7 +63,17 @@ onMounted(autogrow)
       placeholder="Add notes about this candidate…"
       aria-label="Candidate notes"
       class="max-h-48 w-full resize-none overflow-y-auto rounded-xl border border-default bg-default px-3 py-2 text-sm text-highlighted placeholder:text-muted focus:border-primary focus:outline-none"
-      @blur="emit('save')"
     />
+    <div class="mt-3 flex justify-end">
+      <UButton
+        color="primary"
+        size="sm"
+        :loading="props.saveState === 'saving'"
+        :disabled="!props.dirty || props.saveState === 'saving'"
+        @click="emit('save')"
+      >
+        Save notes
+      </UButton>
+    </div>
   </section>
 </template>

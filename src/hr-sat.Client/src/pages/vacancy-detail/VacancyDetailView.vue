@@ -268,6 +268,7 @@ function openReview(candidate: CandidateSummary) {
           />
           <CandidateList
             v-else
+            :vacancy-id="id"
             :candidates="filteredCandidates"
             :requirements="vacancyRequirements"
             :received-sort="receivedSort"

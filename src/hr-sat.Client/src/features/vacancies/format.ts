@@ -1,4 +1,5 @@
-import type { CandidateSummary, VacancyProgress } from './api'
+import type { CandidateSummary } from '@/features/candidates/api'
+import type { VacancyProgress } from './api'
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   year: 'numeric',

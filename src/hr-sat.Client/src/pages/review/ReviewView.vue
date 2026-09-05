@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, toRef } from 'vue'
+import { toRef } from 'vue'
 import { useRouter } from 'vue-router'
 import ReviewHeader from '@/features/review/components/ReviewHeader.vue'
 import RequirementsPanel from '@/features/review/components/RequirementsPanel.vue'
@@ -10,6 +10,7 @@ import CvViewer from '@/features/review/components/CvViewer.vue'
 import ReviewActionBar from '@/features/review/components/ReviewActionBar.vue'
 import { useReview } from '@/features/review/useReview'
 import type { CandidateReviewStatus } from '@/features/candidates/api'
+import type { CandidateDetailsPayload } from '@/features/review/api'
 
 const props = defineProps<{
   id: string
@@ -27,21 +28,21 @@ const {
   previousCandidateId,
   nextCandidateId,
   notes,
+  notesDirty,
   notesSaveState,
   notesSavedAt,
+  savingDetails,
+  detailsError,
+  savingRequirementId,
+  requirementError,
   deciding,
   decisionError,
-  extracting,
-  extractionError,
   load,
   saveNotes,
+  updateDetails,
+  updateRequirementReview,
   decide,
-  retryExtraction,
 } = useReview(toRef(props, 'id'), toRef(props, 'candidateId'))
-
-const requirementPhrases = computed(
-  () => vacancy.value?.requirements.map((requirement) => requirement.phrase) ?? [],
-)
 
 function goToCandidate(id: string | null) {
   if (id === null) {
@@ -52,19 +53,29 @@ function goToCandidate(id: string | null) {
 
 // ADR-0008 #9: Prev/Next navigation silently commits pending notes.
 async function onPrev() {
-  await saveNotes()
-  goToCandidate(previousCandidateId.value)
+  if (await saveNotes()) {
+    goToCandidate(previousCandidateId.value)
+  }
 }
 
 async function onNext() {
-  await saveNotes()
-  goToCandidate(nextCandidateId.value)
+  if (await saveNotes()) {
+    goToCandidate(nextCandidateId.value)
+  }
 }
 
 // Decision-as-commit: one call saves notes, sets the status, and auto-advances.
 async function onDecide(status: CandidateReviewStatus) {
   const next = await decide(status)
   goToCandidate(next)
+}
+
+function onDetailsSave(payload: CandidateDetailsPayload) {
+  void updateDetails(payload)
+}
+
+function onRequirementToggle(requirementId: number, confirmed: boolean) {
+  void updateRequirementReview(requirementId, confirmed)
 }
 </script>
 
@@ -113,6 +124,8 @@ async function onDecide(status: CandidateReviewStatus) {
         :opened-on="vacancy.openedOn"
         :position="position"
         :total="total"
+        :processed="vacancy.progress.processedCandidates"
+        :progress-total="vacancy.progress.totalCandidates"
       />
 
       <div class="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
@@ -122,15 +135,16 @@ async function onDecide(status: CandidateReviewStatus) {
         >
           <RequirementsPanel
             :requirements="vacancy.requirements"
-            :skills="candidate.skills"
-            :match="candidate.match"
+            :reviews="candidate.requirementReviews"
+            :saving-requirement-id="savingRequirementId"
+            :error="requirementError"
+            @toggle="onRequirementToggle"
           />
           <CandidateDetailsPanel
             :candidate="candidate"
-            :requirement-phrases="requirementPhrases"
-            :retrying="extracting"
-            :retry-error="extractionError"
-            @retry="retryExtraction"
+            :saving="savingDetails"
+            :error="detailsError"
+            @save="onDetailsSave"
           />
           <SourceEmailPanel
             :subject="candidate.sourceSubject"
@@ -143,6 +157,7 @@ async function onDecide(status: CandidateReviewStatus) {
             v-model="notes"
             :save-state="notesSaveState"
             :saved-at="notesSavedAt"
+            :dirty="notesDirty"
             @save="saveNotes"
           />
         </div>

@@ -22,10 +22,41 @@ namespace hr_sat.Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.11")
+                .HasAnnotation("ProductVersion", "10.0.4")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("hr_sat.Application.Abstractions.Data.PendingFileDeletion", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("EnqueuedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("enqueued_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("storage_key");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StorageKey")
+                        .HasDatabaseName("pending_file_deletion_storage_key_idx");
+
+                    b.ToTable("pending_file_deletion", null, t =>
+                        {
+                            t.HasCheckConstraint("pending_file_deletion_storage_key_check", "btrim(storage_key) <> ''");
+                        });
+                });
 
             modelBuilder.Entity("hr_sat.Domain.Candidates.Candidate", b =>
                 {
@@ -151,6 +182,43 @@ namespace hr_sat.Infrastructure.Migrations
                             t.HasCheckConstraint("candidate_source_size_bytes_check", "source_size_bytes > 0");
 
                             t.HasCheckConstraint("candidate_source_storage_key_check", "btrim(source_storage_key) <> ''");
+                        });
+                });
+
+            modelBuilder.Entity("hr_sat.Domain.Candidates.CandidateRequirementReview", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("CandidateId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("candidate_id");
+
+                    b.Property<bool>("Confirmed")
+                        .HasColumnType("boolean")
+                        .HasColumnName("confirmed");
+
+                    b.Property<long>("VacancyRequirementId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("vacancy_requirement_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VacancyRequirementId");
+
+                    b.HasIndex("CandidateId", "VacancyRequirementId")
+                        .IsUnique()
+                        .HasDatabaseName("candidate_requirement_review_candidate_requirement_key");
+
+                    b.ToTable("candidate_requirement_review", null, t =>
+                        {
+                            t.HasCheckConstraint("candidate_requirement_review_candidate_id_check", "candidate_id > 0");
+
+                            t.HasCheckConstraint("candidate_requirement_review_requirement_id_check", "vacancy_requirement_id > 0");
                         });
                 });
 
@@ -319,42 +387,26 @@ namespace hr_sat.Infrastructure.Migrations
                         });
                 });
 
-            modelBuilder.Entity("hr_sat.Application.Abstractions.Data.PendingFileDeletion", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTimeOffset>("EnqueuedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("enqueued_at")
-                        .HasDefaultValueSql("now()");
-
-                    b.Property<string>("StorageKey")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("storage_key");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("StorageKey")
-                        .HasDatabaseName("pending_file_deletion_storage_key_idx");
-
-                    b.ToTable("pending_file_deletion", null, t =>
-                        {
-                            t.HasCheckConstraint("pending_file_deletion_storage_key_check", "btrim(storage_key) <> ''");
-                        });
-                });
-
             modelBuilder.Entity("hr_sat.Domain.Candidates.Candidate", b =>
                 {
                     b.HasOne("hr_sat.Domain.Vacancies.Vacancy", null)
                         .WithMany("Candidates")
                         .HasForeignKey("VacancyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("hr_sat.Domain.Candidates.CandidateRequirementReview", b =>
+                {
+                    b.HasOne("hr_sat.Domain.Candidates.Candidate", null)
+                        .WithMany("RequirementReviews")
+                        .HasForeignKey("CandidateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("hr_sat.Domain.Vacancies.VacancyRequirement", null)
+                        .WithMany()
+                        .HasForeignKey("VacancyRequirementId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -380,6 +432,8 @@ namespace hr_sat.Infrastructure.Migrations
             modelBuilder.Entity("hr_sat.Domain.Candidates.Candidate", b =>
                 {
                     b.Navigation("CvDocuments");
+
+                    b.Navigation("RequirementReviews");
                 });
 
             modelBuilder.Entity("hr_sat.Domain.Vacancies.Vacancy", b =>

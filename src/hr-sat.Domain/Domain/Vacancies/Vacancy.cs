@@ -100,6 +100,9 @@ public sealed class Vacancy : Entity
     public Result EnsureCanRemoveCandidate() =>
         EnsureOpen("A closed vacancy must be reopened before candidates can be removed.");
 
+    public Result EnsureCanReviewCandidate() =>
+        EnsureOpen("A closed vacancy must be reopened before candidates can be reviewed.");
+
     private Result EnsureOpen(string message)
     {
         if (Status == VacancyStatus.Closed)

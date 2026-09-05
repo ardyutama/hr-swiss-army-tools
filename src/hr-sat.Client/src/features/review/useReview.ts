@@ -7,9 +7,11 @@ import {
 } from '@/features/candidates/api'
 import {
   getCandidateDetails,
-  retryCandidateExtraction,
+  updateCandidateDetails,
   updateCandidateNotes,
+  updateCandidateRequirementReview,
   updateCandidateReview,
+  type CandidateDetailsPayload,
   type CandidateDetails,
 } from './api'
 import { notesValidationError } from './validation'
@@ -33,10 +35,12 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
   const notesSaveState = shallowRef<NotesSaveState>('idle')
   const notesSavedAt = shallowRef<Date | null>(null)
 
+  const savingDetails = shallowRef(false)
+  const detailsError = shallowRef<string | null>(null)
+  const savingRequirementId = shallowRef<number | null>(null)
+  const requirementError = shallowRef<string | null>(null)
   const deciding = shallowRef(false)
   const decisionError = shallowRef<string | null>(null)
-  const extracting = shallowRef(false)
-  const extractionError = shallowRef<string | null>(null)
 
   let contextToken = 0
   let detailsToken = 0
@@ -69,6 +73,38 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     }
     return 'ready'
   })
+
+  function patchSummary(updated: CandidateDetails) {
+    if (summaries.value === null) {
+      return
+    }
+
+    summaries.value = summaries.value.map((summary) =>
+      summary.id === updated.id
+        ? {
+            ...summary,
+            fullName: updated.fullName,
+            contactEmail: updated.contactEmail,
+            notes: updated.notes,
+            reviewStatus: updated.reviewStatus,
+          }
+        : summary,
+    )
+
+    if (vacancy.value !== null) {
+      const processedCandidates = summaries.value.filter(
+        (summary) =>
+          summary.reviewStatus === 'shortlisted' || summary.reviewStatus === 'rejected',
+      ).length
+      vacancy.value = {
+        ...vacancy.value,
+        progress: {
+          processedCandidates,
+          totalCandidates: summaries.value.length,
+        },
+      }
+    }
+  }
 
   async function loadContext() {
     const token = ++contextToken
@@ -109,12 +145,69 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
       notes.value = details.notes ?? ''
       notesSaveState.value = 'idle'
       notesSavedAt.value = null
-      extractionError.value = null
+      detailsError.value = null
+      requirementError.value = null
     } catch (error) {
       if (token !== detailsToken) {
         return
       }
       loadError.value = error instanceof Error ? error.message : 'Failed to load the candidate'
+    }
+  }
+
+  async function updateDetails(payload: CandidateDetailsPayload): Promise<boolean> {
+    const current = candidate.value
+    if (!current || savingDetails.value) {
+      return false
+    }
+
+    savingDetails.value = true
+    detailsError.value = null
+    try {
+      const updated = await updateCandidateDetails(vacancyId.value, current.id, payload)
+      if (candidate.value?.id !== updated.id) {
+        return false
+      }
+      candidate.value = updated
+      patchSummary(updated)
+      return true
+    } catch (error) {
+      detailsError.value = error instanceof Error ? error.message : 'Failed to save candidate details'
+      return false
+    } finally {
+      savingDetails.value = false
+    }
+  }
+
+  async function updateRequirementReview(
+    requirementId: number,
+    confirmed: boolean,
+  ): Promise<boolean> {
+    const current = candidate.value
+    if (!current || savingRequirementId.value !== null) {
+      return false
+    }
+
+    savingRequirementId.value = requirementId
+    requirementError.value = null
+    try {
+      const updated = await updateCandidateRequirementReview(
+        vacancyId.value,
+        current.id,
+        requirementId,
+        confirmed,
+      )
+      if (candidate.value?.id !== updated.id) {
+        return false
+      }
+      candidate.value = updated
+      return true
+    } catch (error) {
+      requirementError.value =
+        error instanceof Error ? error.message : 'Failed to save the requirement review'
+      return false
+    } finally {
+      savingRequirementId.value = null
     }
   }
 
@@ -138,6 +231,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
       notes.value = updated.notes ?? ''
       notesSaveState.value = 'saved'
       notesSavedAt.value = new Date()
+      patchSummary(updated)
       return true
     } catch {
       notesSaveState.value = 'error'
@@ -173,6 +267,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
       notes.value = updated.notes ?? ''
       notesSaveState.value = 'saved'
       notesSavedAt.value = new Date()
+      patchSummary(updated)
       return nextCandidateId.value
     } catch (error) {
       decisionError.value =
@@ -183,25 +278,11 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     }
   }
 
-  async function retryExtraction(): Promise<void> {
-    const current = candidate.value
-    if (!current || extracting.value) {
-      return
+  watch(notes, () => {
+    if (notesDirty.value && notesSaveState.value !== 'saving') {
+      notesSaveState.value = 'idle'
     }
-    extracting.value = true
-    extractionError.value = null
-    try {
-      const updated = await retryCandidateExtraction(vacancyId.value, current.id)
-      if (candidate.value?.id === updated.id) {
-        candidate.value = updated
-      }
-    } catch (error) {
-      extractionError.value =
-        error instanceof Error ? error.message : 'Failed to retry the extraction'
-    } finally {
-      extracting.value = false
-    }
-  }
+  })
 
   // Reload the vacancy context when the vacancy route param changes.
   watch(
@@ -221,6 +302,11 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     candidateId,
     () => {
       candidate.value = null
+      notes.value = ''
+      savingDetails.value = false
+      detailsError.value = null
+      savingRequirementId.value = null
+      requirementError.value = null
       decisionError.value = null
       void loadDetails()
     },
@@ -240,16 +326,19 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     notesDirty,
     notesSaveState,
     notesSavedAt,
+    savingDetails,
+    detailsError,
+    savingRequirementId,
+    requirementError,
     deciding,
     decisionError,
-    extracting,
-    extractionError,
     load: async () => {
       await loadContext()
       await loadDetails()
     },
     saveNotes,
+    updateDetails,
+    updateRequirementReview,
     decide,
-    retryExtraction,
   }
 }

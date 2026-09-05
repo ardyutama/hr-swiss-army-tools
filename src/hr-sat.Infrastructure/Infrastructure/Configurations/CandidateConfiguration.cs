@@ -124,7 +124,13 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
             .WithOne()
             .HasForeignKey(document => document.CandidateId)
             .OnDelete(DeleteBehavior.Cascade);
+        entity.HasMany(candidate => candidate.RequirementReviews)
+            .WithOne()
+            .HasForeignKey(review => review.CandidateId)
+            .OnDelete(DeleteBehavior.Cascade);
         entity.Navigation(candidate => candidate.CvDocuments)
+            .UsePropertyAccessMode(PropertyAccessMode.Field);
+        entity.Navigation(candidate => candidate.RequirementReviews)
             .UsePropertyAccessMode(PropertyAccessMode.Field);
 
         entity.HasIndex(candidate => candidate.SourceStorageKey)

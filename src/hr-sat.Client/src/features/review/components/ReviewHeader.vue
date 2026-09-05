@@ -8,6 +8,8 @@ defineProps<{
   /** 1-based position of the current candidate; 0 while unknown. */
   position: number
   total: number
+  processed: number
+  progressTotal: number
 }>()
 </script>
 
@@ -25,11 +27,16 @@ defineProps<{
       <h1 class="truncate text-xl font-bold tracking-tight text-highlighted">{{ title }}</h1>
       <p class="text-xs text-muted">Opened {{ formatDate(openedOn) }}</p>
     </div>
-    <span
-      class="shrink-0 text-sm font-semibold tabular-nums text-highlighted"
-      aria-label="Candidate position"
-    >
-      {{ position }} / {{ total }}
-    </span>
+    <div class="shrink-0 text-right">
+      <span
+        class="block text-sm font-semibold tabular-nums text-highlighted"
+        aria-label="Candidate position"
+      >
+        {{ position }} / {{ total }}
+      </span>
+      <span class="block text-xs tabular-nums text-muted" aria-label="Vacancy progress">
+        {{ processed }} / {{ progressTotal }} reviewed
+      </span>
+    </div>
   </header>
 </template>

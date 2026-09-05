@@ -1,23 +1,13 @@
-import { getJson, postJson, putJson } from '@/shared/http'
-import type {
-  CandidateExtractionStatus,
-  CandidateMatch,
-  CandidateReviewStatus,
-  CandidateSkill,
-  CvDocumentResult,
-} from '@/features/candidates/api'
+import { getJson, putJson } from '@/shared/http'
+import type { CandidateReviewStatus, CvDocumentResult } from '@/features/candidates/api'
 
-/** Typed contract of GET/PUT candidate-details endpoints (CandidateDetailsResponse). */
 export interface CandidateDetails {
   id: number
   reviewStatus: CandidateReviewStatus
-  extractionStatus: CandidateExtractionStatus
   fullName: string | null
   contactEmail: string | null
-  contactPhone: string | null
   notes: string | null
-  skills: CandidateSkill[]
-  match: CandidateMatch
+  requirementReviews: CandidateRequirementReview[]
   sourceSenderName: string | null
   sourceSenderEmail: string | null
   sourceSubject: string | null
@@ -27,9 +17,19 @@ export interface CandidateDetails {
   documents: CvDocumentResult[]
 }
 
+export interface CandidateRequirementReview {
+  requirementId: number
+  confirmed: boolean
+}
+
+export interface CandidateDetailsPayload {
+  fullName: string
+  contactEmail: string
+}
+
 export interface ReviewDecisionPayload {
   reviewStatus: CandidateReviewStatus
-  notes?: string
+  notes: string
 }
 
 function candidatePath(vacancyId: string, candidateId: number): string {
@@ -41,6 +41,14 @@ export function getCandidateDetails(
   candidateId: number,
 ): Promise<CandidateDetails> {
   return getJson<CandidateDetails>(candidatePath(vacancyId, candidateId))
+}
+
+export function updateCandidateDetails(
+  vacancyId: string,
+  candidateId: number,
+  payload: CandidateDetailsPayload,
+): Promise<CandidateDetails> {
+  return putJson<CandidateDetails>(`${candidatePath(vacancyId, candidateId)}/details`, payload)
 }
 
 export function updateCandidateNotes(
@@ -59,9 +67,14 @@ export function updateCandidateReview(
   return putJson<CandidateDetails>(`${candidatePath(vacancyId, candidateId)}/review`, payload)
 }
 
-export function retryCandidateExtraction(
+export function updateCandidateRequirementReview(
   vacancyId: string,
   candidateId: number,
+  requirementId: number,
+  confirmed: boolean,
 ): Promise<CandidateDetails> {
-  return postJson<CandidateDetails>(`${candidatePath(vacancyId, candidateId)}/extract`, undefined)
+  return putJson<CandidateDetails>(
+    `${candidatePath(vacancyId, candidateId)}/requirement-reviews/${requirementId}`,
+    { confirmed },
+  )
 }

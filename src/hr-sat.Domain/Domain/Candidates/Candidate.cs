@@ -5,6 +5,7 @@ namespace hr_sat.Domain.Candidates;
 public sealed class Candidate : Entity
 {
     private readonly List<CvDocument> _cvDocuments = [];
+    private readonly List<CandidateRequirementReview> _requirementReviews = [];
 
     private Candidate()
     {
@@ -56,6 +57,91 @@ public sealed class Candidate : Entity
     public byte[] SourceSha256 { get; private set; } = [];
     public DateTimeOffset ImportedAt { get; private set; }
     public IReadOnlyList<CvDocument> CvDocuments => _cvDocuments;
+    public IReadOnlyList<CandidateRequirementReview> RequirementReviews => _requirementReviews;
+
+    internal Result UpdateDetails(string? fullName, string? contactEmail)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (string.IsNullOrWhiteSpace(fullName) || fullName.Trim().Length > 300)
+        {
+            errors["fullName"] = ["Name must contain between 1 and 300 characters after trimming."];
+        }
+
+        if (string.IsNullOrWhiteSpace(contactEmail) || contactEmail.Trim().Length > 320)
+        {
+            errors["contactEmail"] = ["Email must contain between 1 and 320 characters after trimming."];
+        }
+
+        if (errors.Count > 0)
+        {
+            return CandidateErrors.Invalid(errors);
+        }
+
+        FullName = fullName!.Trim();
+        ContactEmail = contactEmail!.Trim();
+        return Result.Success();
+    }
+
+    internal Result UpdateNotes(string? notes)
+    {
+        if (notes is not null && notes.Length > 4000)
+        {
+            return CandidateErrors.Invalid(new Dictionary<string, string[]>
+            {
+                ["notes"] = ["Notes must be 4000 characters or fewer."]
+            });
+        }
+
+        Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        return Result.Success();
+    }
+
+    internal Result ApplyReview(CandidateReviewStatus status, string? notes)
+    {
+        if (status == CandidateReviewStatus.New)
+        {
+            return CandidateErrors.Invalid(new Dictionary<string, string[]>
+            {
+                ["reviewStatus"] = ["A review decision must be shortlisted, flagged, or rejected."]
+            });
+        }
+
+        var notesResult = UpdateNotes(notes);
+        if (notesResult.IsFailure)
+        {
+            return notesResult;
+        }
+
+        ReviewStatus = status;
+        return Result.Success();
+    }
+
+    internal Result SetRequirementReview(long vacancyRequirementId, bool confirmed)
+    {
+        if (vacancyRequirementId <= 0)
+        {
+            return CandidateErrors.Invalid(new Dictionary<string, string[]>
+            {
+                ["requirementId"] = ["Vacancy requirement is required."]
+            });
+        }
+
+        var review = _requirementReviews
+            .SingleOrDefault(item => item.VacancyRequirementId == vacancyRequirementId);
+        if (review is null)
+        {
+            _requirementReviews.Add(new CandidateRequirementReview(
+                Id,
+                vacancyRequirementId,
+                confirmed));
+        }
+        else
+        {
+            review.SetConfirmed(confirmed);
+        }
+
+        return Result.Success();
+    }
 
     internal static Result<Candidate> Import(
         long vacancyId,
@@ -83,14 +169,6 @@ public sealed class Candidate : Entity
         if (sourceResult.IsFailure)
         {
             return Result<Candidate>.Failure(sourceResult.Error);
-        }
-
-        if (cvDocuments.Count == 0)
-        {
-            return Result<Candidate>.Failure(CandidateErrors.Invalid(new Dictionary<string, string[]>
-            {
-                ["documents"] = ["At least one CV document is required."]
-            }));
         }
 
         var hasDuplicatePosition = cvDocuments

@@ -80,9 +80,13 @@ _Avoid_: Accepted candidate
 A candidate HR has decided not to advance and may contact using the rejected template.
 _Avoid_: Deleted candidate
 
-**Candidate Details** (deferred to V3):
-The editable candidate name and contact information initially extracted from the primary CV for this submission. In V1 these fields start empty and are entered manually.
+**Candidate Details**:
+The editable candidate name and contact email for this submission. In V1 these fields start empty and are entered manually from the source email or other review evidence; PDF extraction is deferred to V3.
 _Avoid_: Source sender, master person profile
+
+**Manual Requirement Review**:
+HR's per-candidate confirmation that a vacancy requirement has been checked and appears satisfied; it is a saved human assessment, not a computed match.
+_Avoid_: Requirement match, extracted skill, match score
 
 **Vacancy Progress**:
 The number of shortlisted and rejected candidates compared with all candidates in a vacancy.
