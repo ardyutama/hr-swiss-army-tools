@@ -1,7 +1,9 @@
 # Vue Client Development
 
-This guide applies to every change under `hr-sat.client/`, including Vue single-file
-components, composables, API clients, shared UI, routing, configuration, and client tests.
+This guide applies to every change under `src/hr-sat.Client/`, including Vue single-file
+components, composables, API clients, shared client helpers, routing, configuration, and
+client tests. Nuxt UI v4 is the UI source of truth and Tailwind CSS v4 is the styling system;
+the migration decision is recorded in `docs/adr/0007-nuxt-ui-as-ui-source-of-truth.md`.
 It supplements the generic Vue guidance in `.agents/skills/`; repository decisions in this
 guide and `docs/agents/workflow.md` are the local source of truth when they differ.
 
@@ -12,7 +14,9 @@ guide and `docs/agents/workflow.md` are the local source of truth when they diff
    order in `docs/agents/workflow.md`: backend slice, frontend feature folder, then tests.
    This step is complete when the requested behavior and its API contract are identified.
 
-2. **Load Vue guidance.** For every Vue task, read `.agents/skills/vue-best-practices/SKILL.md`
+2. **Load Vue guidance.** For feature structure, slice boundaries, state ownership, or
+   client architecture review, read `.agents/skills/vue-feature-slices/SKILL.md` and its
+   referenced files. For every Vue task, read `.agents/skills/vue-best-practices/SKILL.md`
    and keep its required references in working context:
    `references/reactivity.md`, `references/sfc.md`, `references/component-data-flow.md`,
    and `references/composables.md`. Read `.agents/skills/vue/SKILL.md` when using Vue 3.5
@@ -34,11 +38,16 @@ guide and `docs/agents/workflow.md` are the local source of truth when they diff
 
 ### Architecture
 
-- Put feature code in `hr-sat.client/src/features/<feature>/`: route view, feature
-  components, composables, and API client.
-- Keep `hr-sat.client/src/shared/` as the thin shared kernel for reusable UI, HTTP, and
-  validation helpers. Feature state and feature-specific API behavior stay in the feature
-  folder.
+- Put route views in `src/hr-sat.Client/src/pages/<page>/` — one thin view per route plus its
+  seam test — and feature behavior in `src/hr-sat.Client/src/features/<feature>/`:
+  composables, API client, validation, formatting, and feature components. Pages compose
+  feature modules; features never import from pages or from a sibling feature's internals
+  (cross-feature imports use the feature's root modules only).
+- Keep the project name `hr-sat.Client` with PascalCase `Client`; use kebab-case for client
+  feature and page directories and PascalCase for Vue component filenames.
+- Keep `src/hr-sat.Client/src/shared/` as the thin shared kernel for reusable HTTP and validation
+  helpers. Use Nuxt UI components directly for visual UI; do not add an `App*` wrapper layer.
+  Feature state and feature-specific API behavior stay in the feature folder.
 - Use Vue 3 Composition API with `<script setup lang="ts">` for new components. Keep
   Options API and untyped JavaScript out of new client code.
 - Keep route-level views thin: compose the feature, connect routing, and pass contracts;
@@ -78,9 +87,10 @@ guide and `docs/agents/workflow.md` are the local source of truth when they diff
 - Use `<style scoped>` and class selectors for component styles. Keep resets, typography,
   design tokens, and app-wide rules in `src/style.css`; use `:deep()` only at a deliberate
   component boundary and preserve established shared-component patterns.
-- Reuse primitives from `src/shared/ui/` before adding a parallel button, dialog, field, or
-  icon pattern. Keep accessibility behavior, keyboard interaction, loading states, and
-  disabled states part of the component contract.
+- Compose visual UI from Nuxt UI v4 primitives (`UButton`, `UModal`, `UForm`, `UAlert`, and
+  related components) and use Iconify lucide icons through `UIcon` or component icon props.
+  Do not recreate deleted shared UI wrappers. Keep accessibility behavior, keyboard
+  interaction, loading states, and disabled states part of the component contract.
 
 ### API, routing, and tests
 
@@ -99,7 +109,7 @@ guide and `docs/agents/workflow.md` are the local source of truth when they diff
 - For teleported dialogs, assert against `document.body` and clear teleported content
   between tests.
 - Oxlint is the sole client linter. Keep type checking with `vue-tsc` and use the scripts in
-  `hr-sat.client/package.json` for linting, type checking, tests, and builds; do not add a
+  `hr-sat.Client/package.json` for linting, type checking, tests, and builds; do not add a
   second lint stack without revisiting ADR 0001.
 
 ## Completion Check

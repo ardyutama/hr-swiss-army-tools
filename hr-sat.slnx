@@ -1,5 +1,12 @@
 <Solution>
-  <Project Path="hr-sat.client/hr-sat.client.esproj" />
-  <Project Path="hr-sat.Server/hr-sat.Server.csproj" />
-  <Project Path="hr-sat.Server.Tests/hr-sat.Server.Tests.csproj" />
+  <Folder Name="/src/">
+    <Project Path="src/hr-sat.Domain/hr-sat.Domain.csproj" />
+    <Project Path="src/hr-sat.Application/hr-sat.Application.csproj" />
+    <Project Path="src/hr-sat.Infrastructure/hr-sat.Infrastructure.csproj" />
+    <Project Path="src/hr-sat.Web.Api/hr-sat.Web.Api.csproj" />
+    <Project Path="src/hr-sat.Client/hr-sat.Client.esproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/hr-sat.Tests/hr-sat.Tests.csproj" />
+  </Folder>
 </Solution>

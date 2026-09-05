@@ -57,6 +57,11 @@ Seams are set by `docs/adr/0002-mvp-stack-and-api-seam.md` and do not move:
   `fetch` (and browser/platform modules the component genuinely owns, e.g. toasts). No
   Playwright or other E2E tooling without a separate ADR.
 
+Backend slices also carry the mechanics mandated by the `vertical-slice-dotnet` pack
+(ADR-0005): handler unit tests over an in-memory `TestDbContext` and FluentValidation
+validator tests sit alongside the HTTP-seam Flow Tests. They extend the seam; they do
+not replace it, and the traceability filter above still decides what deserves a test.
+
 ## Flow Test shape
 
 Arrange the test as the scenario steps from the story. One `it` / `[Fact]` per scenario:

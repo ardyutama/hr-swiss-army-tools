@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted (2026-08-30)
+Accepted (2026-08-30). Amended by ADR-0005 (2026-08-31): backend slices also carry
+handler unit tests and validator tests (mechanics from the `vertical-slice-dotnet`
+pack); flow-first scope and traceability still decide what gets tested.
 
 ## Context
 
