@@ -78,8 +78,11 @@ async function onNext() {
 
 // Decision-as-commit: one call saves notes, sets the status, and auto-advances.
 async function onDecide(status: CandidateReviewStatus) {
-  const next = await decide(status)
-  goToCandidate(next)
+  const result = await decide(status)
+  if (result.applied && status === 'shortlisted') {
+    toast.add({ title: 'Candidate shortlisted successfully', color: 'success', class: 'review-details-warning-toast' })
+  }
+  goToCandidate(result.nextCandidateId)
 }
 
 function onDetailsSave(payload: CandidateDetailsPayload) {

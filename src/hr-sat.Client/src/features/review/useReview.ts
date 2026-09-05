@@ -19,6 +19,11 @@ import { notesValidationError } from './validation'
 export type ReviewViewState = 'loading' | 'error' | 'ready'
 export type NotesSaveState = 'idle' | 'saving' | 'saved' | 'error'
 
+interface ReviewDecisionResult {
+  applied: boolean
+  nextCandidateId: string | null
+}
+
 /**
  * Owns the S4 review-workspace lifecycle: vacancy context (title, ordered
  * requirements), the candidate ordering for Prev/Next, the current candidate's
@@ -266,21 +271,21 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
 
   /**
    * Decision-as-commit (ADR-0008 #9): saves pending notes and sets the review
-   * status in one call. Returns the next candidate id to auto-advance to, or
-   * null when there is nowhere to go (last candidate) or the decision failed.
+   * status in one call. Reports whether the decision was applied and returns
+   * the next candidate id to auto-advance to when one exists.
    */
-  async function decide(status: CandidateReviewStatus): Promise<string | null> {
+  async function decide(status: CandidateReviewStatus): Promise<ReviewDecisionResult> {
     const current = candidate.value
     if (!current || deciding.value) {
-      return null
+      return { applied: false, nextCandidateId: null }
     }
     if (status === 'shortlisted' && !hasCandidateDetails(current)) {
       shortlistWarningActive.value = true
-      return null
+      return { applied: false, nextCandidateId: null }
     }
     if (notesValidationError(notes.value) !== null) {
       notesSaveState.value = 'error'
-      return null
+      return { applied: false, nextCandidateId: null }
     }
     deciding.value = true
     decisionError.value = null
@@ -290,7 +295,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
         notes: notes.value,
       })
       if (candidate.value?.id !== updated.id) {
-        return null
+        return { applied: false, nextCandidateId: null }
       }
       candidate.value = updated
       notes.value = updated.notes ?? ''
@@ -299,13 +304,13 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
       patchSummary(updated)
       shortlistWarningActive.value = false
       if (candidateDetailsWarning.value) {
-        return null
+        return { applied: true, nextCandidateId: null }
       }
-      return nextCandidateId.value
+      return { applied: true, nextCandidateId: nextCandidateId.value }
     } catch (error) {
       decisionError.value =
         error instanceof Error ? error.message : 'Failed to save the review decision'
-      return null
+      return { applied: false, nextCandidateId: null }
     } finally {
       deciding.value = false
     }

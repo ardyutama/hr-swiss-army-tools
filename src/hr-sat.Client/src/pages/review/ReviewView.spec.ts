@@ -244,6 +244,11 @@ describe('ReviewView', () => {
     await findButton(wrapper, 'Shortlist').trigger('click')
     await flushPromises()
 
+    expect(toastAdd).toHaveBeenCalledWith({
+      title: 'Candidate shortlisted successfully',
+      color: 'success',
+    })
+
     // Decision-as-commit: one request carries the status and the pending notes.
     const reviewRequest = requests.find(
       (request) => request.method === 'PUT' && request.url.endsWith('/candidates/1/review'),
