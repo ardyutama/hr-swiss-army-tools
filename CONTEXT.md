@@ -45,7 +45,7 @@ The intake round currently accepting candidate imports and edits for its vacancy
 _Avoid_: Current batch, open batch
 
 **Round Closure**:
-The explicit, irreversible end of an active round, marked by HR; a closed round is read-only forever and never reopens (reopening is a vacancy power).
+The explicit, irreversible end of an active round, marked by HR; a closed round never reopens and its review data (imports, review status, notes, requirement reviews) is read-only forever, while hire-outcome bookkeeping on its candidates stays editable until the vacancy closes (reopening is a vacancy power).
 _Avoid_: Batch close, round archive
 
 **Promote**:

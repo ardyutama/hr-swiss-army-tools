@@ -23,3 +23,13 @@ default Round 1; vacancy-detail becomes a rollup (header + round list + active r
 candidates). Closed rounds are read-only; leftovers reach a new wave only via explicit
 Promote (a move, not a copy). A runaway's reopened slot belongs to the vacancy shortage —
 the active round's implicit goal — not to its origin round.
+
+**Amendment (2026-09-06):** a closed round's read-only freeze covers *review data*
+(imports, review status, notes, requirement reviews). **Hire-outcome bookkeeping on its
+candidates stays editable while the vacancy is open** — outcomes freeze only at vacancy
+close. Reason: hires are typically marked from a round's shortlist *after* the round has
+closed (the wave ended, hiring continues), and a later runaway must still be recordable or
+the vacancy shortage — V2's core number — stays wrong forever. The outcome field is
+vacancy-level capacity bookkeeping that happens to live on the candidate record, not
+review work; the freeze exists to stop new review work in finished waves, not to block
+corrections of business fact. Vacancy close remains the hard freeze for everything.
