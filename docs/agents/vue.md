@@ -92,7 +92,7 @@ guide and `docs/agents/workflow.md` are the local source of truth when they diff
   Do not recreate deleted shared UI wrappers. Keep accessibility behavior, keyboard
   interaction, loading states, and disabled states part of the component contract.
 
-### API, routing, and tests
+### API and routing
 
 - Keep API calls in the feature's API module or composable, use the shared HTTP helpers,
   and preserve the typed server contract. Components should consume typed state rather than
@@ -100,17 +100,31 @@ guide and `docs/agents/workflow.md` are the local source of truth when they diff
 - When a route parameter changes without leaving the route component, explicitly handle the
   new parameter and clean up any listeners or async effects. Use the router skill for guard,
   parameter, and lifecycle decisions.
-- Follow the project testing stance in `docs/agents/testing.md` (ADR 0003): implement the
-  slice first, then test the feature-component seam with Vitest, Vue Test Utils, and jsdom
-  as Flow Tests traced to a user story or glossary term. Mock only `fetch` (plus platform
-  modules the component genuinely owns, e.g. toasts). Assert user-visible outcomes —
-  rendered content, toasts, emitted events — rather than private implementation details or
-  snapshots.
-- For teleported dialogs, assert against `document.body` and clear teleported content
-  between tests.
 - Oxlint is the sole client linter. Keep type checking with `vue-tsc` and use the scripts in
   `hr-sat.Client/package.json` for linting, type checking, tests, and builds; do not add a
   second lint stack without revisiting ADR 0001.
+
+### Tests
+
+- Follow the project testing stance in `docs/agents/testing.md` (ADR 0003): implement the
+  slice first, then test the feature-component seam with Vitest, Vue Test Utils, and jsdom
+  as Flow Tests traced to a user story or glossary term. The rules below are the binding
+  mechanics; consult `.agents/skills/vue-testing-best-practices/` for anything beyond them.
+- Mock only `fetch` via `vi.stubGlobal`, plus platform modules the component genuinely owns
+  (e.g. `vi.mock('@nuxt/ui/composables/useToast')`). Everything else inside the seam runs
+  for real.
+- Query the DOM the way a user perceives it: visible text, labels, placeholders, and aria
+  attributes. Add a `data-testid` only when no semantic handle exists.
+- Assert user-visible outcomes: rendered content, toasts, and emitted events. Keep
+  `wrapper.vm` internals, direct component method calls, and snapshot assertions out of
+  specs — they break on refactors that preserve behavior.
+- Await every interaction: `await trigger()` and `await setValue()`, and
+  `await flushPromises()` after every mount or action that fires a fetch or other promise.
+  Reserve `nextTick` for programmatic reactive changes.
+- Reset the world in `afterEach`: `vi.clearAllMocks()`, `vi.unstubAllGlobals()`, and
+  `document.body.innerHTML = ''` whenever a test rendered teleported content.
+- For teleported dialogs (`UModal` and friends), query and assert against `document.body`;
+  `wrapper.find()` cannot see teleported content.
 
 ## Completion Check
 

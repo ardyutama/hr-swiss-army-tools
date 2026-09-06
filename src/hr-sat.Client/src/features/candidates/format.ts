@@ -1,7 +1,12 @@
-import type { CandidateSummary } from './api'
+type CandidateDisplaySource = {
+  fullName: string | null
+  sourceSenderName: string | null
+  sourceSenderEmail: string | null
+  sourceSubject?: string | null
+}
 
 /** Display-only name per the Candidate Display Name rule: typed name, else sender name, else sender email, else email subject. */
-export function candidateDisplayName(candidate: CandidateSummary): string {
+export function candidateDisplayName(candidate: CandidateDisplaySource): string {
   return (
     candidate.fullName ??
     candidate.sourceSenderName ??

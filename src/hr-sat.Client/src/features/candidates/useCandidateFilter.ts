@@ -16,7 +16,7 @@ import {
 export function useCandidateFilter(candidates: Ref<CandidateSummary[] | null>) {
   const status = shallowRef<CandidateStatusFilter>('all')
   const query = shallowRef('')
-  const receivedSort = shallowRef<ReceivedSort>('oldest')
+  const receivedSort = shallowRef<ReceivedSort>('newest')
 
   const statusCounts = computed(() => countByReviewStatus(candidates.value ?? []))
 

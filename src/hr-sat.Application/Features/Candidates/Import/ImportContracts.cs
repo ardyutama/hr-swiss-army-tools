@@ -5,7 +5,6 @@ namespace hr_sat.Application.Features.Candidates.Import;
 public sealed record CandidateImportResponse(
     long Id,
     string ReviewStatus,
-    string ExtractionStatus,
     string? SourceSenderName,
     string? SourceSenderEmail,
     string? SourceSubject,
@@ -17,7 +16,6 @@ public sealed record CandidateImportResponse(
     public static CandidateImportResponse From(long vacancyId, Candidate candidate) => new(
         candidate.Id,
         candidate.ReviewStatus.ToString().ToLowerInvariant(),
-        candidate.ExtractionStatus.ToString().ToLowerInvariant(),
         candidate.SourceSenderName,
         candidate.SourceSenderEmail,
         candidate.SourceSubject,

@@ -99,13 +99,6 @@ internal sealed class ImportFilePreparer(
                 "The .eml file could not be parsed.");
         }
 
-        if (parsedEmail.PdfAttachments.Count == 0)
-        {
-            return ImportFileOutcome.Failed(
-                originalFilename,
-                "The .eml file must contain at least one valid PDF attachment.");
-        }
-
         var fileStorageKeys = new List<string>();
         try
         {

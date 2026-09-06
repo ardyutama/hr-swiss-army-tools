@@ -106,7 +106,7 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
     }
 
     [Fact]
-    public async Task Importing_a_batch_keeps_valid_files_when_another_file_fails() // US-12/US-13: each dropped email is processed independently
+    public async Task Importing_a_batch_allows_candidates_without_pdf_documents() // US-12/US-17: an email-only candidate remains reviewable
     {
         using var client = factory.CreateClient();
         var vacancyLocation = await CreateVacancyAsync(client);
@@ -135,14 +135,14 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
         var import = await response.Content.ReadFromJsonAsync<ImportResponse>();
         Assert.NotNull(import);
         Assert.Equal("imported", import.Results[0].Status);
-        Assert.Equal("failed", import.Results[1].Status);
-        Assert.Contains("at least one valid PDF", import.Results[1].Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("imported", import.Results[1].Status);
         Assert.NotNull(import.Results[0].Candidate);
-        Assert.Null(import.Results[1].Candidate);
+        Assert.NotNull(import.Results[1].Candidate);
+        Assert.Empty(import.Results[1].Candidate.Documents);
 
         var vacancy = await client.GetFromJsonAsync<VacancyResponse>(vacancyLocation);
         Assert.NotNull(vacancy);
-        Assert.Equal(1, vacancy.Progress.TotalCandidates);
+        Assert.Equal(2, vacancy.Progress.TotalCandidates);
     }
 
     [Fact]
@@ -309,7 +309,6 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
     private sealed record CandidateResponse(
         long Id,
         string ReviewStatus,
-        string ExtractionStatus,
         string? SourceSenderName,
         string? SourceSenderEmail,
         string? SourceSubject,

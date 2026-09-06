@@ -8,7 +8,7 @@ namespace hr_sat.Tests.Candidates;
 public sealed class CandidateDomainTests
 {
     [Fact]
-    public void Import_Should_ReturnValidationError_WhenCandidateHasNoCvDocuments() // domain: a candidate has at least one CV document
+    public void Import_Should_Succeed_WhenCandidateHasNoCvDocuments() // US-17: HR can review an email-only candidate
     {
         var result = Candidate.Import(
             1,
@@ -24,9 +24,7 @@ public sealed class CandidateDomainTests
             new DateTimeOffset(2026, 8, 20, 11, 0, 0, TimeSpan.Zero),
             []);
 
-        result.IsFailure.ShouldBeTrue();
-        var error = result.Error.ShouldBeOfType<ValidationError>();
-        error.Code.ShouldBe("Candidates.Invalid");
-        error.Errors["documents"].ShouldContain("At least one CV document is required.");
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.CvDocuments.ShouldBeEmpty();
     }
 }
