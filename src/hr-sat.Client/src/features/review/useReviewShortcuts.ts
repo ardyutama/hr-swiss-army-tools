@@ -140,7 +140,6 @@ export function useReviewShortcuts(options: UseReviewShortcutsOptions) {
         }
       },
       N: {
-        usingInput: true,
         handler: () => {
           void toggleNotes()
         },

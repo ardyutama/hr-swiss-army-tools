@@ -57,13 +57,13 @@ onMounted(autogrow)
         <h2 class="text-xs font-semibold uppercase tracking-[0.06em] text-muted">Notes</h2>
         <span
           class="inline-flex items-center gap-1 text-muted"
-          title="Press N to focus Notes. Press N again to save and leave."
+          title="Press N to focus Notes. Press Escape to save and leave."
         >
           <kbd
             class="rounded border border-current/40 px-1.5 py-0.5 text-[0.65rem] font-semibold"
             aria-hidden="true"
           >N</kbd>
-          <span class="sr-only">Press N to focus Notes. Press N again to save and leave Notes.</span>
+          <span class="sr-only">Press N to focus Notes. Press Escape to save and leave Notes.</span>
         </span>
       </div>
       <p class="m-0 text-xs text-muted" aria-live="polite">

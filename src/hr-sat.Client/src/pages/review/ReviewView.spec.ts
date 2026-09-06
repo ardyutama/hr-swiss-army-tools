@@ -449,7 +449,7 @@ describe('ReviewView', () => {
     wrapper.unmount()
   })
 
-  it('US-17: N focuses Notes, then blurs and silently saves it', async () => {
+  it('US-17: N focuses Notes without capturing typed N characters', async () => {
     const { requests } = stubApi()
     const { wrapper } = await mountReview()
     await flushPromises()
@@ -458,7 +458,7 @@ describe('ReviewView', () => {
     const notesSection = wrapper.find('section[aria-label="Notes"]')
     expect(notesSection.find('kbd').text()).toBe('N')
     expect(
-      notesSection.find('[title="Press N to focus Notes. Press N again to save and leave."]').exists(),
+      notesSection.find('[title="Press N to focus Notes. Press Escape to save and leave."]').exists(),
     ).toBe(true)
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }))
@@ -466,8 +466,16 @@ describe('ReviewView', () => {
 
     expect(document.activeElement).toBe(notes.element)
 
-    await notes.setValue('Follow up after the interview')
+    await notes.setValue('candidate')
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }))
+    await flushPromises()
+
+    expect(document.activeElement).toBe(notes.element)
+    expect(
+      requests.some((request) => request.method === 'PUT' && request.url.endsWith('/candidates/1/notes')),
+    ).toBe(false)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     await flushPromises()
 
     expect(document.activeElement).not.toBe(notes.element)
