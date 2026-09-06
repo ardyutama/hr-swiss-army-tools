@@ -36,8 +36,28 @@ _Avoid_: Delete, archive
 The explicit, irreversible removal of one candidate together with all information it owns.
 _Avoid_: Delete, erase
 
+**Intake Round**:
+A named wave of application intake within one vacancy; it owns its candidate list and review workspace, and exactly one can be active per vacancy at a time. Identified by a per-vacancy round number (never reused) with an optional name.
+_Avoid_: Batch interview, hiring batch
+
+**Active Round**:
+The intake round currently accepting candidate imports and edits for its vacancy; a vacancy may legally have none between waves.
+_Avoid_: Current batch, open batch
+
+**Round Closure**:
+The explicit, irreversible end of an active round, marked by HR; a closed round is read-only forever and never reopens (reopening is a vacancy power).
+_Avoid_: Batch close, round archive
+
+**Promote**:
+Moving a new, flagged, or shortlisted-without-outcome candidate from a closed round into the active round, preserving review status, requirement reviews, and notes.
+_Avoid_: Copy candidate, re-import
+
+**Prior Application Notice**:
+A display-only indicator on a candidate that the same person applied in another round of the same vacancy; it never blocks import and never affects review status.
+_Avoid_: Duplicate block, global person history
+
 **Candidate**:
-One person's submission to one vacancy, created from one source email; the same person submitted to another vacancy is a different candidate.
+One person's submission to one intake round, created from one source email; the same person submitted to another round or vacancy is a different candidate.
 _Avoid_: Talent, shared person, global candidate
 
 **Source Email**:
@@ -117,8 +137,8 @@ A personalized message generated from an email template for one candidate for HR
 _Avoid_: Sent email, bulk email
 
 **Needed Hires**:
-The number of people a vacancy must ultimately hire, recorded on the vacancy; a vacancy stays open until that many hires are active.
-_Avoid_: Headcount request, batch size
+The number of people a vacancy must ultimately hire, recorded on the vacancy; a vacancy stays open until that many hires are active. Intake rounds carry no quota of their own.
+_Avoid_: Headcount request, batch size, round quota
 
 **Hired Candidate**:
 A shortlisted candidate who has started the job; the hire is active until they are marked as runaway.
