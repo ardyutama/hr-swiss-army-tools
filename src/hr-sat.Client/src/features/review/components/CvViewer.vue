@@ -37,6 +37,8 @@ const pageWidth = computed(() =>
 let resizeObserver: ResizeObserver | null = null
 
 onMounted(() => {
+  window.addEventListener('keydown', onGlobalKeydown)
+
   if (typeof ResizeObserver === 'undefined' || !viewer.value) {
     return
   }
@@ -49,7 +51,10 @@ onMounted(() => {
   resizeObserver.observe(viewer.value)
 })
 
-onBeforeUnmount(() => resizeObserver?.disconnect())
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onGlobalKeydown)
+  resizeObserver?.disconnect()
+})
 
 function onLoaded(pdf: { numPages: number }) {
   pageCount.value = pdf.numPages
@@ -72,6 +77,66 @@ function goToPage(target: number) {
   if (target >= 1 && target <= pageCount.value) {
     page.value = target
   }
+}
+
+function focusViewer() {
+  viewer.value?.focus()
+}
+
+function isPageShortcut(event: KeyboardEvent) {
+  if (
+    !event.shiftKey ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')
+  ) {
+    return false
+  }
+  return true
+}
+
+function isEditableElement(element: Element | null) {
+  return Boolean(
+    element &&
+      (element.tagName === 'TEXTAREA' ||
+        element.tagName === 'INPUT' ||
+        element.tagName === 'SELECT' ||
+        (element instanceof HTMLElement && element.isContentEditable)),
+  )
+}
+
+function isInDialog(element: Element | null) {
+  return Boolean(element?.closest('[role="dialog"]'))
+}
+
+function onViewerKeydown(event: KeyboardEvent) {
+  if (!isPageShortcut(event) || !selectedDocument.value || pageCount.value === 0) {
+    return
+  }
+
+  event.preventDefault()
+  event.stopPropagation()
+  goToPage(page.value + (event.key === 'ArrowLeft' ? -1 : 1))
+}
+
+function onGlobalKeydown(event: KeyboardEvent) {
+  if (
+    !isPageShortcut(event) ||
+    isEditableElement(document.activeElement) ||
+    isInDialog(event.target instanceof Element ? event.target : null) ||
+    isInDialog(document.activeElement) ||
+    (event.target instanceof Node && viewer.value?.contains(event.target))
+  ) {
+    return
+  }
+
+  if (!selectedDocument.value || pageCount.value === 0) {
+    return
+  }
+
+  focusViewer()
+  onViewerKeydown(event)
 }
 
 function zoomBy(delta: number) {
@@ -126,10 +191,18 @@ watch(
             icon="i-lucide-chevron-left"
             color="neutral"
             variant="outline"
+            class="min-h-10 min-w-20 justify-center"
             :disabled="page <= 1"
             aria-label="Previous page"
+            aria-keyshortcuts="Shift+ArrowLeft"
+            title="Previous page (Shift+ArrowLeft)"
             @click="goToPage(page - 1)"
-          />
+          >
+            <kbd
+              class="rounded border border-current/40 px-1.5 py-0.5 text-[0.65rem] font-semibold"
+              aria-hidden="true"
+            >Shift+←</kbd>
+          </UButton>
           <span class="min-w-14 text-center text-sm tabular-nums text-muted">
             {{ page }} / {{ pageCount || '–' }}
           </span>
@@ -137,10 +210,18 @@ watch(
             icon="i-lucide-chevron-right"
             color="neutral"
             variant="outline"
+            class="min-h-10 min-w-20 justify-center"
             :disabled="pageCount === 0 || page >= pageCount"
             aria-label="Next page"
             @click="goToPage(page + 1)"
-          />
+            aria-keyshortcuts="Shift+ArrowRight"
+            title="Next page (Shift+ArrowRight)"
+          >
+            <kbd
+              class="rounded border border-current/40 px-1.5 py-0.5 text-[0.65rem] font-semibold"
+              aria-hidden="true"
+            >Shift+→</kbd>
+          </UButton>
         </div>
         <div class="flex items-center gap-1">
           <UButton
@@ -165,7 +246,15 @@ watch(
         </div>
       </div>
 
-      <div ref="viewer" class="flex min-h-[32rem] items-start justify-center overflow-auto p-3">
+      <div
+        ref="viewer"
+        class="flex min-h-[32rem] items-start justify-center overflow-auto p-3 focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
+        tabindex="0"
+        aria-label="CV document pages"
+        aria-keyshortcuts="Shift+ArrowLeft Shift+ArrowRight"
+        @keydown="onViewerKeydown"
+        @pointerdown="focusViewer"
+      >
         <template v-if="selectedDocument">
           <div
             v-if="failed"

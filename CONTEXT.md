@@ -88,6 +88,14 @@ _Avoid_: Source sender, master person profile
 HR's per-candidate confirmation that a vacancy requirement has been checked and appears satisfied; it is a saved human assessment, not a computed match.
 _Avoid_: Requirement match, extracted skill, match score
 
+**Triage Mode**:
+The review workspace's default state, where no editable field has focus and the keyboard shortcuts for navigation and decisions are armed.
+_Avoid_: Queue mode, browse mode
+
+**Editing Mode**:
+The review workspace state while a text field has focus; decision shortcuts stay inert until HR exits with Esc or N.
+_Avoid_: Input mode, composer mode
+
 **Vacancy Progress**:
 The number of shortlisted and rejected candidates compared with all candidates in a vacancy.
 _Avoid_: Flagged count, match score

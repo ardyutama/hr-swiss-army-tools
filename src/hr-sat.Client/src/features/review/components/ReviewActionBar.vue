@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue'
 import type { CandidateReviewStatus } from '@/features/candidates/api'
 
 interface Decision {
@@ -31,49 +30,8 @@ const emit = defineEmits<{
   prev: []
   next: []
   decide: [status: CandidateReviewStatus]
+  help: []
 }>()
-
-function isEditableTarget(target: EventTarget | null): boolean {
-  const element = target as HTMLElement | null
-  return (
-    !!element &&
-    (element.tagName === 'TEXTAREA' ||
-      element.tagName === 'INPUT' ||
-      element.tagName === 'SELECT' ||
-      element.isContentEditable)
-  )
-}
-
-// Keyboard hints from ADR-0008 #8: ←/→ navigate, S/F/R decide. Editable fields
-// keep their keystrokes; ←/→ never drive the PDF viewer.
-function onKeydown(event: KeyboardEvent) {
-  if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
-    return
-  }
-  if (isEditableTarget(event.target)) {
-    return
-  }
-  if (event.key === 'ArrowLeft' && props.canPrev) {
-    event.preventDefault()
-    emit('prev')
-    return
-  }
-  if (event.key === 'ArrowRight' && props.canNext) {
-    event.preventDefault()
-    emit('next')
-    return
-  }
-  const decision = decisions.find(
-    (candidate) => candidate.shortcut.toLowerCase() === event.key.toLowerCase(),
-  )
-  if (decision && !props.busy) {
-    event.preventDefault()
-    emit('decide', decision.status)
-  }
-}
-
-onMounted(() => window.addEventListener('keydown', onKeydown))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
@@ -88,6 +46,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         variant="outline"
         class="min-h-10"
         :disabled="!canPrev || busy"
+        aria-keyshortcuts="ArrowLeft"
         @click="emit('prev')"
       >
         Prev
@@ -105,6 +64,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           :variant="reviewStatus === decision.status ? 'solid' : 'outline'"
           class="min-h-10"
           :disabled="busy"
+          :aria-keyshortcuts="decision.shortcut"
           @click="emit('decide', decision.status)"
         >
           {{ decision.label }}
@@ -115,19 +75,39 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         </UButton>
       </div>
 
-      <UButton
-        color="neutral"
-        variant="outline"
-        class="min-h-10"
-        :disabled="!canNext || busy"
-        @click="emit('next')"
-      >
-        Next
-        <kbd
-          class="ml-1 rounded border border-current/40 px-1.5 py-0.5 text-[0.65rem] font-semibold"
-          aria-hidden="true"
-        >→</kbd>
-      </UButton>
+      <div class="flex flex-wrap items-center gap-2">
+        <UButton
+          color="neutral"
+          variant="outline"
+          class="min-h-10"
+          :disabled="!canNext || busy"
+          aria-keyshortcuts="ArrowRight"
+          @click="emit('next')"
+        >
+          Next
+          <kbd
+            class="ml-1 rounded border border-current/40 px-1.5 py-0.5 text-[0.65rem] font-semibold"
+            aria-hidden="true"
+          >→</kbd>
+        </UButton>
+
+        <UButton
+          color="neutral"
+          variant="outline"
+          class="min-h-10"
+          icon="i-lucide-keyboard"
+          aria-label="Keyboard shortcuts"
+          aria-keyshortcuts="?"
+          title="Open keyboard shortcuts (?)"
+          @click="emit('help')"
+        >
+          Shortcuts
+          <kbd
+            class="ml-1 rounded border border-current/40 px-1.5 py-0.5 text-[0.65rem] font-semibold"
+            aria-hidden="true"
+          >?</kbd>
+        </UButton>
+      </div>
     </div>
   </div>
 </template>

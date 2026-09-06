@@ -59,6 +59,8 @@ through US-19. Non-functional: US-6, US-7, US-8.
   in V1; notes (free text); review status (`new` / `flagged` / `shortlisted` / `rejected`).
   Display name falls back to sender name, then sender email, then email subject until a
   name is typed.
+- **Triage Mode / Editing Mode**: the two keyboard states of the review workspace (see
+  CONTEXT.md).
 - **CV document**: PDF file extracted from the `.eml` attachment, stored per candidate;
   multi-page, served for the viewer.
 - **Email template**: per vacancy per kind (`shortlisted` / `rejected`); a template can be
@@ -74,6 +76,12 @@ through US-19. Non-functional: US-6, US-7, US-8.
 - No PDF text extraction in V1: candidate details are typed by HR in the review workspace.
 - Vacancy requirements display as a manual checklist next to the PDF; there is no computed
   match. Extraction and requirement matching are V3 (ADR-0009, `.scratch/v3/`).
+- Shortlist is gated on saved candidate details (name + contact email, ticket 08): with no
+  extraction, those details are the only candidate identity, and the shortlist group feeds
+  the per-vacancy email templates. Flag and Reject are not gated.
+- The workspace is keyboard-first (Triage Mode vs Editing Mode — see CONTEXT.md):
+  shortcuts for decisions, navigation, requirement checks, and panel focus; the on-screen
+  action bar remains the primary, always-visible path.
 
 ### Contact / sending
 

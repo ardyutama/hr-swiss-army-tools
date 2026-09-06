@@ -54,6 +54,10 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
   const currentIndex = computed(
     () => summaries.value?.findIndex((summary) => String(summary.id) === candidateId.value) ?? -1,
   )
+  const requirements = computed(() =>
+    [...(vacancy.value?.requirements ?? [])].sort((left, right) => left.position - right.position),
+  )
+  const requirementCount = computed(() => requirements.value.length)
   const total = computed(() => summaries.value?.length ?? 0)
   /** 1-based position of the current candidate; 0 while the ordering is unknown. */
   const position = computed(() => (currentIndex.value < 0 ? 0 : currentIndex.value + 1))
@@ -234,6 +238,20 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     }
   }
 
+  async function toggleRequirementAt(index: number): Promise<boolean> {
+    const current = candidate.value
+    const requirement = requirements.value[index]
+    if (!current || !requirement) {
+      return false
+    }
+
+    const requirementId = Number(requirement.id)
+    const confirmed = current.requirementReviews.some(
+      (review) => review.requirementId === requirementId && review.confirmed,
+    )
+    return updateRequirementReview(requirementId, !confirmed)
+  }
+
   /** Commits pending notes. Returns false when the save failed or was invalid. */
   async function saveNotes(): Promise<boolean> {
     const current = candidate.value
@@ -354,6 +372,8 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
 
   return {
     vacancy,
+    requirements,
+    requirementCount,
     candidate,
     loadError,
     viewState,
@@ -380,6 +400,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     advanceToNextCandidate,
     updateDetails,
     updateRequirementReview,
+    toggleRequirementAt,
     decide,
   }
 }

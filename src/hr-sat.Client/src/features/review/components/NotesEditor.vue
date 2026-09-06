@@ -19,6 +19,20 @@ const emit = defineEmits<{
 
 const textarea = useTemplateRef<HTMLTextAreaElement>('textarea')
 
+function focus() {
+  textarea.value?.focus()
+}
+
+function blur() {
+  textarea.value?.blur()
+}
+
+function isFocused() {
+  return textarea.value === document.activeElement
+}
+
+defineExpose({ focus, blur, isFocused })
+
 // Auto-growing textarea: grows with content up to ~8 lines, then scrolls (S4 spec).
 function autogrow() {
   const element = textarea.value
@@ -39,7 +53,19 @@ onMounted(autogrow)
     aria-label="Notes"
   >
     <div class="mb-2 flex items-baseline justify-between gap-3">
-      <h2 class="text-xs font-semibold uppercase tracking-[0.06em] text-muted">Notes</h2>
+      <div class="flex items-center gap-2">
+        <h2 class="text-xs font-semibold uppercase tracking-[0.06em] text-muted">Notes</h2>
+        <span
+          class="inline-flex items-center gap-1 text-muted"
+          title="Press N to focus Notes. Press N again to save and leave."
+        >
+          <kbd
+            class="rounded border border-current/40 px-1.5 py-0.5 text-[0.65rem] font-semibold"
+            aria-hidden="true"
+          >N</kbd>
+          <span class="sr-only">Press N to focus Notes. Press N again to save and leave Notes.</span>
+        </span>
+      </div>
       <p class="m-0 text-xs text-muted" aria-live="polite">
         <span v-if="props.saveState === 'saving'">Saving…</span>
         <span v-else-if="props.saveState === 'saved' && props.savedAt">

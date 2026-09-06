@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { toRef, watch } from 'vue'
+import { computed, shallowRef, toRef, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '@nuxt/ui/composables/useToast'
+import { candidateDisplayName } from '@/features/candidates/format'
 import ReviewHeader from '@/features/review/components/ReviewHeader.vue'
 import RequirementsPanel from '@/features/review/components/RequirementsPanel.vue'
 import CandidateDetailsPanel from '@/features/review/components/CandidateDetailsPanel.vue'
@@ -9,7 +10,13 @@ import SourceEmailPanel from '@/features/review/components/SourceEmailPanel.vue'
 import NotesEditor from '@/features/review/components/NotesEditor.vue'
 import CvViewer from '@/features/review/components/CvViewer.vue'
 import ReviewActionBar from '@/features/review/components/ReviewActionBar.vue'
+import ShortcutsHelpModal from '@/features/review/components/ShortcutsHelpModal.vue'
 import { useReview } from '@/features/review/useReview'
+import {
+  useReviewShortcuts,
+  type NotesFocusHandle,
+  type SourceEmailHandle,
+} from '@/features/review/useReviewShortcuts'
 import type { CandidateReviewStatus } from '@/features/candidates/api'
 import type { CandidateDetailsPayload } from '@/features/review/api'
 
@@ -22,6 +29,8 @@ const router = useRouter()
 const toast = useToast()
 const {
   vacancy,
+  requirements,
+  requirementCount,
   candidate,
   loadError,
   viewState,
@@ -44,9 +53,32 @@ const {
   saveNotes,
   updateDetails,
   updateRequirementReview,
+  toggleRequirementAt,
   decide,
   advanceToNextCandidate,
 } = useReview(toRef(props, 'id'), toRef(props, 'candidateId'))
+
+const notesEditor = useTemplateRef<NotesFocusHandle>('notesEditor')
+const candidateDetailsPanel = useTemplateRef<{ focusEditing: () => void }>('candidateDetailsPanel')
+const sourceEmailPanel = useTemplateRef<SourceEmailHandle>('sourceEmailPanel')
+const shortcutsHelpOpen = shallowRef(false)
+const announcement = shallowRef('')
+const canPrev = computed(() => previousCandidateId.value !== null)
+const canNext = computed(() => nextCandidateId.value !== null)
+
+type PendingAnnouncement =
+  | { kind: 'decision'; verb: string }
+  | { kind: 'navigation' }
+  | null
+
+let pendingAnnouncement: PendingAnnouncement = null
+let displayedCandidateId: number | null = null
+
+const decisionAnnouncementVerbs: Record<Exclude<CandidateReviewStatus, 'new'>, string> = {
+  shortlisted: 'Shortlisted',
+  flagged: 'Flagged',
+  rejected: 'Rejected',
+}
 
 watch(candidateDetailsWarning, (warning) => {
   if (warning) {
@@ -58,22 +90,24 @@ watch(candidateDetailsWarning, (warning) => {
   }
 })
 
-function goToCandidate(id: string | null) {
+function goToCandidate(id: string | null, nextAnnouncement: PendingAnnouncement = null) {
   if (id === null) {
     return
   }
+  pendingAnnouncement = nextAnnouncement
   void router.push({ name: 'candidate-review', params: { id: props.id, candidateId: id } })
 }
 
 // ADR-0008 #9: Prev/Next navigation silently commits pending notes.
 async function onPrev() {
   if (await saveNotes()) {
-    goToCandidate(previousCandidateId.value)
+    goToCandidate(previousCandidateId.value, { kind: 'navigation' })
   }
 }
 
 async function onNext() {
-  goToCandidate(await advanceToNextCandidate())
+  const nextCandidateId = await advanceToNextCandidate()
+  goToCandidate(nextCandidateId, nextCandidateId === null ? null : { kind: 'navigation' })
 }
 
 // Decision-as-commit: one call saves notes, sets the status, and auto-advances.
@@ -82,7 +116,16 @@ async function onDecide(status: CandidateReviewStatus) {
   if (result.applied && status === 'shortlisted') {
     toast.add({ title: 'Candidate shortlisted successfully', color: 'success', class: 'review-details-warning-toast' })
   }
-  goToCandidate(result.nextCandidateId)
+  const nextAnnouncement =
+    result.nextCandidateId === null
+      ? null
+      : status === 'new'
+        ? { kind: 'navigation' as const }
+        : { kind: 'decision' as const, verb: decisionAnnouncementVerbs[status] }
+  goToCandidate(
+    result.nextCandidateId,
+    nextAnnouncement,
+  )
 }
 
 function onDetailsSave(payload: CandidateDetailsPayload) {
@@ -92,10 +135,48 @@ function onDetailsSave(payload: CandidateDetailsPayload) {
 function onRequirementToggle(requirementId: number, confirmed: boolean) {
   void updateRequirementReview(requirementId, confirmed)
 }
+
+watch(candidate, (current) => {
+  if (!current || current.id === displayedCandidateId) {
+    return
+  }
+
+  const isFirstCandidate = displayedCandidateId === null
+  displayedCandidateId = current.id
+  if (isFirstCandidate) {
+    pendingAnnouncement = null
+    return
+  }
+
+  const nextAnnouncement = pendingAnnouncement ?? { kind: 'navigation' as const }
+  pendingAnnouncement = null
+  const prefix = nextAnnouncement.kind === 'decision' ? `${nextAnnouncement.verb}. ` : ''
+  announcement.value = `${prefix}Candidate ${position.value} of ${total.value}: ${candidateDisplayName(current)}`
+})
+
+useReviewShortcuts({
+  canPrev,
+  canNext,
+  busy: deciding,
+  notesEditor,
+  sourceEmailPanel,
+  shortcutsHelpOpen,
+  requirementCount,
+  onEditDetails: () => candidateDetailsPanel.value?.focusEditing(),
+  onPrev,
+  onNext,
+  onDecide,
+  onToggleRequirement: (index) => {
+    void toggleRequirementAt(index)
+  },
+  saveNotes,
+})
 </script>
 
 <template>
   <div class="flex flex-col gap-5">
+    <p class="sr-only" aria-live="polite" aria-atomic="true">{{ announcement }}</p>
+
     <!-- Shape-matched skeleton (ADR-0008 #14) -->
     <div
       v-if="viewState === 'loading'"
@@ -149,19 +230,21 @@ function onRequirementToggle(requirementId: number, confirmed: boolean) {
           class="flex min-w-0 flex-col gap-5 lg:overflow-y-auto lg:pr-1"
         >
           <RequirementsPanel
-            :requirements="vacancy.requirements"
+            :requirements="requirements"
             :reviews="candidate.requirementReviews"
             :saving-requirement-id="savingRequirementId"
             :error="requirementError"
             @toggle="onRequirementToggle"
           />
           <CandidateDetailsPanel
+            ref="candidateDetailsPanel"
             :candidate="candidate"
             :saving="savingDetails"
             :error="detailsError"
             @save="onDetailsSave"
           />
           <SourceEmailPanel
+            ref="sourceEmailPanel"
             :subject="candidate.sourceSubject"
             :sender-name="candidate.sourceSenderName"
             :sender-email="candidate.sourceSenderEmail"
@@ -169,6 +252,7 @@ function onRequirementToggle(requirementId: number, confirmed: boolean) {
             :body="candidate.sourceBodyText"
           />
           <NotesEditor
+            ref="notesEditor"
             v-model="notes"
             :save-state="notesSaveState"
             :saved-at="notesSavedAt"
@@ -189,8 +273,14 @@ function onRequirementToggle(requirementId: number, confirmed: boolean) {
         @prev="onPrev"
         @next="onNext"
         @decide="onDecide"
+        @help="shortcutsHelpOpen = true"
       />
     </template>
+
+    <ShortcutsHelpModal
+      :open="shortcutsHelpOpen"
+      @close="shortcutsHelpOpen = false"
+    />
   </div>
 </template>
 

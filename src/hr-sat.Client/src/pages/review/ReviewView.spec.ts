@@ -20,7 +20,7 @@ vi.mock('vue-pdf-embed', () => ({
     mounted(this: { $emit: (event: string, payload: unknown) => void }) {
       this.$emit('loaded', { numPages: 5 })
     },
-    template: '<div data-testid="pdf-page" />',
+    template: '<div data-testid="pdf-page" :data-page="page" />',
   },
 }))
 
@@ -193,7 +193,7 @@ async function mountReview(startCandidateId = '1'): Promise<{
     ],
   })
   await router.push(`/vacancies/1/review/${startCandidateId}`)
-  const wrapper = mount(Harness, { global: { plugins: [router] } })
+  const wrapper = mount(Harness, { attachTo: document.body, global: { plugins: [router] } })
   return { wrapper, router }
 }
 
@@ -231,6 +231,47 @@ describe('ReviewView', () => {
     expect(wrapper.text()).toContain('SAP')
     // The stubbed PDF reported five pages; pagination reflects it.
     expect(wrapper.text()).toContain('1 / 5')
+    expect(wrapper.find('button[aria-label="Previous page"] kbd').text()).toBe('Shift+←')
+    expect(wrapper.find('button[aria-label="Next page"] kbd').text()).toBe('Shift+→')
+    wrapper.unmount()
+  })
+
+  it('US-15: Shift+Arrow keys focus and paginate the CV without changing candidates', async () => {
+    stubApi()
+    const { wrapper, router } = await mountReview()
+    await flushPromises()
+
+    const viewer = wrapper.find('[aria-label="CV document pages"]')
+    expect(viewer.attributes('tabindex')).toBe('0')
+    expect(viewer.attributes('aria-keyshortcuts')).toBe('Shift+ArrowLeft Shift+ArrowRight')
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true }))
+    await flushPromises()
+    expect(wrapper.find('[data-testid="pdf-page"]').attributes('data-page')).toBe('2')
+    expect(document.activeElement).toBe(viewer.element)
+    expect(router.currentRoute.value.params.candidateId).toBe('1')
+
+    const notes = wrapper.find('textarea[aria-label="Candidate notes"]')
+    ;(notes.element as HTMLTextAreaElement).focus()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', shiftKey: true }))
+    await flushPromises()
+    expect(wrapper.find('[data-testid="pdf-page"]').attributes('data-page')).toBe('2')
+    expect(document.activeElement).toBe(notes.element)
+
+    await viewer.trigger('focus')
+    await viewer.trigger('keydown', { key: 'ArrowLeft', shiftKey: true })
+    expect(wrapper.find('[data-testid="pdf-page"]').attributes('data-page')).toBe('1')
+
+    await viewer.trigger('keydown', { key: 'ArrowLeft', shiftKey: true })
+    expect(wrapper.find('[data-testid="pdf-page"]').attributes('data-page')).toBe('1')
+
+    for (let pageNumber = 2; pageNumber <= 5; pageNumber += 1) {
+      await viewer.trigger('keydown', { key: 'ArrowRight', shiftKey: true })
+    }
+    expect(wrapper.find('[data-testid="pdf-page"]').attributes('data-page')).toBe('5')
+
+    await viewer.trigger('keydown', { key: 'ArrowRight', shiftKey: true })
+    expect(wrapper.find('[data-testid="pdf-page"]').attributes('data-page')).toBe('5')
     wrapper.unmount()
   })
 
@@ -244,10 +285,10 @@ describe('ReviewView', () => {
     await findButton(wrapper, 'Shortlist').trigger('click')
     await flushPromises()
 
-    expect(toastAdd).toHaveBeenCalledWith({
+    expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({
       title: 'Candidate shortlisted successfully',
       color: 'success',
-    })
+    }))
 
     // Decision-as-commit: one request carries the status and the pending notes.
     const reviewRequest = requests.find(
@@ -322,6 +363,212 @@ describe('ReviewView', () => {
     const reviewRequest = requests.find((request) => request.url.endsWith('/candidates/1/review'))
     expect(reviewRequest?.body).toMatchObject({ reviewStatus: 'shortlisted' })
     expect(router.currentRoute.value.params.candidateId).toBe('2')
+    expect(wrapper.find('p.sr-only[aria-live="polite"]').text()).toBe(
+      'Shortlisted. Candidate 2 of 2: Bob Builder',
+    )
+    wrapper.unmount()
+  })
+
+  it('US-17: HR can edit candidate details and open the source email with keyboard shortcuts', async () => {
+    stubApi()
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    const editButton = findButton(wrapper, 'Edit')
+    const openEmailButton = findButton(wrapper, 'Open')
+    expect(editButton.attributes('aria-keyshortcuts')).toBe('E')
+    expect(editButton.find('kbd').text()).toBe('E')
+    expect(openEmailButton.attributes('aria-keyshortcuts')).toBe('O')
+    expect(openEmailButton.find('kbd').text()).toBe('O')
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'e' }))
+    await flushPromises()
+    expect(wrapper.find('form').exists()).toBe(true)
+
+    const candidateName = wrapper.find('input[aria-label="Candidate name"]')
+    ;(candidateName.element as HTMLInputElement).focus()
+    expect(document.activeElement).toBe(candidateName.element)
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'o' }))
+    await flushPromises()
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+
+    ;(candidateName.element as HTMLInputElement).blur()
+    await findButton(wrapper, 'Cancel').trigger('click')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'o' }))
+    await flushPromises()
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain('Source email')
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'o' }))
+    await flushPromises()
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'o' }))
+    await flushPromises()
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain('Source email')
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('US-17: E returns focus to an active details draft without resetting it', async () => {
+    const { requests } = stubApi()
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'e' }))
+    await flushPromises()
+
+    const nameInput = wrapper.find('input[aria-label="Candidate name"]')
+    const emailInput = wrapper.find('input[aria-label="Candidate email"]')
+    await nameInput.setValue('Updated Jane')
+    await emailInput.setValue('updated.jane@mail.com')
+
+    const viewer = wrapper.find('[aria-label="CV document pages"]')
+    ;(viewer.element as HTMLElement).focus()
+    expect(document.activeElement).toBe(viewer.element)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'e' }))
+    await flushPromises()
+
+    expect(document.activeElement).toBe(nameInput.element)
+    expect((nameInput.element as HTMLInputElement).value).toBe('Updated Jane')
+    expect((emailInput.element as HTMLInputElement).value).toBe('updated.jane@mail.com')
+
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    const detailsRequest = requests.find(
+      (request) => request.method === 'PUT' && request.url.endsWith('/details'),
+    )
+    expect(detailsRequest?.body).toEqual({
+      fullName: 'Updated Jane',
+      contactEmail: 'updated.jane@mail.com',
+    })
+    wrapper.unmount()
+  })
+
+  it('US-17: N focuses Notes, then blurs and silently saves it', async () => {
+    const { requests } = stubApi()
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    const notes = wrapper.find('textarea[aria-label="Candidate notes"]')
+    const notesSection = wrapper.find('section[aria-label="Notes"]')
+    expect(notesSection.find('kbd').text()).toBe('N')
+    expect(
+      notesSection.find('[title="Press N to focus Notes. Press N again to save and leave."]').exists(),
+    ).toBe(true)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }))
+    await flushPromises()
+
+    expect(document.activeElement).toBe(notes.element)
+
+    await notes.setValue('Follow up after the interview')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }))
+    await flushPromises()
+
+    expect(document.activeElement).not.toBe(notes.element)
+    const notesRequest = requests.find(
+      (request) => request.method === 'PUT' && request.url.endsWith('/candidates/1/notes'),
+    )
+    expect(notesRequest?.body).toEqual({ notes: 'Follow up after the interview' })
+    wrapper.unmount()
+  })
+
+  it('US-17: Esc exits Editing mode and re-arms decision shortcuts', async () => {
+    const { requests } = stubApi()
+    const { wrapper, router } = await mountReview()
+    await flushPromises()
+
+    const notes = wrapper.find('textarea[aria-label="Candidate notes"]')
+    await notes.trigger('focus')
+    await notes.setValue('Ready for a decision')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+
+    expect(document.activeElement).not.toBe(notes.element)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 's' }))
+    await flushPromises()
+
+    const reviewRequest = requests.find((request) => request.url.endsWith('/candidates/1/review'))
+    expect(reviewRequest?.body).toMatchObject({ reviewStatus: 'shortlisted' })
+    expect(router.currentRoute.value.params.candidateId).toBe('2')
+    wrapper.unmount()
+  })
+
+  it('US-17: ? opens the keyboard shortcuts help modal', async () => {
+    const { requests } = stubApi()
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }))
+    await flushPromises()
+
+    const dialog = document.body.querySelector('[role="dialog"]')
+    expect(dialog?.textContent).toContain('Keyboard shortcuts')
+    expect(dialog?.textContent).toContain('Triage mode')
+    expect(dialog?.textContent).toContain('Editing mode')
+    expect(dialog?.textContent).toContain('Previous/next CV page')
+    expect(dialog?.textContent).toContain('Shift+← / Shift+→')
+    expect(dialog?.textContent).toContain('Edit candidate details')
+    expect(dialog?.textContent).toContain('Open/close source email')
+    expect(dialog?.textContent).toContain('Toggle requirement by position')
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 's' }))
+    await flushPromises()
+    expect(requests.some((request) => request.url.endsWith('/review'))).toBe(false)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('US-17: HR can close the keyboard shortcuts help modal', async () => {
+    stubApi()
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }))
+    await flushPromises()
+
+    const closeButton = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.trim() === 'Close',
+    )
+    expect(closeButton).toBeDefined()
+    await new DOMWrapper(closeButton as HTMLButtonElement).trigger('click')
+    await flushPromises()
+
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('US-17: review action buttons expose their keyboard shortcuts', async () => {
+    stubApi()
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    expect(findButton(wrapper, 'Prev').attributes('aria-keyshortcuts')).toBe('ArrowLeft')
+    expect(findButton(wrapper, 'Next').attributes('aria-keyshortcuts')).toBe('ArrowRight')
+    expect(findButton(wrapper, 'Shortlist').attributes('aria-keyshortcuts')).toBe('S')
+    expect(findButton(wrapper, 'Flag').attributes('aria-keyshortcuts')).toBe('F')
+    expect(findButton(wrapper, 'Reject').attributes('aria-keyshortcuts')).toBe('R')
+
+    const shortcutButton = wrapper.find('button[aria-label="Keyboard shortcuts"]')
+    expect(shortcutButton.exists()).toBe(true)
+    expect(shortcutButton.attributes('aria-keyshortcuts')).toBe('?')
+    expect(shortcutButton.text()).toContain('Shortcuts')
+    expect(shortcutButton.text()).toContain('?')
+
+    await shortcutButton.trigger('click')
+    await flushPromises()
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain(
+      'Keyboard shortcuts',
+    )
     wrapper.unmount()
   })
 
@@ -380,6 +627,42 @@ describe('ReviewView', () => {
     )
     expect(requirementRequest?.body).toEqual({ confirmed: true })
     expect(wrapper.text()).toContain('2 / 3 confirmed')
+    wrapper.unmount()
+  })
+
+  it('US-17: HR toggles manual requirements with numbered shortcuts', async () => {
+    const { requests } = stubApi()
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    const requirements = wrapper.find('[aria-label="Manual requirement review"]')
+    expect(requirements.findAll('kbd').map((kbd) => kbd.text())).toEqual(['1', '2', '3'])
+    expect(
+      requirements
+        .find('input[aria-label="Confirm Excel requirement"]')
+        .attributes('aria-keyshortcuts'),
+    ).toBe('1')
+    expect(
+      requirements
+        .find('input[aria-label="Confirm VAT reporting requirement"]')
+        .attributes('aria-keyshortcuts'),
+    ).toBe('2')
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '1' }))
+    await flushPromises()
+
+    const firstRequirementRequest = requests.find((request) =>
+      request.url.endsWith('/requirement-reviews/11'),
+    )
+    expect(firstRequirementRequest?.body).toEqual({ confirmed: false })
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '2' }))
+    await flushPromises()
+
+    const secondRequirementRequest = requests.find((request) =>
+      request.url.endsWith('/requirement-reviews/12'),
+    )
+    expect(secondRequirementRequest?.body).toEqual({ confirmed: true })
     wrapper.unmount()
   })
 

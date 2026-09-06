@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { CandidateRequirementReview } from '../api'
+import { requirementShortcutKeys } from '../useReviewShortcuts'
 import type { VacancyRequirement } from '@/features/vacancies/api'
 
 const props = defineProps<{
@@ -33,6 +34,10 @@ function isConfirmed(requirementId: number): boolean {
 function toRequirementId(value: string): number {
   return Number(value)
 }
+
+function shortcutFor(index: number): string | undefined {
+  return requirementShortcutKeys[index]
+}
 </script>
 
 <template>
@@ -51,7 +56,7 @@ function toRequirementId(value: string): number {
     <p v-if="error" class="mb-3 text-sm text-error" role="alert">{{ error }}</p>
     <ul class="m-0 flex list-none flex-col gap-2 p-0">
       <li
-        v-for="requirement in ordered"
+        v-for="(requirement, index) in ordered"
         :key="requirement.id"
         class="flex min-h-10 items-center gap-3 text-sm"
       >
@@ -61,6 +66,7 @@ function toRequirementId(value: string): number {
             :checked="isConfirmed(toRequirementId(requirement.id))"
             :disabled="savingRequirementId === toRequirementId(requirement.id)"
             :aria-label="`Confirm ${requirement.phrase} requirement`"
+            :aria-keyshortcuts="shortcutFor(index)"
             class="size-4 shrink-0 accent-primary"
             @change="
               emit(
@@ -70,6 +76,19 @@ function toRequirementId(value: string): number {
               )
             "
           />
+          <span
+            v-if="shortcutFor(index)"
+            class="shrink-0 text-muted"
+            :title="`Press ${shortcutFor(index)} to toggle this requirement`"
+          >
+            <kbd
+              class="rounded border border-current/40 px-1.5 py-0.5 text-[0.65rem] font-semibold"
+              aria-hidden="true"
+            >{{ shortcutFor(index) }}</kbd>
+            <span class="sr-only">
+              Press {{ shortcutFor(index) }} to toggle {{ requirement.phrase }}.
+            </span>
+          </span>
           <span
             :class="
               isConfirmed(toRequirementId(requirement.id))

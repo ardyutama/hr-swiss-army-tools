@@ -12,6 +12,24 @@ const props = defineProps<{
 
 const open = shallowRef(false)
 
+function openEmail() {
+  open.value = true
+}
+
+function toggleEmail() {
+  open.value = !open.value
+}
+
+function closeEmail() {
+  open.value = false
+}
+
+function isOpen() {
+  return open.value
+}
+
+defineExpose({ open: openEmail, toggle: toggleEmail, close: closeEmail, isOpen })
+
 // A new candidate's email starts collapsed again.
 watch(
   () => [props.subject, props.senderName, props.senderEmail, props.sentAt, props.body],
@@ -61,10 +79,16 @@ const displayBody = computed(
         icon="i-lucide-mail-open"
         :aria-label="`Open source email: ${displaySubject}`"
         :aria-expanded="open"
+        aria-keyshortcuts="O"
+        title="Open source email (O)"
         aria-haspopup="dialog"
         @click="open = true"
       >
         Open
+        <kbd
+          class="ml-1 rounded border border-current/40 px-1.5 py-0.5 text-[0.65rem] font-semibold"
+          aria-hidden="true"
+        >O</kbd>
       </UButton>
     </div>
   </section>

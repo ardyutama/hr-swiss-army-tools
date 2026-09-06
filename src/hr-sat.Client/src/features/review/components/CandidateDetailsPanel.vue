@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, shallowRef, watch } from 'vue'
+import { computed, nextTick, shallowRef, useTemplateRef, watch } from 'vue'
 import { candidateDisplayName } from '@/features/candidates/format'
 import type { CandidateDetails, CandidateDetailsPayload } from '../api'
 import { candidateDetailsValidationErrors } from '../validation'
@@ -20,6 +20,7 @@ const emit = defineEmits<{
 const editing = shallowRef(false)
 const draftFullName = shallowRef('')
 const draftContactEmail = shallowRef('')
+const fullNameInput = useTemplateRef<HTMLInputElement>('fullNameInput')
 
 function resetDraft() {
   draftFullName.value = props.candidate.fullName ?? props.candidate.sourceSenderName ?? ''
@@ -53,6 +54,14 @@ function startEditing() {
   editing.value = true
 }
 
+function focusEditing() {
+  if (!editing.value) {
+    startEditing()
+  }
+
+  void nextTick(() => fullNameInput.value?.focus())
+}
+
 function cancelEditing() {
   resetDraft()
   editing.value = false
@@ -68,6 +77,8 @@ function submit() {
     contactEmail: draftContactEmail.value.trim(),
   })
 }
+
+defineExpose({ focusEditing })
 </script>
 
 <template>
@@ -86,9 +97,15 @@ function submit() {
         size="sm"
         icon="i-lucide-pencil"
         aria-label="Edit candidate details"
+        aria-keyshortcuts="E"
+        title="Edit candidate details (E)"
         @click="startEditing"
       >
         Edit
+        <kbd
+          class="ml-1 rounded border border-current/40 px-1.5 py-0.5 text-[0.65rem] font-semibold"
+          aria-hidden="true"
+        >E</kbd>
       </UButton>
     </div>
 
@@ -98,6 +115,7 @@ function submit() {
       <label class="flex flex-col gap-1.5 text-sm">
         <span class="font-medium text-highlighted">Name</span>
         <input
+          ref="fullNameInput"
           v-model="draftFullName"
           type="text"
           autocomplete="name"
