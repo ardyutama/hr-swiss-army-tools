@@ -12,7 +12,7 @@ public sealed class Candidate : Entity
     }
 
     private Candidate(
-        long vacancyId,
+        long intakeRoundId,
         string? sourceSenderName,
         string? sourceSenderEmail,
         string? sourceSubject,
@@ -24,7 +24,7 @@ public sealed class Candidate : Entity
         byte[] sourceSha256,
         DateTimeOffset importedAt)
     {
-        VacancyId = vacancyId;
+        IntakeRoundId = intakeRoundId;
         ReviewStatus = CandidateReviewStatus.New;
         ExtractionStatus = CandidateExtractionStatus.Pending;
         SourceSenderName = sourceSenderName;
@@ -39,7 +39,7 @@ public sealed class Candidate : Entity
         ImportedAt = importedAt;
     }
 
-    public long VacancyId { get; private set; }
+    public long IntakeRoundId { get; private set; }
     public CandidateReviewStatus ReviewStatus { get; private set; }
     public CandidateExtractionStatus ExtractionStatus { get; private set; }
     public string? FullName { get; private set; }
@@ -144,7 +144,7 @@ public sealed class Candidate : Entity
     }
 
     internal static Result<Candidate> Import(
-        long vacancyId,
+        long intakeRoundId,
         string? sourceSenderName,
         string? sourceSenderEmail,
         string? sourceSubject,
@@ -158,7 +158,7 @@ public sealed class Candidate : Entity
         IReadOnlyList<StoredCvDocument> cvDocuments)
     {
         var sourceResult = ValidateSource(
-            vacancyId,
+            intakeRoundId,
             sourceOriginalFilename,
             sourceStorageKey,
             sourceSizeBytes,
@@ -183,7 +183,7 @@ public sealed class Candidate : Entity
         }
 
         var candidate = new Candidate(
-            vacancyId,
+            intakeRoundId,
             sourceSenderName,
             sourceSenderEmail,
             sourceSubject,
@@ -232,7 +232,7 @@ public sealed class Candidate : Entity
     }
 
     private static Result ValidateSource(
-        long vacancyId,
+        long intakeRoundId,
         string sourceOriginalFilename,
         string sourceStorageKey,
         long sourceSizeBytes,
@@ -242,9 +242,9 @@ public sealed class Candidate : Entity
         string? sourceSenderEmail)
     {
         var errors = new Dictionary<string, string[]>();
-        if (vacancyId <= 0)
+        if (intakeRoundId <= 0)
         {
-            errors["vacancyId"] = ["Vacancy is required."];
+            errors["intakeRoundId"] = ["Intake round is required."];
         }
 
         if (string.IsNullOrWhiteSpace(sourceOriginalFilename))

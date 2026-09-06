@@ -15,7 +15,7 @@ export const router = createRouter({
       props: true,
     },
     {
-      path: '/vacancies/:id/review/:candidateId',
+      path: '/vacancies/:id/rounds/:roundId/review/:candidateId',
       name: 'candidate-review',
       component: () => import('@/pages/review/ReviewView.vue'),
       props: true,

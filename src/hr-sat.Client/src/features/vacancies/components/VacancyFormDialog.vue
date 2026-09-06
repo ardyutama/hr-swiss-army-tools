@@ -36,25 +36,78 @@ function requirementRow(value = ''): VacancyRequirementRow {
 const form = reactive({
   title: '',
   openedOn: '',
+  neededHires: undefined as number | '' | undefined,
   requirements: [requirementRow()] as VacancyRequirementRow[],
 })
 
 const formRef = useTemplateRef('formRef')
 const initialFormPayload = shallowRef<VacancyWritePayload | null>(null)
 
+const isDirty = computed(() => {
+  const initialPayload = initialFormPayload.value
+  return initialPayload !== null && !vacancyPayloadsEqual(currentFormPayload(), initialPayload)
+})
+
+const saveStatusLabel = computed(() => {
+  if (props.saving) {
+    return 'Saving...'
+  }
+  if (isDirty.value) {
+    return 'Unsaved changes'
+  }
+  return isEdit.value ? 'Saved' : null
+})
+
+const saveStatusIcon = computed(() => {
+  if (props.saving) {
+    return 'i-lucide-loader-circle'
+  }
+  return isDirty.value ? 'i-lucide-pencil-line' : 'i-lucide-circle-check'
+})
+
+const saveStatusClass = computed(() => {
+  if (props.saving) {
+    return 'text-muted'
+  }
+  return isDirty.value ? 'text-primary' : 'text-success'
+})
+
+const neededHiresLabel = computed(() => {
+  const neededHires = normalizedNeededHires(form.neededHires)
+  if (neededHires === null) {
+    return 'Not set'
+  }
+  return `${neededHires} ${neededHires === 1 ? 'person' : 'people'}`
+})
+
 function resetForm() {
   form.title = props.vacancy?.title ?? ''
   form.openedOn = props.vacancy?.openedOn ?? todayIso()
+  form.neededHires = props.vacancy?.hiring?.neededHires
   form.requirements = [requirementRow()]
-  initialFormPayload.value = null
+  initialFormPayload.value = currentFormPayload()
 }
 
 function payloadFromOutput(output: VacancyFormOutput): VacancyWritePayload {
   return {
     title: output.title.trim(),
     openedOn: output.openedOn,
+    neededHires: output.neededHires,
     requirements: vacancyRequirementValues(output.requirements.map((row) => row.value)),
   }
+}
+
+function currentFormPayload(): VacancyWritePayload {
+  return {
+    title: form.title.trim(),
+    openedOn: form.openedOn,
+    neededHires: normalizedNeededHires(form.neededHires),
+    requirements: vacancyRequirementValues(form.requirements.map((row) => row.value)),
+  }
+}
+
+function normalizedNeededHires(value: number | '' | undefined): number | null {
+  return value === '' || value === undefined ? null : value
 }
 
 function vacancyPayloadsEqual(
@@ -64,6 +117,7 @@ function vacancyPayloadsEqual(
   return (
     left.title === right.title &&
     left.openedOn === right.openedOn &&
+    left.neededHires === right.neededHires &&
     left.requirements.length === right.requirements.length &&
     left.requirements.every((requirement, index) => requirement === right.requirements[index])
   )
@@ -88,6 +142,7 @@ watch(
     const requirements = [...details.requirements].sort((a, b) => a.position - b.position)
     form.title = details.title
     form.openedOn = details.openedOn
+    form.neededHires = details.hiring?.neededHires
     form.requirements =
       requirements.length > 0
         ? requirements.map((r) => requirementRow(r.phrase))
@@ -95,6 +150,7 @@ watch(
     initialFormPayload.value = {
       title: details.title,
       openedOn: details.openedOn,
+      neededHires: details.hiring?.neededHires ?? null,
       requirements: requirements.map((requirement) => requirement.phrase),
     }
   },
@@ -115,13 +171,16 @@ function removeRequirement(index: number) {
   form.requirements.splice(index, 1)
 }
 
+function clearNeededHires() {
+  form.neededHires = undefined
+}
+
 function onSubmit(event: FormSubmitEvent<VacancyFormOutput>) {
   const payload = payloadFromOutput(event.data)
   if (
     isEdit.value &&
     props.vacancy &&
-    initialFormPayload.value &&
-    vacancyPayloadsEqual(payload, initialFormPayload.value)
+    !isDirty.value
   ) {
     emit('close')
     return
@@ -130,6 +189,9 @@ function onSubmit(event: FormSubmitEvent<VacancyFormOutput>) {
 }
 
 defineExpose({
+  markSaved() {
+    initialFormPayload.value = currentFormPayload()
+  },
   /** Routes a failed save's ValidationProblem back onto the fields it names. */
   applyServerErrors(error: unknown) {
     const serverErrors = fieldErrorsOf(error)
@@ -179,6 +241,44 @@ defineExpose({
         </UFormField>
 
         <UFormField
+          label="Hiring target"
+          name="neededHires"
+        >
+          <div class="flex flex-col gap-3 rounded-xl border border-default bg-muted/30 p-3">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-highlighted">Needed hires</p>
+                <p class="text-xs text-muted">Optional target for this vacancy.</p>
+              </div>
+              <span class="shrink-0 text-xs font-medium text-muted">{{ neededHiresLabel }}</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <UInput
+                v-model.number="form.neededHires"
+                type="number"
+                min="1"
+                max="9999"
+                step="1"
+                placeholder="e.g. 10"
+                aria-label="Needed hires"
+                class="w-32"
+              />
+              <span class="text-sm text-muted">people</span>
+              <UButton
+                v-if="normalizedNeededHires(form.neededHires) !== null"
+                icon="i-lucide-x"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                aria-label="Clear needed hires"
+                title="Clear needed hires"
+                @click="clearNeededHires"
+              />
+            </div>
+          </div>
+        </UFormField>
+
+        <UFormField
           label="Skill requirements"
           name="requirements"
           hint="CVs are sorted against these. Add at least one."
@@ -221,13 +321,29 @@ defineExpose({
     </template>
 
     <template #footer>
-      <div class="flex justify-end gap-2">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <p
+          v-if="saveStatusLabel"
+          class="flex items-center gap-1.5 text-xs font-medium"
+          :class="saveStatusClass"
+          role="status"
+          aria-live="polite"
+        >
+          <UIcon :name="saveStatusIcon" class="size-4" :class="{ 'animate-spin': saving }" />
+          <span>{{ saveStatusLabel }}</span>
+        </p>
         <UButton color="neutral" variant="outline" :disabled="saving" @click="emit('close')">
           Cancel
         </UButton>
-        <UButton :loading="saving" @click="formRef?.submit()">
-          {{ isEdit ? 'Save changes' : 'Create vacancy' }}
-        </UButton>
+        <div class="flex gap-2">
+          <UButton
+            :loading="saving"
+            :disabled="isEdit && !isDirty"
+            @click="formRef?.submit()"
+          >
+            {{ isEdit ? 'Save changes' : 'Create vacancy' }}
+          </UButton>
+        </div>
       </div>
     </template>
   </UModal>

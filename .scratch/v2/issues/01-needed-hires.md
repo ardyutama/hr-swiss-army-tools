@@ -13,10 +13,22 @@ the vacancy still has a shortage shows the "slots still open" confirmation.
 
 **Status:** ready-for-agent
 
-- [ ] Create/edit vacancy accepts optional Needed Hires (validated 1–9999, editable while open)
-- [ ] Vacancy list shows "n/m hired · k to go" when Needed Hires is set; unchanged when null
-- [ ] "Filled" badge when active hires reach Needed Hires; vacancy stays open
-- [ ] Round close confirms when shortage remains ("k slots still open — close this round?")
-- [ ] Backend and frontend tests pass (written after implementation)
+- [x] Create/edit vacancy accepts optional Needed Hires (validated 1–9999, editable while open)
+- [x] Vacancy list shows "n/m hired · k to go" when Needed Hires is set; unchanged when null
+- [x] "Filled" badge when active hires reach Needed Hires; vacancy stays open
+- [x] Round close confirms when shortage remains ("k slots still open — close this round?")
+- [x] Backend and frontend tests pass (written after implementation)
 
 **Note:** until ticket 02-hire-outcomes lands, active hires = 0 and shortage = needed.
+
+## Implementation plan
+
+1. Add nullable `NeededHires` to the vacancy domain, create/update commands, validators,
+	and the vacancy write request mapping.
+2. Add nullable `Hiring` response data to vacancy list/detail contracts, projecting
+	`ActiveHires = 0` until ticket 02 supplies hire-outcome counts.
+3. Persist the field with a nullable EF column and a 1-9999 database check constraint.
+4. Add the vacancy HTTP-seam coverage for acceptance, validation, clearing, closed-vacancy
+	rejection, and list/detail projection behavior.
+5. Wire the client form, list row, and close-round confirmation, then add the client seam
+	coverage and tick the acceptance checklist.

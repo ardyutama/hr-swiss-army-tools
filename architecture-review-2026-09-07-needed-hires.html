@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Architecture review — hr-swiss-army-tools (staged: Needed Hires)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 4 4; }
+      .leak { stroke: #dc2626; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .mod-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans">
+    <main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+
+      <header class="space-y-4">
+        <p class="text-xs uppercase tracking-widest text-slate-500">Architecture review · 2026-09-07</p>
+        <h1 class="font-serif text-4xl text-slate-900">Staged changes: Needed Hires &amp; the vacancy rollup</h1>
+        <p class="text-sm text-slate-600 max-w-2xl">
+          Scope: the staged slice (issue 01-needed-hires) — vacancy Needed Hires end to end, plus the
+          vacancy-detail flow extraction that rode along. Four deepening candidates, ordered by payoff.
+        </p>
+        <div class="flex flex-wrap gap-4 text-xs text-slate-600 border-y border-stone-200 py-3">
+          <span class="flex items-center gap-2"><span class="inline-block w-4 h-4 border-2 border-slate-700 rounded-sm"></span> module</span>
+          <span class="flex items-center gap-2"><span class="inline-block w-6 border-t-2 border-dashed border-slate-500"></span> seam</span>
+          <span class="flex items-center gap-2"><span class="inline-block w-6 border-t-2 border-red-600"></span> leakage</span>
+          <span class="flex items-center gap-2"><span class="inline-block w-4 h-4 rounded-sm deep"></span> deep module</span>
+        </div>
+      </header>
+
+      <section id="candidates" class="space-y-10">
+
+        <!-- ── Candidate 1 ─────────────────────────────────────────────── -->
+        <article id="c1" class="rounded-2xl border border-stone-200 bg-white p-8 shadow-sm space-y-6">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="font-serif text-2xl">Give Shortage and Filled one module</h2>
+            <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">Strong</span>
+            <span class="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">in-process</span>
+          </div>
+
+          <div class="font-mono text-sm text-slate-600 space-y-1">
+            <p>src/hr-sat.Client/src/features/vacancies/format.ts</p>
+            <p>src/hr-sat.Client/src/features/vacancies/components/HiringPlanSummary.vue</p>
+            <p>src/hr-sat.Client/src/features/vacancy-detail/useVacancyDetailFlow.ts</p>
+            <p>src/hr-sat.Client/src/features/intake-rounds/components/CloseRoundDialog.vue</p>
+          </div>
+
+          <div class="grid gap-6 md:grid-cols-2">
+            <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+              <p class="mod-label text-slate-500 mb-3">Before — one derivation, three homes</p>
+              <div class="space-y-3 text-xs">
+                <div class="border-2 border-slate-700 rounded-md bg-white p-2">
+                  <p class="mod-label font-semibold">format.ts</p>
+                  <p class="font-mono text-[11px] text-slate-600">hiringProgressText · isFilled</p>
+                  <p class="font-mono text-[11px] text-red-700">max(0, needed − active)</p>
+                </div>
+                <div class="border-2 border-slate-700 rounded-md bg-white p-2">
+                  <p class="mod-label font-semibold">HiringPlanSummary.vue</p>
+                  <p class="font-mono text-[11px] text-slate-600">shortage computed · filled computed</p>
+                  <p class="font-mono text-[11px] text-red-700">max(0, needed − active)  ← second copy</p>
+                  <p class="font-mono text-[11px] text-amber-700">"1/4 hired · 3 still needed"  ← re-types the text</p>
+                </div>
+                <div class="border-2 border-slate-700 rounded-md bg-white p-2">
+                  <p class="mod-label font-semibold">useVacancyDetailFlow.ts</p>
+                  <p class="font-mono text-[11px] text-slate-600">roundShortage computed</p>
+                  <p class="font-mono text-[11px] text-red-700">max(0, needed − active)  ← third copy</p>
+                </div>
+                <div class="border-2 border-slate-400 rounded-md bg-white p-2 opacity-80">
+                  <p class="mod-label font-semibold">CloseRoundDialog.vue</p>
+                  <p class="font-mono text-[11px] text-slate-600">receives raw shortage: number</p>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+              <p class="mod-label text-slate-500 mb-3">After — the seam sits on the domain term</p>
+              <div class="space-y-3 text-xs">
+                <div class="deep rounded-md p-3 text-slate-100">
+                  <p class="mod-label font-semibold text-emerald-300">features/vacancies/hiring.ts</p>
+                  <p class="font-mono text-[11px]">hiringShortage(hiring) · isFilled(hiring)</p>
+                  <p class="font-mono text-[11px]">hiringProgressText(hiring)</p>
+                  <p class="font-mono text-[11px] text-slate-400 mt-1">interface: 3 functions over VacancyHiring<br/>implementation: the only copy of the arithmetic</p>
+                </div>
+                <div class="space-y-2">
+                  <div class="border border-slate-300 rounded-md bg-white p-2 font-mono text-[11px] text-slate-600">HiringPlanSummary → hiringShortage(props.hiring)</div>
+                  <div class="border border-slate-300 rounded-md bg-white p-2 font-mono text-[11px] text-slate-600">useVacancyDetailFlow → hiringShortage(vacancy.hiring)</div>
+                  <div class="border border-slate-300 rounded-md bg-white p-2 font-mono text-[11px] text-slate-600">VacancyTable → hiringProgressText(row.hiring)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid gap-6 md:grid-cols-2 text-sm">
+            <div>
+              <p class="mod-label text-slate-500 mb-1">Problem</p>
+              <p class="text-slate-700">Shortage and Filled are domain terms in CONTEXT.md, but the derivation is copied into three modules and the display text is typed twice with drifting copy ("10 to go" vs "3 still needed").</p>
+            </div>
+            <div>
+              <p class="mod-label text-slate-500 mb-1">Solution</p>
+              <p class="text-slate-700">One small module next to format.ts owns the arithmetic and both text shapes; every render site crosses that seam.</p>
+            </div>
+          </div>
+
+          <div>
+            <p class="mod-label text-slate-500 mb-2">Wins</p>
+            <ul class="text-sm text-slate-700 space-y-1 list-disc pl-5">
+              <li>locality: ticket 02's real active-hire counts change one function</li>
+              <li>leverage: one interface, four call sites</li>
+              <li>the interface becomes the test surface: pure functions, no mount</li>
+              <li>copy drift between list row and workspace strip becomes impossible</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- ── Candidate 2 ─────────────────────────────────────────────── -->
+        <article id="c2" class="rounded-2xl border border-stone-200 bg-white p-8 shadow-sm space-y-6">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="font-serif text-2xl">Let the vacancy form dialog own its saved baseline</h2>
+            <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">Strong</span>
+            <span class="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">in-process</span>
+          </div>
+
+          <div class="font-mono text-sm text-slate-600 space-y-1">
+            <p>src/hr-sat.Client/src/features/vacancies/components/VacancyFormDialog.vue</p>
+            <p>src/hr-sat.Client/src/pages/vacancies/VacancyListView.vue</p>
+          </div>
+
+          <div class="grid gap-6 md:grid-cols-2">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="mod-label text-slate-500 mb-2">Before — baseline knowledge crosses the seam twice</p>
+              <pre class="mermaid">
+sequenceDiagram
+  participant V as VacancyListView
+  participant D as VacancyFormDialog
+  Note over V: save succeeds
+  V->>V: deep-copy payload<br/>into lastSavedPayload
+  V->>D: prop savedPayload
+  D->>D: watcher fires,<br/>rebuilds initialFormPayload
+  Note over D: isDirty compares against it
+  Note over V,D: caller must know the dialog's<br/>baseline shape and to deep-copy it
+              </pre>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="mod-label text-slate-500 mb-2">After — one verb across the seam</p>
+              <pre class="mermaid">
+sequenceDiagram
+  participant V as VacancyListView
+  participant D as VacancyFormDialog
+  Note over V: save succeeds
+  V->>D: formDialog.markSaved()
+  D->>D: baseline = own currentFormPayload()
+  Note over D: isDirty compares against it
+  Note over V,D: symmetric with the existing<br/>applyServerErrors() expose
+              </pre>
+            </div>
+          </div>
+
+          <div class="grid gap-6 md:grid-cols-2 text-sm">
+            <div>
+              <p class="mod-label text-slate-500 mb-1">Problem</p>
+              <p class="text-slate-700">"What counts as saved" is dialog implementation, yet the interface exports it: the page builds, deep-copies, and re-injects a VacancyWritePayload so the dialog's watcher can reset its own baseline — and the dialog already has three payload construction paths (submit, dirty-check, watcher).</p>
+            </div>
+            <div>
+              <p class="mod-label text-slate-500 mb-1">Solution</p>
+              <p class="text-slate-700">Delete the savedPayload prop and watcher; expose markSaved() next to the existing applyServerErrors(), and let the dialog snapshot its own currentFormPayload().</p>
+            </div>
+          </div>
+
+          <div>
+            <p class="mod-label text-slate-500 mb-2">Wins</p>
+            <ul class="text-sm text-slate-700 space-y-1 list-disc pl-5">
+              <li>interface loses a prop, a watcher, and the deep-copy invariant</li>
+              <li>locality: baseline logic lives only in the dialog</li>
+              <li>deletion test: savedPayload removed, complexity concentrates, nothing reappears in the page</li>
+              <li>three payload builders collapse toward one</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- ── Candidate 3 ─────────────────────────────────────────────── -->
+        <article id="c3" class="rounded-2xl border border-stone-200 bg-white p-8 shadow-sm space-y-6">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="font-serif text-2xl">Deepen the vacancy-detail flow's 53-member interface</h2>
+            <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">Worth exploring</span>
+            <span class="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">in-process</span>
+          </div>
+
+          <div class="font-mono text-sm text-slate-600 space-y-1">
+            <p>src/hr-sat.Client/src/features/vacancy-detail/useVacancyDetailFlow.ts</p>
+            <p>src/hr-sat.Client/src/pages/vacancy-detail/VacancyDetailView.vue</p>
+          </div>
+
+          <div class="grid gap-6 md:grid-cols-2">
+            <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+              <p class="mod-label text-slate-500 mb-3">Before — interface ≈ implementation</p>
+              <div class="flex items-end gap-6 h-56">
+                <div class="flex flex-col items-center gap-1">
+                  <div class="w-24 bg-red-200 border-2 border-red-500 rounded-t-md" style="height:170px"></div>
+                  <p class="mod-label text-red-700">interface<br/>53 members</p>
+                </div>
+                <div class="flex flex-col items-center gap-1">
+                  <div class="w-24 bg-slate-300 border-2 border-slate-500 rounded-t-md" style="height:200px"></div>
+                  <p class="mod-label text-slate-600">implementation<br/>281 lines, mostly re-export</p>
+                </div>
+              </div>
+              <p class="text-xs text-slate-600 mt-3">16 of 53 members are four dialogs' open/request/dismiss/confirm boilerplate; openImport/closeImport are one-line setter pass-throughs.</p>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+              <p class="mod-label text-slate-500 mb-3">After — small interface, same behaviour</p>
+              <div class="flex items-end gap-6 h-56">
+                <div class="flex flex-col items-center gap-1">
+                  <div class="w-24 bg-emerald-200 border-2 border-emerald-600 rounded-t-md" style="height:64px"></div>
+                  <p class="mod-label text-emerald-800">interface<br/>~20 names, grouped by render region</p>
+                </div>
+                <div class="flex flex-col items-center gap-1">
+                  <div class="w-24 rounded-t-md deep border-2 border-slate-800" style="height:200px"></div>
+                  <p class="mod-label text-slate-600">implementation absorbs<br/>the pass-throughs</p>
+                </div>
+              </div>
+              <p class="text-xs text-slate-600 mt-3">Dialogs take v-model:open and own their open state; the earned parts stay: round pinning, permissibility rules, refresh coordination.</p>
+            </div>
+          </div>
+
+          <div class="grid gap-6 md:grid-cols-2 text-sm">
+            <div>
+              <p class="mod-label text-slate-500 mb-1">Problem</p>
+              <p class="text-slate-700">The extraction out of the view was the right move, but the flow module is a shallow aggregate: the view must still learn 53 names, most of them renamed re-exports of the sub-composables it wrapped. Its only caller is the view, and the seam tests mount the view — so this interface is nobody's test surface.</p>
+            </div>
+            <div>
+              <p class="mod-label text-slate-500 mb-1">Solution</p>
+              <p class="text-slate-700">Push dialog open-state into the dialogs (Nuxt UI v-model:open), delete the setter pass-throughs, and group what remains around the view's render regions (rollup, rounds, candidates, import) instead of a flat bag.</p>
+            </div>
+          </div>
+
+          <div>
+            <p class="mod-label text-slate-500 mb-2">Wins</p>
+            <ul class="text-sm text-slate-700 space-y-1 list-disc pl-5">
+              <li>interface shrinks by half; depth shows up as leverage for the one caller</li>
+              <li>deletion test: openImport/closeImport vanish, nothing reappears elsewhere</li>
+              <li>the flow keeps what earned it: round pinning, permissibility rules, refresh coordination</li>
+            </ul>
+          </div>
+
+          <div class="rounded-md bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-900">
+            One adapter means a hypothetical seam: useVacancyDetailFlow has exactly one caller. If the view stays the test surface, consider whether the flow's interface should be shaped for the view's regions — or whether some members belong back in the sub-features.
+          </div>
+        </article>
+
+        <!-- ── Candidate 4 ─────────────────────────────────────────────── -->
+        <article id="c4" class="rounded-2xl border border-stone-200 bg-white p-8 shadow-sm space-y-6">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="font-serif text-2xl">Make the vacancy projection's two paths explicit</h2>
+            <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">Worth exploring</span>
+            <span class="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">in-process</span>
+          </div>
+
+          <div class="font-mono text-sm text-slate-600 space-y-1">
+            <p>src/hr-sat.Application/Features/Vacancies/VacancyContracts.cs</p>
+            <p>src/hr-sat.Application/Features/Vacancies/VacancyProgress.cs</p>
+          </div>
+
+          <div class="grid gap-6 md:grid-cols-2">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="mod-label text-slate-500 mb-2">Before — optional params, silent fallback</p>
+              <pre class="mermaid">
+flowchart TD
+  C[CreateVacancyCommandHandler] -->|vacancy only| F[VacancyDetailsResponse.From]
+  G[GetDetailsAsync<br/>via 4 handlers] -->|progress, rounds, hiring| F
+  F -->|hiring omitted:<br/>silent interim zeros| R[VacancyDetailsResponse]
+  D[GetAsync<br/>dead: zero callers] -.-> P[ProjectSummaries]
+  G --> P
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class F leak
+  classDef dead stroke:#94a3b8,stroke-dasharray:5 5,color:#94a3b8;
+  class D dead
+              </pre>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="mod-label text-slate-500 mb-2">After — the two projections are named, not optional</p>
+              <pre class="mermaid">
+flowchart TD
+  C[CreateVacancyCommandHandler] --> N[FromNewVacancy<br/>interim hiring, explicit]
+  G[GetDetailsAsync<br/>via 4 handlers] --> S[FromStoredVacancy<br/>requires progress, rounds, hiring]
+  N --> R[VacancyDetailsResponse]
+  S --> R
+  P[ProjectSummaries] --> S
+  classDef deep fill:#0f172a,color:#e2e8f0,stroke:#0f172a;
+  class N,S deep
+              </pre>
+            </div>
+          </div>
+
+          <div class="grid gap-6 md:grid-cols-2 text-sm">
+            <div>
+              <p class="mod-label text-slate-500 mb-1">Problem</p>
+              <p class="text-slate-700">From() grew a third optional parameter whose fallback silently recomputes the interim hiring projection (ActiveHires = 0) — harmless today, wrong-by-default the moment ticket 02 lands real hire counts. Meanwhile GetDetailsAsync stopped calling GetAsync, leaving GetAsync dead, and the module named VacancyProgress now projects summary, progress, and hiring.</p>
+            </div>
+            <div>
+              <p class="mod-label text-slate-500 mb-1">Solution</p>
+              <p class="text-slate-700">Split the factory into two named constructions (new vacancy vs stored vacancy), make the stored path's inputs required, delete the dead GetAsync, and let the module name catch up with what it projects.</p>
+            </div>
+          </div>
+
+          <div>
+            <p class="mod-label text-slate-500 mb-2">Wins</p>
+            <ul class="text-sm text-slate-700 space-y-1 list-disc pl-5">
+              <li>the interface states its invariant in types, not in caller discipline</li>
+              <li>ticket 02 can't ship a stale-zero response by forgetting an argument</li>
+              <li>delete dead code: GetAsync and the fallback branch</li>
+            </ul>
+          </div>
+        </article>
+
+      </section>
+
+      <section id="top-recommendation" class="rounded-2xl border-2 border-emerald-600 bg-emerald-50 p-8 space-y-3">
+        <p class="mod-label text-emerald-700">Top recommendation</p>
+        <h2 class="font-serif text-2xl text-slate-900">
+          <a href="#c1" class="underline decoration-emerald-400 underline-offset-4">Give Shortage and Filled one module</a>
+        </h2>
+        <p class="text-sm text-slate-700 max-w-3xl">
+          Smallest change, highest locality: the derivation is already copied three times with drifting copy,
+          and ticket 02 (hire outcomes) — the very next slice — lands exactly on this seam. Do it before the
+          counts become real and the copies start disagreeing about live numbers.
+        </p>
+      </section>
+
+    </main>
+  </body>
+</html>

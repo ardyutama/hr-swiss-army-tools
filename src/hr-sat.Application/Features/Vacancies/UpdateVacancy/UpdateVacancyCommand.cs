@@ -7,4 +7,5 @@ public sealed record UpdateVacancyCommand(
     long Id,
     string? Title,
     DateOnly OpenedOn,
-    IReadOnlyList<string?>? Requirements) : ICommand<VacancyDetailsResponse>;
+    IReadOnlyList<string?>? Requirements,
+    int? NeededHires) : ICommand<VacancyDetailsResponse>;

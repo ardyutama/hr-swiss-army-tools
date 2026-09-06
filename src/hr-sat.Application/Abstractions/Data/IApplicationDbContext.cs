@@ -1,4 +1,5 @@
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.IntakeRounds;
 using hr_sat.Domain.Vacancies;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -10,13 +11,14 @@ public interface IApplicationDbContext
     DbSet<Vacancy> Vacancies { get; }
     DbSet<VacancyRequirement> VacancyRequirements { get; }
     DbSet<Candidate> Candidates { get; }
+    DbSet<IntakeRound> IntakeRounds { get; }
     DbSet<CandidateRequirementReview> CandidateRequirementReviews { get; }
     DbSet<CvDocument> CvDocuments { get; }
     DbSet<PendingFileDeletion> PendingFileDeletions { get; }
 
     Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken);
 
-    Task<Vacancy?> FindVacancyForUpdateAsync(long id, CancellationToken cancellationToken);
+    Task<Vacancy?> LockVacancyAsync(long id, CancellationToken cancellationToken);
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 }

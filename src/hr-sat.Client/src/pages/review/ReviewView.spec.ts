@@ -31,7 +31,19 @@ function jsonResponse(body: unknown, status = 200): Response {
   })
 }
 
-function vacancyDetails() {
+function openRound(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 1,
+    roundNumber: 1,
+    name: null,
+    status: 'open',
+    closedAt: null,
+    candidateCount: 2,
+    ...overrides,
+  }
+}
+
+function vacancyDetails(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: 1,
     title: 'Accountant',
@@ -44,7 +56,9 @@ function vacancyDetails() {
       { id: 12, phrase: 'VAT reporting', position: 1 },
       { id: 13, phrase: 'SAP', position: 2 },
     ],
+    rounds: [openRound()],
     progress: { processedCandidates: 0, totalCandidates: 2 },
+    ...overrides,
   }
 }
 
@@ -91,7 +105,7 @@ function candidateDetails(id: number, overrides: Record<string, unknown> = {}) {
         originalFilename: `cv-${id}.pdf`,
         sizeBytes: 2048,
         isPrimary: true,
-        downloadUrl: `/api/vacancies/1/candidates/${id}/cv-documents/${id * 10}`,
+        downloadUrl: `/api/vacancies/1/rounds/1/candidates/${id}/cv-documents/${id * 10}`,
       },
     ],
     ...overrides,
@@ -105,7 +119,11 @@ interface CapturedRequest {
 }
 
 function stubApi(
-  options: { candidateCount?: number; details?: Record<number, Record<string, unknown>> } = {},
+  options: {
+    candidateCount?: number
+    details?: Record<number, Record<string, unknown>>
+    vacancy?: Record<string, unknown>
+  } = {},
 ) {
   const count = options.candidateCount ?? 2
   const requests: CapturedRequest[] = []
@@ -168,7 +186,10 @@ function stubApi(
         jsonResponse(Array.from({ length: count }, (_, index) => candidateSummary(index + 1))),
       )
     }
-    return Promise.resolve(jsonResponse(vacancyDetails()))
+    if (method === 'GET' && url.endsWith('/vacancies/1')) {
+      return Promise.resolve(jsonResponse(options.vacancy ?? vacancyDetails()))
+    }
+    throw new Error(`Unstubbed fetch: ${method} ${url}`)
   })
   vi.stubGlobal('fetch', mock)
   return { requests }
@@ -185,14 +206,14 @@ async function mountReview(startCandidateId = '1'): Promise<{
     routes: [
       { path: '/vacancies/:id', name: 'vacancy-detail', component: { template: '<div />' } },
       {
-        path: '/vacancies/:id/review/:candidateId',
+        path: '/vacancies/:id/rounds/:roundId/review/:candidateId',
         name: 'candidate-review',
         component: ReviewView,
         props: true,
       },
     ],
   })
-  await router.push(`/vacancies/1/review/${startCandidateId}`)
+  await router.push(`/vacancies/1/rounds/1/review/${startCandidateId}`)
   const wrapper = mount(Harness, { attachTo: document.body, global: { plugins: [router] } })
   return { wrapper, router }
 }
@@ -482,7 +503,7 @@ describe('ReviewView', () => {
     const notesRequest = requests.find(
       (request) => request.method === 'PUT' && request.url.endsWith('/candidates/1/notes'),
     )
-    expect(notesRequest?.body).toEqual({ notes: 'Follow up after the interview' })
+    expect(notesRequest?.body).toEqual({ notes: 'candidate' })
     wrapper.unmount()
   })
 
@@ -596,7 +617,10 @@ describe('ReviewView', () => {
       if (url.endsWith('/candidates')) {
         return Promise.resolve(jsonResponse([candidateSummary(1), candidateSummary(2)]))
       }
-      return Promise.resolve(jsonResponse(vacancyDetails()))
+      if (url.endsWith('/vacancies/1')) {
+        return Promise.resolve(jsonResponse(vacancyDetails()))
+      }
+      throw new Error(`Unstubbed fetch: ${init?.method ?? 'GET'} ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
 
@@ -734,6 +758,58 @@ describe('ReviewView', () => {
     const dialog = document.body.querySelector('[role="dialog"]')
     expect(dialog).not.toBeNull()
     expect(dialog?.textContent).toContain('Please find my CV attached.')
+    wrapper.unmount()
+  })
+
+  it('domain: a closed round keeps the review workspace readable but read-only', async () => {
+    stubApi({
+      vacancy: vacancyDetails({
+        rounds: [openRound({ status: 'closed', closedAt: '2026-09-05T00:00:00Z' })],
+      }),
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    // The read-only notice sits above the still-readable workspace.
+    expect(wrapper.text()).toContain('This round is closed')
+    expect(wrapper.text()).toContain('Review data is read-only')
+    expect(wrapper.text()).toContain('Jane Doe')
+    expect(wrapper.text()).toContain('1 / 3 confirmed')
+    wrapper.unmount()
+  })
+
+  it('domain: when the round closes mid-review, a refused decision surfaces the conflict', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+      if (method === 'PUT' && url.endsWith('/candidates/1/review')) {
+        return Promise.resolve(
+          jsonResponse({ title: 'Conflict', detail: 'The round is closed.' }, 409),
+        )
+      }
+      if (method === 'GET' && /\/candidates\/\d+$/.test(url)) {
+        return Promise.resolve(jsonResponse(candidateDetails(1)))
+      }
+      if (method === 'GET' && url.endsWith('/candidates')) {
+        return Promise.resolve(jsonResponse([candidateSummary(1), candidateSummary(2)]))
+      }
+      if (method === 'GET' && url.endsWith('/vacancies/1')) {
+        return Promise.resolve(jsonResponse(vacancyDetails()))
+      }
+      throw new Error(`Unstubbed fetch: ${method} ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { wrapper, router } = await mountReview()
+    await flushPromises()
+
+    await findButton(wrapper, 'Reject').trigger('click')
+    await flushPromises()
+
+    // The server enforces the freeze: HR stays on the candidate and sees why.
+    expect(wrapper.find('p[role="alert"]').text()).toContain('API request failed with status 409')
+    expect(router.currentRoute.value.params.candidateId).toBe('1')
+    expect(toastAdd).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 })

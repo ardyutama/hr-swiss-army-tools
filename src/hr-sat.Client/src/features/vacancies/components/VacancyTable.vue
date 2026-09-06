@@ -2,6 +2,7 @@
 import StatusBadge from './StatusBadge.vue'
 import type { VacancySummary } from '../api'
 import { formatDate, progressPercent } from '../format'
+import { hiringProgressText, isFilled } from '../hiring'
 
 defineProps<{
   rows: VacancySummary[]
@@ -48,16 +49,27 @@ const columnWidths = ['32%', '13%', '25%', '13%', '5rem']
           </td>
 
           <td class="vtable__col vtable__col--progress border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
-            <div class="vrow__progress flex items-center gap-3">
-              <div class="vrow__progress-track h-1.5 min-w-14 flex-1 overflow-hidden rounded-full bg-muted">
-                <div
-                  class="vrow__progress-bar h-full rounded-full bg-primary"
-                  :style="{ width: `${progressPercent(row.progress)}%` }"
-                />
+            <div class="flex flex-col gap-1.5">
+              <div class="vrow__progress flex items-center gap-3">
+                <div class="vrow__progress-track h-1.5 min-w-14 flex-1 overflow-hidden rounded-full bg-muted">
+                  <div
+                    class="vrow__progress-bar h-full rounded-full bg-primary"
+                    :style="{ width: `${progressPercent(row.progress)}%` }"
+                  />
+                </div>
+                <span class="vrow__progress-text whitespace-nowrap text-sm font-medium tabular-nums text-muted">
+                  {{ row.progress.processedCandidates }}/{{ row.progress.totalCandidates }}
+                </span>
               </div>
-              <span class="vrow__progress-text whitespace-nowrap text-sm font-medium tabular-nums text-muted">
-                {{ row.progress.processedCandidates }}/{{ row.progress.totalCandidates }}
-              </span>
+              <div
+                v-if="row.hiring"
+                class="flex items-center gap-2 text-xs tabular-nums text-muted"
+              >
+                <span>{{ hiringProgressText(row.hiring) }}</span>
+                <UBadge v-if="isFilled(row.hiring)" color="success" variant="subtle">
+                  Filled
+                </UBadge>
+              </div>
             </div>
           </td>
 

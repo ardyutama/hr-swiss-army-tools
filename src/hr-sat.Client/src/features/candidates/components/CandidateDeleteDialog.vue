@@ -2,9 +2,10 @@
 import type { CandidateSummary } from '../api'
 import { candidateDisplayName } from '../format'
 
-withDefaults(
+const open = defineModel<boolean>('open', { required: true })
+
+const props = withDefaults(
   defineProps<{
-    open: boolean
     candidate: CandidateSummary | null
     deleting?: boolean
     error?: string | null
@@ -13,29 +14,34 @@ withDefaults(
 )
 
 const emit = defineEmits<{
-  close: []
-  confirm: []
+  confirm: [candidate: CandidateSummary]
 }>()
+
+function confirm() {
+  if (props.candidate) {
+    emit('confirm', props.candidate)
+  }
+}
+
 </script>
 
 <template>
   <UModal
-    :open="open"
+    v-model:open="open"
     title="Delete candidate"
     :dismissible="!deleting"
-    @update:open="(value) => { if (!value) emit('close') }"
   >
     <template #body>
       <p class="confirm__text text-base leading-relaxed text-highlighted">
-        Delete <strong>{{ candidate ? candidateDisplayName(candidate) : '' }}</strong
+        Delete <strong>{{ props.candidate ? candidateDisplayName(props.candidate) : '' }}</strong
         >? This permanently removes the candidate and their CV documents and can't be undone.
       </p>
       <UAlert
-        v-if="error"
+        v-if="props.error"
         color="error"
         variant="subtle"
         icon="i-lucide-triangle-alert"
-        :title="error"
+        :title="props.error"
         role="alert"
         class="mt-3"
       />
@@ -43,10 +49,10 @@ const emit = defineEmits<{
 
     <template #footer>
       <div class="flex justify-end gap-2">
-        <UButton color="neutral" variant="outline" :disabled="deleting" @click="emit('close')">
+        <UButton color="neutral" variant="outline" :disabled="props.deleting" @click="open = false">
           Cancel
         </UButton>
-        <UButton color="error" :loading="deleting" @click="emit('confirm')">
+        <UButton color="error" :loading="props.deleting" @click="confirm">
           Delete candidate
         </UButton>
       </div>

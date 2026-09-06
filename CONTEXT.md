@@ -48,6 +48,10 @@ _Avoid_: Current batch, open batch
 The explicit, irreversible end of an active round, marked by HR; a closed round never reopens and its review data (imports, review status, notes, requirement reviews) is read-only forever, while hire-outcome bookkeeping on its candidates stays editable until the vacancy closes (reopening is a vacancy power).
 _Avoid_: Batch close, round archive
 
+**Round Management**:
+HR's administration of a vacancy's intake rounds: opening the next round and closing the active one. It changes round lifecycle only, never candidate review data.
+_Avoid_: Round settings, batch management
+
 **Promote**:
 Moving a new, flagged, or shortlisted-without-outcome candidate from a closed round into the active round, preserving review status, requirement reviews, and notes.
 _Avoid_: Copy candidate, re-import
@@ -137,8 +141,12 @@ A personalized message generated from an email template for one candidate for HR
 _Avoid_: Sent email, bulk email
 
 **Needed Hires**:
-The number of people a vacancy must ultimately hire, recorded on the vacancy; a vacancy stays open until that many hires are active. Intake rounds carry no quota of their own.
+The number of people a vacancy must ultimately hire, recorded on the vacancy; the system never closes a vacancy automatically, so a filled vacancy stays open until HR closes it. Intake rounds carry no quota of their own.
 _Avoid_: Headcount request, batch size, round quota
+
+**Filled**:
+The display state of a vacancy whose active hires have reached its needed hires; the vacancy remains open.
+_Avoid_: Auto-closed vacancy, completed vacancy
 
 **Hired Candidate**:
 A shortlisted candidate who has started the job; the hire is active until they are marked as runaway.

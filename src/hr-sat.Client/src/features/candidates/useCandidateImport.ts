@@ -8,7 +8,7 @@ import {
   type ImportFileStatus,
 } from '@/features/candidates/api'
 
-export function useCandidateImport(vacancyId: Ref<string>) {
+export function useCandidateImport(vacancyId: Ref<string>, roundId: Ref<string>) {
   const toast = useToast()
   const importing = shallowRef(false)
   const importError = shallowRef<string | null>(null)
@@ -21,7 +21,7 @@ export function useCandidateImport(vacancyId: Ref<string>) {
     importing.value = true
     importError.value = null
     try {
-      const response = await importCandidates(vacancyId.value, files)
+      const response = await importCandidates(vacancyId.value, roundId.value, files)
       results.value = response.results
       announceResults(response.results)
       return response
@@ -33,8 +33,8 @@ export function useCandidateImport(vacancyId: Ref<string>) {
     }
   }
 
-  // A different vacancy starts with a clean import slate.
-  watch(vacancyId, () => {
+  // A different vacancy or round starts with a clean import slate.
+  watch([vacancyId, roundId], () => {
     importing.value = false
     importError.value = null
     results.value = null

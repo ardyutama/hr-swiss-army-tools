@@ -2,6 +2,7 @@ using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Messaging;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.IntakeRounds;
 using Microsoft.EntityFrameworkCore;
 
 namespace hr_sat.Application.Features.Candidates.List;
@@ -22,9 +23,20 @@ internal sealed class ListCandidatesQueryHandler(IApplicationDbContext dbContext
                 CandidateErrors.NotFound(query.VacancyId));
         }
 
+        var roundExists = await dbContext.IntakeRounds
+            .AsNoTracking()
+            .AnyAsync(
+                round => round.Id == query.RoundId && round.VacancyId == query.VacancyId,
+                cancellationToken);
+        if (!roundExists)
+        {
+            return Result<IReadOnlyList<CandidateSummaryResponse>>.Failure(
+                IntakeRoundErrors.NotFound(query.RoundId));
+        }
+
         var candidates = await dbContext.Candidates
             .AsNoTracking()
-            .Where(candidate => candidate.VacancyId == query.VacancyId)
+            .Where(candidate => candidate.IntakeRoundId == query.RoundId)
             .OrderBy(candidate => candidate.ImportedAt)
             .ThenBy(candidate => candidate.Id)
             .Select(candidate => new CandidateSummaryResponse(

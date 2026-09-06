@@ -13,7 +13,7 @@ public sealed record CandidateImportResponse(
     string SourceOriginalFilename,
     IReadOnlyList<CvDocumentResponse> Documents)
 {
-    public static CandidateImportResponse From(long vacancyId, Candidate candidate) => new(
+    public static CandidateImportResponse From(long vacancyId, long roundId, Candidate candidate) => new(
         candidate.Id,
         candidate.ReviewStatus.ToString().ToLowerInvariant(),
         candidate.SourceSenderName,
@@ -29,7 +29,7 @@ public sealed record CandidateImportResponse(
                 document.OriginalFilename,
                 document.SizeBytes,
                 document.IsPrimary,
-                $"/api/vacancies/{vacancyId}/candidates/{candidate.Id}/cv-documents/{document.Id}"))
+                $"/api/vacancies/{vacancyId}/rounds/{roundId}/candidates/{candidate.Id}/cv-documents/{document.Id}"))
             .ToList());
 }
 

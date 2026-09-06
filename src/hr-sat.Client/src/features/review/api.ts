@@ -32,49 +32,54 @@ export interface ReviewDecisionPayload {
   notes: string
 }
 
-function candidatePath(vacancyId: string, candidateId: number): string {
-  return `/api/vacancies/${vacancyId}/candidates/${candidateId}`
+function candidatePath(vacancyId: string, roundId: string, candidateId: number): string {
+  return `/api/vacancies/${vacancyId}/rounds/${roundId}/candidates/${candidateId}`
 }
 
 export function getCandidateDetails(
   vacancyId: string,
+  roundId: string,
   candidateId: number,
 ): Promise<CandidateDetails> {
-  return getJson<CandidateDetails>(candidatePath(vacancyId, candidateId))
+  return getJson<CandidateDetails>(candidatePath(vacancyId, roundId, candidateId))
 }
 
 export function updateCandidateDetails(
   vacancyId: string,
+  roundId: string,
   candidateId: number,
   payload: CandidateDetailsPayload,
 ): Promise<CandidateDetails> {
-  return putJson<CandidateDetails>(`${candidatePath(vacancyId, candidateId)}/details`, payload)
+  return putJson<CandidateDetails>(`${candidatePath(vacancyId, roundId, candidateId)}/details`, payload)
 }
 
 export function updateCandidateNotes(
   vacancyId: string,
+  roundId: string,
   candidateId: number,
   notes: string,
 ): Promise<CandidateDetails> {
-  return putJson<CandidateDetails>(`${candidatePath(vacancyId, candidateId)}/notes`, { notes })
+  return putJson<CandidateDetails>(`${candidatePath(vacancyId, roundId, candidateId)}/notes`, { notes })
 }
 
 export function updateCandidateReview(
   vacancyId: string,
+  roundId: string,
   candidateId: number,
   payload: ReviewDecisionPayload,
 ): Promise<CandidateDetails> {
-  return putJson<CandidateDetails>(`${candidatePath(vacancyId, candidateId)}/review`, payload)
+  return putJson<CandidateDetails>(`${candidatePath(vacancyId, roundId, candidateId)}/review`, payload)
 }
 
 export function updateCandidateRequirementReview(
   vacancyId: string,
+  roundId: string,
   candidateId: number,
   requirementId: number,
   confirmed: boolean,
 ): Promise<CandidateDetails> {
   return putJson<CandidateDetails>(
-    `${candidatePath(vacancyId, candidateId)}/requirement-reviews/${requirementId}`,
+    `${candidatePath(vacancyId, roundId, candidateId)}/requirement-reviews/${requirementId}`,
     { confirmed },
   )
 }

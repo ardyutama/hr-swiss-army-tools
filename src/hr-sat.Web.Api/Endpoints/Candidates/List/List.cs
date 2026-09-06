@@ -7,13 +7,14 @@ internal sealed class List : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/vacancies/{vacancyId:long}/candidates", async (
+        app.MapGet("/api/vacancies/{vacancyId:long}/rounds/{roundId:long}/candidates", async (
             long vacancyId,
+            long roundId,
             IQueryHandler<ListCandidatesQuery, IReadOnlyList<CandidateSummaryResponse>> handler,
             CancellationToken cancellationToken) =>
         {
             var result = await handler.Handle(
-                new ListCandidatesQuery(vacancyId),
+                new ListCandidatesQuery(vacancyId, roundId),
                 cancellationToken);
             return result.Match<IResult>(
                 TypedResults.Ok,

@@ -8,6 +8,7 @@ public sealed class UpdateCandidateNotesCommandValidator
     public UpdateCandidateNotesCommandValidator()
     {
         RuleFor(command => command.VacancyId).GreaterThan(0);
+        RuleFor(command => command.RoundId).GreaterThan(0);
         RuleFor(command => command.CandidateId).GreaterThan(0);
         RuleFor(command => command.Notes)
             .MaximumLength(4000)

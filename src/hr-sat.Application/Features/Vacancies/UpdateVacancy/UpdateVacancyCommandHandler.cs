@@ -1,5 +1,6 @@
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Messaging;
+using hr_sat.Application.Features.Shared;
 using hr_sat.Domain;
 
 namespace hr_sat.Application.Features.Vacancies;
@@ -17,7 +18,8 @@ internal sealed class UpdateVacancyCommandHandler(IApplicationDbContext dbContex
             vacancy => vacancy.UpdateDefinition(
                 command.Title,
                 command.OpenedOn,
-                command.Requirements),
+                command.Requirements,
+                command.NeededHires),
             cancellationToken);
 
         if (updateResult.IsFailure)

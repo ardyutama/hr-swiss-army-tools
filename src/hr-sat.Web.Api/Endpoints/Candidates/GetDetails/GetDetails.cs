@@ -9,15 +9,16 @@ internal sealed class GetDetails : IEndpoint
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
         app.MapGet(
-                "/api/vacancies/{vacancyId:long}/candidates/{candidateId:long}",
+                "/api/vacancies/{vacancyId:long}/rounds/{roundId:long}/candidates/{candidateId:long}",
                 async (
                     long vacancyId,
+                    long roundId,
                     long candidateId,
                     IQueryHandler<GetCandidateDetailsQuery, CandidateDetailsResponse> handler,
                     CancellationToken cancellationToken) =>
                 {
                     var result = await handler.Handle(
-                        new GetCandidateDetailsQuery(vacancyId, candidateId),
+                        new GetCandidateDetailsQuery(vacancyId, roundId, candidateId),
                         cancellationToken);
                     return result.Match<IResult>(
                         TypedResults.Ok,

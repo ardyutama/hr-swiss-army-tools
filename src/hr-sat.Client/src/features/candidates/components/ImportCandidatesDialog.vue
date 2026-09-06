@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import ImportDropZone from './ImportDropZone.vue'
 
+const open = defineModel<boolean>('open', { required: true })
+
 withDefaults(
   defineProps<{
-    open: boolean
     busy?: boolean
     error?: string | null
   }>(),
@@ -11,17 +12,15 @@ withDefaults(
 )
 
 const emit = defineEmits<{
-  close: []
   files: [files: File[]]
 }>()
 </script>
 
 <template>
   <UModal
-    :open="open"
+    v-model:open="open"
     title="Import .eml files"
     :dismissible="!busy"
-    @update:open="(value) => { if (!value) emit('close') }"
   >
     <template #body>
       <div class="flex flex-col">
@@ -40,7 +39,7 @@ const emit = defineEmits<{
 
     <template #footer>
       <div class="flex justify-end">
-        <UButton color="neutral" variant="outline" :disabled="busy" @click="emit('close')">
+        <UButton color="neutral" variant="outline" :disabled="busy" @click="open = false">
           Cancel
         </UButton>
       </div>

@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 namespace hr_sat.Application.Features.Candidates.Import;
 
 internal sealed class ImportFilePreparer(
-    long vacancyId,
+    long roundId,
     IReadOnlySet<string> existingHashKeys,
     IApplicationDbContext dbContext,
     IPrivateFileStorage fileStorage,
@@ -80,7 +80,7 @@ internal sealed class ImportFilePreparer(
         {
             return ImportFileOutcome.Skipped(
                 originalFilename,
-                "This .eml file was already imported into this vacancy.");
+                "This .eml file was already imported into this intake round.");
         }
 
         ParsedEml parsedEmail;
@@ -131,7 +131,7 @@ internal sealed class ImportFilePreparer(
             }
 
             var candidateResult = Candidate.Import(
-                vacancyId,
+                roundId,
                 parsedEmail.SenderName,
                 parsedEmail.SenderEmail,
                 parsedEmail.Subject,
@@ -226,9 +226,9 @@ internal sealed record ImportFileOutcome(
     public static ImportFileOutcome Failed(string fileName, string error) =>
         new(fileName, "failed", error, null);
 
-    public ImportFileResponse ToResponse(long vacancyId) => new(
+    public ImportFileResponse ToResponse(long vacancyId, long roundId) => new(
         FileName,
         Status,
         Error,
-        Candidate is null ? null : CandidateImportResponse.From(vacancyId, Candidate));
+        Candidate is null ? null : CandidateImportResponse.From(vacancyId, roundId, Candidate));
 }

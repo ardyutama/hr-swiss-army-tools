@@ -1,4 +1,5 @@
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.IntakeRounds;
 using hr_sat.Domain.Vacancies;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -50,8 +51,8 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
         entity.Property(candidate => candidate.Id)
             .HasColumnName("id")
             .UseIdentityAlwaysColumn();
-        entity.Property(candidate => candidate.VacancyId)
-            .HasColumnName("vacancy_id")
+        entity.Property(candidate => candidate.IntakeRoundId)
+            .HasColumnName("intake_round_id")
             .IsRequired();
         entity.Property(candidate => candidate.ReviewStatus)
             .HasColumnName("review_status")
@@ -116,9 +117,9 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
             .ValueGeneratedOnAdd()
             .IsRequired();
 
-        entity.HasOne<Vacancy>()
-            .WithMany(vacancy => vacancy.Candidates)
-            .HasForeignKey(candidate => candidate.VacancyId)
+        entity.HasOne<IntakeRound>()
+            .WithMany(round => round.Candidates)
+            .HasForeignKey(candidate => candidate.IntakeRoundId)
             .OnDelete(DeleteBehavior.Cascade);
         entity.HasMany(candidate => candidate.CvDocuments)
             .WithOne()
@@ -136,11 +137,11 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
         entity.HasIndex(candidate => candidate.SourceStorageKey)
             .IsUnique()
             .HasDatabaseName("candidate_source_storage_key_key");
-        entity.HasIndex(candidate => new { candidate.VacancyId, candidate.SourceSha256 })
+        entity.HasIndex(candidate => new { candidate.IntakeRoundId, candidate.SourceSha256 })
             .IsUnique()
-            .HasDatabaseName("candidate_vacancy_source_sha256_key");
-        entity.HasIndex(candidate => new { candidate.VacancyId, candidate.ImportedAt, candidate.Id })
-            .HasDatabaseName("candidate_vacancy_imported_idx");
+            .HasDatabaseName("candidate_round_source_sha256_key");
+        entity.HasIndex(candidate => new { candidate.IntakeRoundId, candidate.ImportedAt, candidate.Id })
+            .HasDatabaseName("candidate_round_imported_idx");
     }
 
     private static string ToDatabaseValue<TStatus>(TStatus status)

@@ -19,17 +19,20 @@ public static class AppDbContextSeeder
             Vacancy.Create(
                 "Senior Backend Engineer",
                 new DateOnly(2026, 8, 1),
-                ["C#", "ASP.NET Core", "PostgreSQL"]).Value,
+                ["C#", "ASP.NET Core", "PostgreSQL"],
+                null).Value,
             Vacancy.Create(
                 "People Operations Specialist",
                 new DateOnly(2026, 8, 5),
-                ["Recruitment", "Employee Relations", "HRIS"]).Value
+                ["Recruitment", "Employee Relations", "HRIS"],
+                null).Value
         };
 
         var closedVacancy = Vacancy.Create(
             "Product Designer",
             new DateOnly(2026, 7, 1),
-            ["Figma", "User Research", "Design Systems"]).Value;
+            ["Figma", "User Research", "Design Systems"],
+            null).Value;
         closedVacancy.Close(new DateTimeOffset(2026, 8, 15, 17, 0, 0, TimeSpan.Zero));
         vacancies.Add(closedVacancy);
 

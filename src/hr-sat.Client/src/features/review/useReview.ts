@@ -30,7 +30,11 @@ interface ReviewDecisionResult {
  * details, and the notes auto-save contract from ADR-0008 #9 (decision and
  * navigation silently commit pending notes — no explicit Save).
  */
-export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
+export function useReview(
+  vacancyId: Ref<string>,
+  roundId: Ref<string>,
+  candidateId: Ref<string>,
+) {
   const vacancy = shallowRef<VacancyDetails | null>(null)
   const summaries = shallowRef<CandidateSummary[] | null>(null)
   const candidate = shallowRef<CandidateDetails | null>(null)
@@ -72,6 +76,12 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
 
   const notesDirty = computed(
     () => candidate.value !== null && notes.value !== (candidate.value.notes ?? ''),
+  )
+
+  // A closed round freezes all review data (notes, status, requirement reviews,
+  // details) — the workspace stays readable but stops mutating.
+  const isRoundClosed = computed(
+    () => vacancy.value?.rounds.find((round) => String(round.id) === roundId.value)?.status === 'closed',
   )
 
   const viewState = computed<ReviewViewState>(() => {
@@ -139,7 +149,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     try {
       const [details, list] = await Promise.all([
         getVacancy(vacancyId.value),
-        listCandidates(vacancyId.value),
+        listCandidates(vacancyId.value, roundId.value),
       ])
       // Ignore stale responses when the route param changed meanwhile.
       if (token !== contextToken) {
@@ -164,7 +174,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
       return
     }
     try {
-      const details = await getCandidateDetails(vacancyId.value, id)
+      const details = await getCandidateDetails(vacancyId.value, roundId.value, id)
       if (token !== detailsToken) {
         return
       }
@@ -191,7 +201,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     savingDetails.value = true
     detailsError.value = null
     try {
-      const updated = await updateCandidateDetails(vacancyId.value, current.id, payload)
+      const updated = await updateCandidateDetails(vacancyId.value, roundId.value, current.id, payload)
       if (candidate.value?.id !== updated.id) {
         return false
       }
@@ -220,6 +230,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     try {
       const updated = await updateCandidateRequirementReview(
         vacancyId.value,
+        roundId.value,
         current.id,
         requirementId,
         confirmed,
@@ -264,7 +275,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     }
     notesSaveState.value = 'saving'
     try {
-      const updated = await updateCandidateNotes(vacancyId.value, current.id, notes.value)
+      const updated = await updateCandidateNotes(vacancyId.value, roundId.value, current.id, notes.value)
       if (candidate.value?.id !== updated.id) {
         return false
       }
@@ -308,7 +319,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     deciding.value = true
     decisionError.value = null
     try {
-      const updated = await updateCandidateReview(vacancyId.value, current.id, {
+      const updated = await updateCandidateReview(vacancyId.value, roundId.value, current.id, {
         reviewStatus: status,
         notes: notes.value,
       })
@@ -340,9 +351,9 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     }
   })
 
-  // Reload the vacancy context when the vacancy route param changes.
+  // Reload the vacancy context when the vacancy or round route param changes.
   watch(
-    vacancyId,
+    [vacancyId, roundId],
     () => {
       vacancy.value = null
       summaries.value = null
@@ -377,6 +388,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     candidate,
     loadError,
     viewState,
+    isRoundClosed,
     candidateDetailsWarning,
     position,
     total,

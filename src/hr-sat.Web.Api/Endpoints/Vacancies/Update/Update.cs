@@ -17,7 +17,8 @@ internal sealed class Update : IEndpoint
                 id,
                 request.Title,
                 request.OpenedOn,
-                request.Requirements);
+                request.Requirements,
+                request.NeededHires);
             var result = await handler.Handle(command, cancellationToken);
             return result.Match<IResult>(
                 TypedResults.Ok,

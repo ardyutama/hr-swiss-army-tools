@@ -6,4 +6,5 @@ namespace hr_sat.Application.Features.Vacancies;
 public sealed record CreateVacancyCommand(
     string? Title,
     DateOnly OpenedOn,
-    IReadOnlyList<string?>? Requirements) : ICommand<VacancyDetailsResponse>;
+    IReadOnlyList<string?>? Requirements,
+    int? NeededHires) : ICommand<VacancyDetailsResponse>;

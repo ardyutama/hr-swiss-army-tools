@@ -1,6 +1,7 @@
 using hr_sat.Application.Features.Candidates.Delete;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.Vacancies;
 using Shouldly;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -20,7 +21,7 @@ public sealed class DeleteCandidateHandlerTests
             new FixedTimeProvider(new DateTimeOffset(2026, 9, 1, 12, 0, 0, TimeSpan.Zero)));
 
         var result = await handler.Handle(
-            new DeleteCandidateCommand(vacancy.Id, candidate.Id),
+            new DeleteCandidateCommand(vacancy.Id, candidate.IntakeRoundId, candidate.Id),
             CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
@@ -41,24 +42,24 @@ public sealed class DeleteCandidateHandlerTests
             new FixedTimeProvider(DateTimeOffset.UtcNow));
 
         var result = await handler.Handle(
-            new DeleteCandidateCommand(999, 1),
+            new DeleteCandidateCommand(999, 1, 1),
             CancellationToken.None);
 
         result.IsFailure.ShouldBeTrue();
-        result.Error.ShouldBe(CandidateErrors.NotFound(999));
+        result.Error.ShouldBe(VacancyErrors.NotFound(999));
     }
 
     [Fact]
     public async Task Handle_Should_ReturnValidationError_WhenVacancyIsClosed() // domain: closed vacancy is read-only
     {
         await using var dbContext = new TestDbContext();
-        var (vacancy, _) = await CandidateTestData.SeedCandidateAsync(dbContext, closed: true);
+        var (vacancy, candidate) = await CandidateTestData.SeedCandidateAsync(dbContext, closed: true);
         var handler = new DeleteCandidateCommandHandler(
             dbContext,
             new FixedTimeProvider(DateTimeOffset.UtcNow));
 
         var result = await handler.Handle(
-            new DeleteCandidateCommand(vacancy.Id, 1),
+            new DeleteCandidateCommand(vacancy.Id, candidate.IntakeRoundId, candidate.Id),
             CancellationToken.None);
 
         result.IsFailure.ShouldBeTrue();
@@ -80,7 +81,7 @@ public sealed class DeleteCandidateHandlerTests
             new FixedTimeProvider(DateTimeOffset.UtcNow));
 
         var result = await handler.Handle(
-            new DeleteCandidateCommand(vacancy.Id, 999),
+            new DeleteCandidateCommand(vacancy.Id, vacancy.Rounds.Single().Id, 999),
             CancellationToken.None);
 
         result.IsFailure.ShouldBeTrue();

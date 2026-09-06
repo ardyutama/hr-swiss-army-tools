@@ -22,6 +22,7 @@ import type { CandidateDetailsPayload } from '@/features/review/api'
 
 const props = defineProps<{
   id: string
+  roundId: string
   candidateId: string
 }>()
 
@@ -34,6 +35,7 @@ const {
   candidate,
   loadError,
   viewState,
+  isRoundClosed,
   candidateDetailsWarning,
   position,
   total,
@@ -56,7 +58,7 @@ const {
   toggleRequirementAt,
   decide,
   advanceToNextCandidate,
-} = useReview(toRef(props, 'id'), toRef(props, 'candidateId'))
+} = useReview(toRef(props, 'id'), toRef(props, 'roundId'), toRef(props, 'candidateId'))
 
 const notesEditor = useTemplateRef<NotesFocusHandle>('notesEditor')
 const candidateDetailsPanel = useTemplateRef<{ focusEditing: () => void }>('candidateDetailsPanel')
@@ -95,7 +97,10 @@ function goToCandidate(id: string | null, nextAnnouncement: PendingAnnouncement 
     return
   }
   pendingAnnouncement = nextAnnouncement
-  void router.push({ name: 'candidate-review', params: { id: props.id, candidateId: id } })
+  void router.push({
+    name: 'candidate-review',
+    params: { id: props.id, roundId: props.roundId, candidateId: id },
+  })
 }
 
 // ADR-0008 #9: Prev/Next navigation silently commits pending notes.
@@ -214,6 +219,17 @@ useReviewShortcuts({
     />
 
     <template v-else-if="vacancy && candidate">
+      <UAlert
+        v-if="isRoundClosed"
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-lock-keyhole"
+        title="This round is closed"
+        description="Review data is read-only. Notes, review status, and requirement reviews can no longer be changed."
+        class="mb-1"
+        data-testid="round-closed-banner"
+      />
+
       <ReviewHeader
         :vacancy-id="id"
         :title="vacancy.title"

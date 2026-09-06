@@ -7,6 +7,7 @@ public sealed class ImportCandidatesCommandValidator : AbstractValidator<ImportC
     public ImportCandidatesCommandValidator()
     {
         RuleFor(command => command.VacancyId).GreaterThan(0);
+        RuleFor(command => command.RoundId).GreaterThan(0);
         RuleFor(command => command.Files)
             .NotEmpty()
             .WithMessage("At least one .eml file is required.");

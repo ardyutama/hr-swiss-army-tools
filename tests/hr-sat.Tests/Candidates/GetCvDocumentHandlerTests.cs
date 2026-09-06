@@ -21,7 +21,7 @@ public sealed class GetCvDocumentHandlerTests
         var handler = new GetCvDocumentQueryHandler(dbContext, fileStorage);
 
         var result = await handler.Handle(
-            new GetCvDocumentQuery(vacancy.Id, candidate.Id, document.Id),
+            new GetCvDocumentQuery(vacancy.Id, candidate.IntakeRoundId, candidate.Id, document.Id),
             CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
@@ -40,7 +40,7 @@ public sealed class GetCvDocumentHandlerTests
             Substitute.For<IPrivateFileStorage>());
 
         var result = await handler.Handle(
-            new GetCvDocumentQuery(999, 999, 999),
+            new GetCvDocumentQuery(999, 999, 999, 999),
             CancellationToken.None);
 
         result.IsFailure.ShouldBeTrue();
@@ -59,7 +59,7 @@ public sealed class GetCvDocumentHandlerTests
         var handler = new GetCvDocumentQueryHandler(dbContext, fileStorage);
 
         var result = await handler.Handle(
-            new GetCvDocumentQuery(vacancy.Id, candidate.Id, document.Id),
+            new GetCvDocumentQuery(vacancy.Id, candidate.IntakeRoundId, candidate.Id, document.Id),
             CancellationToken.None);
 
         result.IsFailure.ShouldBeTrue();
@@ -78,7 +78,7 @@ public sealed class GetCvDocumentHandlerTests
         var handler = new GetCvDocumentQueryHandler(dbContext, fileStorage);
 
         var result = await handler.Handle(
-            new GetCvDocumentQuery(vacancy.Id, candidate.Id, document.Id),
+            new GetCvDocumentQuery(vacancy.Id, candidate.IntakeRoundId, candidate.Id, document.Id),
             CancellationToken.None);
 
         result.IsFailure.ShouldBeTrue();

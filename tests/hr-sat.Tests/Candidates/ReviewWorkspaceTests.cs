@@ -12,11 +12,11 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
     public async Task Candidate_details_validate_and_persist_name_and_email()
     {
         using var client = factory.CreateClient();
-        var vacancyLocation = await CreateVacancyAsync(client, "SQL");
-        var candidate = await ImportCandidateAsync(client, vacancyLocation, "Alice Applicant");
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client, "SQL");
+        var candidate = await ImportCandidateAsync(client, vacancyLocation, roundId, "Alice Applicant");
 
         var invalidResponse = await client.PutAsJsonAsync(
-            CandidatePath(vacancyLocation, candidate.Id, "details"),
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "details"),
             new { fullName = "", contactEmail = "not-an-email" });
 
         Assert.Equal(HttpStatusCode.BadRequest, invalidResponse.StatusCode);
@@ -26,7 +26,7 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
         Assert.Contains("contactEmail", problem.Errors.Keys);
 
         var updateResponse = await client.PutAsJsonAsync(
-            CandidatePath(vacancyLocation, candidate.Id, "details"),
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "details"),
             new { fullName = "Jane Updated", contactEmail = "jane.updated@example.com" });
 
         Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
@@ -36,7 +36,7 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
         Assert.Equal("jane.updated@example.com", updated.ContactEmail);
 
         var persisted = await client.GetFromJsonAsync<CandidateDetails>(
-            CandidatePath(vacancyLocation, candidate.Id));
+            CandidatePath(vacancyLocation, roundId, candidate.Id));
         Assert.NotNull(persisted);
         Assert.Equal("Jane Updated", persisted.FullName);
         Assert.Equal("jane.updated@example.com", persisted.ContactEmail);
@@ -46,11 +46,11 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
     public async Task Candidate_notes_persist_through_the_review_endpoint()
     {
         using var client = factory.CreateClient();
-        var vacancyLocation = await CreateVacancyAsync(client, "SQL");
-        var candidate = await ImportCandidateAsync(client, vacancyLocation, "Alice Applicant");
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client, "SQL");
+        var candidate = await ImportCandidateAsync(client, vacancyLocation, roundId, "Alice Applicant");
 
         var response = await client.PutAsJsonAsync(
-            CandidatePath(vacancyLocation, candidate.Id, "notes"),
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "notes"),
             new { notes = "Call back about the reporting experience." });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -59,7 +59,7 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
         Assert.Equal("Call back about the reporting experience.", updated.Notes);
 
         var persisted = await client.GetFromJsonAsync<CandidateDetails>(
-            CandidatePath(vacancyLocation, candidate.Id));
+            CandidatePath(vacancyLocation, roundId, candidate.Id));
         Assert.NotNull(persisted);
         Assert.Equal("Call back about the reporting experience.", persisted.Notes);
     }
@@ -68,11 +68,11 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
     public async Task Review_decision_persists_status_and_pending_notes_in_one_commit()
     {
         using var client = factory.CreateClient();
-        var vacancyLocation = await CreateVacancyAsync(client, "SQL");
-        var candidate = await ImportCandidateAsync(client, vacancyLocation, "Alice Applicant");
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client, "SQL");
+        var candidate = await ImportCandidateAsync(client, vacancyLocation, roundId, "Alice Applicant");
 
         var response = await client.PutAsJsonAsync(
-            CandidatePath(vacancyLocation, candidate.Id, "review"),
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "review"),
             new { reviewStatus = "shortlisted", notes = "Move to interview." });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -82,7 +82,7 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
         Assert.Equal("Move to interview.", updated.Notes);
 
         var listed = await client.GetFromJsonAsync<IReadOnlyList<CandidateSummary>>(
-            $"{vacancyLocation}/candidates");
+            $"{vacancyLocation}/rounds/{roundId}/candidates");
         Assert.NotNull(listed);
         var summary = Assert.Single(listed);
         Assert.Equal("shortlisted", summary.ReviewStatus);
@@ -93,7 +93,7 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
     public async Task Requirement_review_persists_and_progress_counts_only_shortlisted_or_rejected()
     {
         using var client = factory.CreateClient();
-        var vacancyLocation = await CreateVacancyAsync(client, "SQL", "VAT reporting");
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client, "SQL", "VAT reporting");
         var vacancy = await client.GetFromJsonAsync<VacancyDetails>(vacancyLocation);
         Assert.NotNull(vacancy);
         var requirementId = vacancy.Requirements[1].Id;
@@ -101,12 +101,13 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
         var candidates = await ImportCandidatesAsync(
             client,
             vacancyLocation,
+            roundId,
             "Alice Applicant",
             "Bob Applicant",
             "Cara Applicant");
 
         var requirementResponse = await client.PutAsJsonAsync(
-            CandidatePath(vacancyLocation, candidates[0].Id, $"requirement-reviews/{requirementId}"),
+            CandidatePath(vacancyLocation, roundId, candidates[0].Id, $"requirement-reviews/{requirementId}"),
             new { confirmed = true });
 
         Assert.Equal(HttpStatusCode.OK, requirementResponse.StatusCode);
@@ -117,12 +118,12 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
             review => review.RequirementId == requirementId);
         Assert.True(requirementReview.Confirmed);
 
-        await UpdateReviewAsync(client, vacancyLocation, candidates[0].Id, "shortlisted");
-        await UpdateReviewAsync(client, vacancyLocation, candidates[1].Id, "flagged");
-        await UpdateReviewAsync(client, vacancyLocation, candidates[2].Id, "rejected");
+        await UpdateReviewAsync(client, vacancyLocation, roundId, candidates[0].Id, "shortlisted");
+        await UpdateReviewAsync(client, vacancyLocation, roundId, candidates[1].Id, "flagged");
+        await UpdateReviewAsync(client, vacancyLocation, roundId, candidates[2].Id, "rejected");
 
         var persisted = await client.GetFromJsonAsync<CandidateDetails>(
-            CandidatePath(vacancyLocation, candidates[0].Id));
+            CandidatePath(vacancyLocation, roundId, candidates[0].Id));
         Assert.NotNull(persisted);
         Assert.Contains(
             persisted.RequirementReviews,
@@ -135,29 +136,50 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
     }
 
     [Fact]
+    public async Task Requirement_review_rejects_a_requirement_owned_by_another_vacancy()
+    {
+        using var client = factory.CreateClient();
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client, "SQL");
+        var (otherVacancyLocation, _) = await CreateVacancyAsync(client, "VAT reporting");
+        var otherVacancy = await client.GetFromJsonAsync<VacancyDetails>(otherVacancyLocation);
+        Assert.NotNull(otherVacancy);
+        var candidate = await ImportCandidateAsync(client, vacancyLocation, roundId, "Alice Applicant");
+
+        var response = await client.PutAsJsonAsync(
+            CandidatePath(
+                vacancyLocation,
+                roundId,
+                candidate.Id,
+                $"requirement-reviews/{otherVacancy.Requirements[0].Id}"),
+            new { confirmed = true });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Closed_vacancy_rejects_all_candidate_review_writes()
     {
         using var client = factory.CreateClient();
-        var vacancyLocation = await CreateVacancyAsync(client, "SQL");
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client, "SQL");
         var vacancy = await client.GetFromJsonAsync<VacancyDetails>(vacancyLocation);
         Assert.NotNull(vacancy);
-        var candidate = await ImportCandidateAsync(client, vacancyLocation, "Alice Applicant");
+        var candidate = await ImportCandidateAsync(client, vacancyLocation, roundId, "Alice Applicant");
         var requirementId = vacancy.Requirements[0].Id;
 
         var closeResponse = await client.PostAsync($"{vacancyLocation}/close", content: null);
         Assert.Equal(HttpStatusCode.OK, closeResponse.StatusCode);
 
         var detailsResponse = await client.PutAsJsonAsync(
-            CandidatePath(vacancyLocation, candidate.Id, "details"),
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "details"),
             new { fullName = "Updated Name", contactEmail = "updated@example.com" });
         var notesResponse = await client.PutAsJsonAsync(
-            CandidatePath(vacancyLocation, candidate.Id, "notes"),
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "notes"),
             new { notes = "Should not save." });
         var reviewResponse = await client.PutAsJsonAsync(
-            CandidatePath(vacancyLocation, candidate.Id, "review"),
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "review"),
             new { reviewStatus = "shortlisted", notes = "Should not save." });
         var requirementResponse = await client.PutAsJsonAsync(
-            CandidatePath(vacancyLocation, candidate.Id, $"requirement-reviews/{requirementId}"),
+            CandidatePath(vacancyLocation, roundId, candidate.Id, $"requirement-reviews/{requirementId}"),
             new { confirmed = true });
 
         Assert.Equal(HttpStatusCode.BadRequest, detailsResponse.StatusCode);
@@ -166,7 +188,7 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
         Assert.Equal(HttpStatusCode.BadRequest, requirementResponse.StatusCode);
 
         var persisted = await client.GetFromJsonAsync<CandidateDetails>(
-            CandidatePath(vacancyLocation, candidate.Id));
+            CandidatePath(vacancyLocation, roundId, candidate.Id));
         Assert.NotNull(persisted);
         Assert.Equal("new", persisted.ReviewStatus);
         Assert.Null(persisted.FullName);
@@ -175,7 +197,7 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
         Assert.Empty(persisted.RequirementReviews);
     }
 
-    private static async Task<string> CreateVacancyAsync(
+    private static async Task<(string Location, long RoundId)> CreateVacancyAsync(
         HttpClient client,
         params string[] requirements)
     {
@@ -186,21 +208,26 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
             requirements
         });
         response.EnsureSuccessStatusCode();
-        return response.Headers.Location!.OriginalString;
+        var location = response.Headers.Location!.OriginalString;
+        var vacancy = await response.Content.ReadFromJsonAsync<VacancyDetails>();
+        Assert.NotNull(vacancy);
+        return (location, Assert.Single(vacancy.Rounds).Id);
     }
 
     private static async Task<ImportedCandidate> ImportCandidateAsync(
         HttpClient client,
         string vacancyLocation,
+        long roundId,
         string senderName)
     {
-        var candidates = await ImportCandidatesAsync(client, vacancyLocation, senderName);
+        var candidates = await ImportCandidatesAsync(client, vacancyLocation, roundId, senderName);
         return Assert.Single(candidates);
     }
 
     private static async Task<IReadOnlyList<ImportedCandidate>> ImportCandidatesAsync(
         HttpClient client,
         string vacancyLocation,
+        long roundId,
         params string[] senderNames)
     {
         using var form = new MultipartFormDataContent();
@@ -218,7 +245,7 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
                 $"candidate-{index + 1}.eml");
         }
 
-        var response = await client.PostAsync($"{vacancyLocation}/candidates/import", form);
+        var response = await client.PostAsync($"{vacancyLocation}/rounds/{roundId}/candidates/import", form);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var import = await response.Content.ReadFromJsonAsync<ImportResponse>();
         Assert.NotNull(import);
@@ -229,20 +256,22 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
     private static async Task UpdateReviewAsync(
         HttpClient client,
         string vacancyLocation,
+        long roundId,
         long candidateId,
         string reviewStatus)
     {
         var response = await client.PutAsJsonAsync(
-            CandidatePath(vacancyLocation, candidateId, "review"),
+            CandidatePath(vacancyLocation, roundId, candidateId, "review"),
             new { reviewStatus, notes = "" });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     private static string CandidatePath(
         string vacancyLocation,
+        long roundId,
         long candidateId,
         string? suffix = null) =>
-        $"{vacancyLocation}/candidates/{candidateId}{(suffix is null ? string.Empty : $"/{suffix}")}";
+        $"{vacancyLocation}/rounds/{roundId}/candidates/{candidateId}{(suffix is null ? string.Empty : $"/{suffix}")}";
 
     private static void AddFile(MultipartFormDataContent form, byte[] content, string filename)
     {
@@ -328,9 +357,12 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
 
     private sealed record VacancyDetails(
         IReadOnlyList<VacancyRequirement> Requirements,
+        IReadOnlyList<VacancyRound> Rounds,
         VacancyProgress Progress);
 
     private sealed record VacancyRequirement(long Id, string Phrase, int Position);
+
+    private sealed record VacancyRound(long Id);
 
     private sealed record VacancyProgress(int ProcessedCandidates, int TotalCandidates);
 

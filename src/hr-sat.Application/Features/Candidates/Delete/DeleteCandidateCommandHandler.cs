@@ -1,4 +1,5 @@
 using hr_sat.Application.Abstractions.Data;
+using hr_sat.Application.Features.Shared;
 using hr_sat.Application.Abstractions.Messaging;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
@@ -15,53 +16,50 @@ internal sealed class DeleteCandidateCommandHandler(
         DeleteCandidateCommand command,
         CancellationToken cancellationToken)
     {
-        await using var transaction = await dbContext.BeginTransactionAsync(cancellationToken);
-        var vacancy = await dbContext.FindVacancyForUpdateAsync(
+        var deleteResult = await RoundWrite.ExecuteAsync(
             command.VacancyId,
-            cancellationToken);
-        if (vacancy is null)
-        {
-            return CandidateErrors.NotFound(command.VacancyId);
-        }
-
-        var canRemoveResult = vacancy.EnsureCanRemoveCandidate();
-        if (canRemoveResult.IsFailure)
-        {
-            return canRemoveResult.Error;
-        }
-
-        var sourceStorageKey = await dbContext.Candidates
-            .Where(candidate =>
-                candidate.Id == command.CandidateId &&
-                candidate.VacancyId == command.VacancyId)
-            .Select(candidate => candidate.SourceStorageKey)
-            .SingleOrDefaultAsync(cancellationToken);
-        if (sourceStorageKey is null)
-        {
-            return CandidateErrors.NotFound(command.CandidateId);
-        }
-
-        var documentStorageKeys = await dbContext.CvDocuments
-            .Where(document => document.CandidateId == command.CandidateId)
-            .Select(document => document.StorageKey)
-            .ToListAsync(cancellationToken);
-
-        await dbContext.Candidates
-            .Where(candidate => candidate.Id == command.CandidateId)
-            .ExecuteDeleteAsync(cancellationToken);
-
-        var enqueuedAt = timeProvider.GetUtcNow();
-        foreach (var storageKey in documentStorageKeys.Prepend(sourceStorageKey))
-        {
-            dbContext.PendingFileDeletions.Add(new PendingFileDeletion
+            command.RoundId,
+            dbContext,
+            (vacancy, targetRoundId) => vacancy.EnsureCanRemoveCandidate(targetRoundId),
+            async (_, _) =>
             {
-                StorageKey = storageKey,
-                EnqueuedAt = enqueuedAt
-            });
-        }
+                var sourceStorageKey = await dbContext.Candidates
+                    .Where(candidate =>
+                        candidate.Id == command.CandidateId &&
+                        candidate.IntakeRoundId == command.RoundId)
+                    .Select(candidate => candidate.SourceStorageKey)
+                    .SingleOrDefaultAsync(cancellationToken);
+                if (sourceStorageKey is null)
+                {
+                    return Result<bool>.Failure(CandidateErrors.NotFound(command.CandidateId));
+                }
 
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+                var documentStorageKeys = await dbContext.CvDocuments
+                    .Where(document => document.CandidateId == command.CandidateId)
+                    .Select(document => document.StorageKey)
+                    .ToListAsync(cancellationToken);
+
+                await dbContext.Candidates
+                    .Where(candidate => candidate.Id == command.CandidateId)
+                    .ExecuteDeleteAsync(cancellationToken);
+
+                var enqueuedAt = timeProvider.GetUtcNow();
+                foreach (var storageKey in documentStorageKeys.Prepend(sourceStorageKey))
+                {
+                    dbContext.PendingFileDeletions.Add(new PendingFileDeletion
+                    {
+                        StorageKey = storageKey,
+                        EnqueuedAt = enqueuedAt
+                    });
+                }
+
+                return Result<bool>.Success(true);
+            },
+            cancellationToken);
+        if (deleteResult.IsFailure)
+        {
+            return deleteResult.Error;
+        }
 
         return Result.Success();
     }

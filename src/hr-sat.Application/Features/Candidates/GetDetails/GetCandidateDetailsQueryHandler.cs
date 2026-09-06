@@ -16,6 +16,7 @@ internal sealed class GetCandidateDetailsQueryHandler(IApplicationDbContext dbCo
     {
         return await CandidateDetailsReader.ReadAsync(
             query.VacancyId,
+            query.RoundId,
             query.CandidateId,
             dbContext,
             cancellationToken);

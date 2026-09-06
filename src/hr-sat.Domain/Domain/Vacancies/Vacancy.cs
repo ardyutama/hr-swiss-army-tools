@@ -1,52 +1,98 @@
 using hr_sat.Domain;
-using hr_sat.Domain.Candidates;
+using hr_sat.Domain.IntakeRounds;
 
 namespace hr_sat.Domain.Vacancies;
 
 public sealed class Vacancy : Entity
 {
     private readonly List<VacancyRequirement> _requirements = [];
-    private readonly List<Candidate> _candidates = [];
+    private readonly List<IntakeRound> _rounds = [];
 
     private Vacancy()
     {
     }
 
-    private Vacancy(string title, DateOnly openedOn)
+    private Vacancy(string title, DateOnly openedOn, int? neededHires)
     {
         Title = title;
         OpenedOn = openedOn;
+        NeededHires = neededHires;
         Status = VacancyStatus.Open;
     }
 
     public string Title { get; private set; } = string.Empty;
     public DateOnly OpenedOn { get; private set; }
+    public int? NeededHires { get; private set; }
     public VacancyStatus Status { get; private set; }
     public DateTimeOffset? ClosedAt { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public IReadOnlyList<VacancyRequirement> Requirements => _requirements;
-    public IReadOnlyList<Candidate> Candidates => _candidates;
+    public IReadOnlyList<IntakeRound> Rounds => _rounds;
+    public IntakeRound? ActiveRound => _rounds.SingleOrDefault(round => round.IsOpen);
+
+    public Result<IntakeRound> CreateRound(string? name)
+    {
+        var openResult = EnsureOpen("A closed vacancy must be reopened before an intake round can be created.");
+        if (openResult.IsFailure)
+        {
+            return Result<IntakeRound>.Failure(openResult.Error);
+        }
+
+        if (ActiveRound is not null)
+        {
+            return Result<IntakeRound>.Failure(IntakeRoundErrors.ActiveRoundExists(Id));
+        }
+
+        var nextRoundNumber = _rounds.Count == 0
+            ? 1
+            : _rounds.Max(round => round.RoundNumber) + 1;
+        var roundResult = IntakeRound.Create(nextRoundNumber, name);
+        if (roundResult.IsFailure)
+        {
+            return roundResult;
+        }
+
+        _rounds.Add(roundResult.Value);
+        return roundResult.Value;
+    }
+
+    public Result CloseRound(long roundId, DateTimeOffset closedAt)
+    {
+        var openResult = EnsureOpen("A closed vacancy must be reopened before an intake round can be closed.");
+        if (openResult.IsFailure)
+        {
+            return openResult;
+        }
+
+        var round = _rounds.SingleOrDefault(item => item.Id == roundId);
+        return round is null
+            ? IntakeRoundErrors.NotFound(roundId)
+            : round.Close(closedAt);
+    }
 
     public static Result<Vacancy> Create(
         string? title,
         DateOnly openedOn,
-        IEnumerable<string?>? requirements)
+        IEnumerable<string?>? requirements,
+        int? neededHires)
     {
-        var requirementList = ValidateDefinition(title, openedOn, requirements);
+        var requirementList = ValidateDefinition(title, openedOn, requirements, neededHires);
         if (requirementList.IsFailure)
         {
             return Result<Vacancy>.Failure(requirementList.Error);
         }
 
-        var vacancy = new Vacancy(title!, openedOn);
+        var vacancy = new Vacancy(title!, openedOn, neededHires);
         vacancy.ReplaceRequirements(requirementList.Value);
+        vacancy._rounds.Add(IntakeRound.CreateDefault());
         return vacancy;
     }
 
     public Result UpdateDefinition(
         string? title,
         DateOnly openedOn,
-        IEnumerable<string?>? requirements)
+        IEnumerable<string?>? requirements,
+        int? neededHires)
     {
         var openResult = EnsureOpen("A closed vacancy must be reopened before it can be updated.");
         if (openResult.IsFailure)
@@ -54,7 +100,7 @@ public sealed class Vacancy : Entity
             return openResult;
         }
 
-        var requirementList = ValidateDefinition(title, openedOn, requirements);
+        var requirementList = ValidateDefinition(title, openedOn, requirements, neededHires);
         if (requirementList.IsFailure)
         {
             return requirementList.Error;
@@ -62,6 +108,7 @@ public sealed class Vacancy : Entity
 
         Title = title!;
         OpenedOn = openedOn;
+        NeededHires = neededHires;
         ReplaceRequirements(requirementList.Value);
         return Result.Success();
     }
@@ -94,14 +141,31 @@ public sealed class Vacancy : Entity
         return Result.Success();
     }
 
-    public Result EnsureCanReceiveCandidateImport() =>
-        EnsureOpen("A closed vacancy cannot receive candidate imports.");
+    public Result<IntakeRound> EnsureCanReceiveCandidateImport(long roundId)
+    {
+        var openResult = EnsureOpen("A closed vacancy cannot receive candidate imports.");
+        return openResult.IsFailure
+            ? Result<IntakeRound>.Failure(openResult.Error)
+            : EnsureOpenRound(roundId, requireActive: true);
+    }
 
-    public Result EnsureCanRemoveCandidate() =>
-        EnsureOpen("A closed vacancy must be reopened before candidates can be removed.");
+    public Result<IntakeRound> EnsureCanRemoveCandidate(long roundId)
+    {
+        var openResult = EnsureOpen(
+            "A closed vacancy must be reopened before candidates can be removed.");
+        return openResult.IsFailure
+            ? Result<IntakeRound>.Failure(openResult.Error)
+            : EnsureOpenRound(roundId, requireActive: false);
+    }
 
-    public Result EnsureCanReviewCandidate() =>
-        EnsureOpen("A closed vacancy must be reopened before candidates can be reviewed.");
+    public Result<IntakeRound> EnsureCanReviewCandidate(long roundId)
+    {
+        var openResult = EnsureOpen(
+            "A closed vacancy must be reopened before candidates can be reviewed.");
+        return openResult.IsFailure
+            ? Result<IntakeRound>.Failure(openResult.Error)
+            : EnsureOpenRound(roundId, requireActive: false);
+    }
 
     private Result EnsureOpen(string message)
     {
@@ -116,10 +180,32 @@ public sealed class Vacancy : Entity
         return Result.Success();
     }
 
+    private Result<IntakeRound> EnsureOpenRound(long roundId, bool requireActive)
+    {
+        var round = _rounds.SingleOrDefault(item => item.Id == roundId);
+        if (round is null)
+        {
+            return Result<IntakeRound>.Failure(IntakeRoundErrors.NotFound(roundId));
+        }
+
+        if (!round.IsOpen)
+        {
+            return Result<IntakeRound>.Failure(IntakeRoundErrors.Closed(round.Id));
+        }
+
+        if (requireActive && ActiveRound?.Id != round.Id)
+        {
+            return Result<IntakeRound>.Failure(IntakeRoundErrors.NoActiveRound(Id));
+        }
+
+        return round;
+    }
+
     private static Result<List<string>> ValidateDefinition(
         string? title,
         DateOnly openedOn,
-        IEnumerable<string?>? requirements)
+        IEnumerable<string?>? requirements,
+        int? neededHires)
     {
         if (title is null || title.Trim().Length is < 1 or > 200)
         {
@@ -134,6 +220,14 @@ public sealed class Vacancy : Entity
             return Result<List<string>>.Failure(VacancyErrors.Invalid(new Dictionary<string, string[]>
             {
                 ["openedOn"] = ["Opening Date is required."]
+            }));
+        }
+
+        if (neededHires is < 1 or > 9999)
+        {
+            return Result<List<string>>.Failure(VacancyErrors.Invalid(new Dictionary<string, string[]>
+            {
+                ["neededHires"] = ["Needed Hires must be between 1 and 9999."]
             }));
         }
 

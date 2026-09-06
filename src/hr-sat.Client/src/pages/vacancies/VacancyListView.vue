@@ -48,7 +48,11 @@ function closeForm() {
 async function onSubmitForm(payload: VacancyWritePayload) {
   try {
     await save(payload, editingVacancy.value?.id ?? null)
-    closeForm()
+    if (editingVacancy.value) {
+      formDialog.value?.markSaved()
+    } else {
+      closeForm()
+    }
   } catch (error) {
     formDialog.value?.applyServerErrors(error)
   }

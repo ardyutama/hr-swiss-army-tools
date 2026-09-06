@@ -5,5 +5,6 @@ namespace hr_sat.Application.Features.Candidates.UpdateNotes;
 
 public sealed record UpdateCandidateNotesCommand(
     long VacancyId,
+    long RoundId,
     long CandidateId,
     string? Notes) : ICommand<CandidateDetailsResponse>;

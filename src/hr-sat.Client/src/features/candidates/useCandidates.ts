@@ -5,7 +5,7 @@ import { candidateDisplayName } from '@/features/candidates/format'
 
 export type CandidatesViewState = 'loading' | 'error' | 'empty' | 'ready'
 
-export function useCandidates(vacancyId: Ref<string>) {
+export function useCandidates(vacancyId: Ref<string>, roundId: Ref<string>) {
   const toast = useToast()
   const candidates = shallowRef<CandidateSummary[] | null>(null)
   const loadError = shallowRef<string | null>(null)
@@ -23,10 +23,16 @@ export function useCandidates(vacancyId: Ref<string>) {
   })
 
   async function load() {
+    // No round pinned yet (the vacancy rollup is still resolving). Stay in the
+    // loading state; every vacancy always has rounds, so the watch re-fires
+    // with a real round id once the selection is pinned.
+    if (roundId.value === '') {
+      return
+    }
     const token = ++requestToken
     loadError.value = null
     try {
-      const list = await listCandidates(vacancyId.value)
+      const list = await listCandidates(vacancyId.value, roundId.value)
       // Ignore stale responses when the route param changed meanwhile.
       if (token !== requestToken) {
         return
@@ -40,9 +46,9 @@ export function useCandidates(vacancyId: Ref<string>) {
     }
   }
 
-  // Reload when the route param changes without leaving the route component.
+  // Reload when the vacancy or round route param changes without leaving the component.
   watch(
-    vacancyId,
+    [vacancyId, roundId],
     () => {
       candidates.value = null
       loadError.value = null
@@ -58,7 +64,7 @@ export function useCandidates(vacancyId: Ref<string>) {
   async function remove(candidate: CandidateSummary): Promise<void> {
     removing.value = true
     try {
-      await deleteCandidate(vacancyId.value, candidate.id)
+      await deleteCandidate(vacancyId.value, roundId.value, candidate.id)
       toast.add({
         title: `Candidate "${candidateDisplayName(candidate)}" deleted successfully`,
         color: 'success',

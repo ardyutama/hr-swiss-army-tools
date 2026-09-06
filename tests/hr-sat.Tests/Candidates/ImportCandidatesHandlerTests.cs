@@ -29,6 +29,7 @@ public sealed class ImportCandidatesHandlerTests
         var result = await handler.Handle(
             new ImportCandidatesCommand(
                 vacancy.Id,
+                vacancy.Rounds.Single().Id,
                 [new ImportCandidateFile(
                     "candidate.eml",
                     "message/rfc822",
@@ -58,11 +59,11 @@ public sealed class ImportCandidatesHandlerTests
             NullLogger<ImportFilePreparer>.Instance);
 
         var result = await handler.Handle(
-            new ImportCandidatesCommand(999, []),
+            new ImportCandidatesCommand(999, 1, []),
             CancellationToken.None);
 
         result.IsFailure.ShouldBeTrue();
-        result.Error.ShouldBe(hr_sat.Domain.Candidates.CandidateErrors.NotFound(999));
+        result.Error.ShouldBe(hr_sat.Domain.Vacancies.VacancyErrors.NotFound(999));
     }
 
     [Fact]
@@ -79,7 +80,7 @@ public sealed class ImportCandidatesHandlerTests
             NullLogger<ImportFilePreparer>.Instance);
 
         var result = await handler.Handle(
-            new ImportCandidatesCommand(vacancy.Id, []),
+            new ImportCandidatesCommand(vacancy.Id, vacancy.Rounds.Single().Id, []),
             CancellationToken.None);
 
         result.IsFailure.ShouldBeTrue();

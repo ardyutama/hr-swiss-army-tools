@@ -11,7 +11,7 @@ public sealed class CandidateValidatorsTests
     public void US_14_Delete_candidate_requires_a_positive_vacancy_id()
     {
         var result = new DeleteCandidateCommandValidator()
-            .Validate(new DeleteCandidateCommand(0, 1));
+            .Validate(new DeleteCandidateCommand(0, 1, 1));
 
         result.IsValid.ShouldBeFalse();
         result.Errors.Select(error => error.PropertyName)
@@ -22,7 +22,7 @@ public sealed class CandidateValidatorsTests
     public void US_14_Delete_candidate_requires_a_positive_candidate_id()
     {
         var result = new DeleteCandidateCommandValidator()
-            .Validate(new DeleteCandidateCommand(1, 0));
+            .Validate(new DeleteCandidateCommand(1, 1, 0));
 
         result.IsValid.ShouldBeFalse();
         result.Errors.Select(error => error.PropertyName)
@@ -33,7 +33,7 @@ public sealed class CandidateValidatorsTests
     public void US_14_Delete_candidate_accepts_positive_ids()
     {
         var result = new DeleteCandidateCommandValidator()
-            .Validate(new DeleteCandidateCommand(1, 2));
+            .Validate(new DeleteCandidateCommand(1, 1, 2));
 
         result.IsValid.ShouldBeTrue();
     }
@@ -42,7 +42,7 @@ public sealed class CandidateValidatorsTests
     public void US_12_Import_candidates_requires_a_positive_vacancy_id()
     {
         var result = new ImportCandidatesCommandValidator()
-            .Validate(new ImportCandidatesCommand(0, []));
+            .Validate(new ImportCandidatesCommand(0, 1, []));
 
         result.IsValid.ShouldBeFalse();
         result.Errors.Select(error => error.PropertyName)
@@ -53,7 +53,7 @@ public sealed class CandidateValidatorsTests
     public void US_12_Import_candidates_rejects_a_null_file_collection()
     {
         var result = new ImportCandidatesCommandValidator()
-            .Validate(new ImportCandidatesCommand(1, null));
+            .Validate(new ImportCandidatesCommand(1, 1, null));
 
         result.IsValid.ShouldBeFalse();
         result.Errors.Select(error => error.PropertyName)
@@ -64,7 +64,7 @@ public sealed class CandidateValidatorsTests
     public void US_12_Import_candidates_rejects_an_empty_file_collection()
     {
         var result = new ImportCandidatesCommandValidator()
-            .Validate(new ImportCandidatesCommand(1, []));
+            .Validate(new ImportCandidatesCommand(1, 1, []));
 
         result.IsValid.ShouldBeFalse();
         result.Errors.Select(error => error.PropertyName)
@@ -77,6 +77,7 @@ public sealed class CandidateValidatorsTests
         using var content = new MemoryStream([1]);
         var result = new ImportCandidatesCommandValidator()
             .Validate(new ImportCandidatesCommand(
+                1,
                 1,
                 [new ImportCandidateFile("candidate.eml", "message/rfc822", 1, content)]));
 

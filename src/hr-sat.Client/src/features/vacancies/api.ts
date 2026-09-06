@@ -5,18 +5,34 @@ export interface VacancyProgress {
   totalCandidates: number
 }
 
+export interface VacancyHiring {
+  neededHires: number
+  activeHires: number
+}
+
 export interface VacancySummary {
   id: string
   title: string
   openedOn: string
   status: 'open' | 'closed'
   progress: VacancyProgress
+  hiring?: VacancyHiring | null
 }
 
 export interface VacancyRequirement {
   id: string
   phrase: string
   position: number
+}
+
+/** One intake round as embedded in the vacancy details rollup. */
+export interface VacancyRound {
+  id: number
+  roundNumber: number
+  name: string | null
+  status: 'open' | 'closed'
+  closedAt: string | null
+  candidateCount: number
 }
 
 export interface VacancyDetails {
@@ -27,13 +43,16 @@ export interface VacancyDetails {
   closedAt: string | null
   createdAt: string
   requirements: VacancyRequirement[]
+  rounds: VacancyRound[]
   progress: VacancyProgress
+  hiring?: VacancyHiring | null
 }
 
 export interface VacancyWritePayload {
   title: string
   openedOn: string
   requirements: string[]
+  neededHires: number | null
 }
 
 export function listVacancies(): Promise<VacancySummary[]> {

@@ -9,6 +9,7 @@ internal static class CandidateDetailsReader
 {
     public static async Task<Result<CandidateDetailsResponse>> ReadAsync(
         long vacancyId,
+        long roundId,
         long candidateId,
         IApplicationDbContext dbContext,
         CancellationToken cancellationToken)
@@ -17,7 +18,9 @@ internal static class CandidateDetailsReader
             .AsNoTracking()
             .Where(candidate =>
                 candidate.Id == candidateId &&
-                candidate.VacancyId == vacancyId)
+                candidate.IntakeRoundId == roundId &&
+                dbContext.IntakeRounds.Any(round =>
+                    round.Id == roundId && round.VacancyId == vacancyId))
             .Select(candidate => new CandidateDetailsResponse(
                 candidate.Id,
                 candidate.ReviewStatus.ToString().ToLowerInvariant(),
@@ -43,7 +46,7 @@ internal static class CandidateDetailsReader
                         document.OriginalFilename,
                         document.SizeBytes,
                         document.IsPrimary,
-                        $"/api/vacancies/{vacancyId}/candidates/{candidateId}/cv-documents/{document.Id}"))
+                        $"/api/vacancies/{vacancyId}/rounds/{roundId}/candidates/{candidateId}/cv-documents/{document.Id}"))
                     .ToList()))
             .SingleOrDefaultAsync(cancellationToken);
 

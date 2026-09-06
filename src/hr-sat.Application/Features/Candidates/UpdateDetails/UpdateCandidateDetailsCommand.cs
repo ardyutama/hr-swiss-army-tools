@@ -5,6 +5,7 @@ namespace hr_sat.Application.Features.Candidates.UpdateDetails;
 
 public sealed record UpdateCandidateDetailsCommand(
     long VacancyId,
+    long RoundId,
     long CandidateId,
     string? FullName,
     string? ContactEmail) : ICommand<CandidateDetailsResponse>;

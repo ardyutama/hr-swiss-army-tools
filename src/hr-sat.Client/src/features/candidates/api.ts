@@ -37,6 +37,7 @@ export interface ImportCandidatesResponse {
 
 export function importCandidates(
   vacancyId: string,
+  roundId: string,
   files: File[],
 ): Promise<ImportCandidatesResponse> {
   const formData = new FormData()
@@ -44,7 +45,7 @@ export function importCandidates(
     formData.append('files', file, file.name)
   }
   return postFormData<ImportCandidatesResponse>(
-    `/api/vacancies/${vacancyId}/candidates/import`,
+    `/api/vacancies/${vacancyId}/rounds/${roundId}/candidates/import`,
     formData,
   )
 }
@@ -62,10 +63,14 @@ export interface CandidateSummary {
   cvDocumentCount: number
 }
 
-export function listCandidates(vacancyId: string): Promise<CandidateSummary[]> {
-  return getJson<CandidateSummary[]>(`/api/vacancies/${vacancyId}/candidates`)
+export function listCandidates(vacancyId: string, roundId: string): Promise<CandidateSummary[]> {
+  return getJson<CandidateSummary[]>(`/api/vacancies/${vacancyId}/rounds/${roundId}/candidates`)
 }
 
-export function deleteCandidate(vacancyId: string, candidateId: number): Promise<void> {
-  return delJson(`/api/vacancies/${vacancyId}/candidates/${candidateId}`)
+export function deleteCandidate(
+  vacancyId: string,
+  roundId: string,
+  candidateId: number,
+): Promise<void> {
+  return delJson(`/api/vacancies/${vacancyId}/rounds/${roundId}/candidates/${candidateId}`)
 }

@@ -14,7 +14,8 @@ internal static class CandidateTestData
         var result = Vacancy.Create(
             "Data Analyst",
             new DateOnly(2026, 8, 20),
-            ["SQL"]);
+            ["SQL"],
+            null);
         if (result.IsFailure)
         {
             throw new InvalidOperationException(result.Error.Message);
@@ -29,14 +30,14 @@ internal static class CandidateTestData
     }
 
     public static Candidate CreateCandidate(
-        long vacancyId,
+        long intakeRoundId,
         int sourceNumber = 1,
         DateTimeOffset? importedAt = null)
     {
         var sourceHash = new byte[32];
         sourceHash[0] = (byte)sourceNumber;
         var candidateResult = Candidate.Import(
-            vacancyId,
+            intakeRoundId,
             $"Candidate {sourceNumber}",
             $"candidate{sourceNumber}@example.com",
             $"Candidate {sourceNumber} application",
@@ -70,7 +71,7 @@ internal static class CandidateTestData
         dbContext.Vacancies.Add(vacancy);
         await dbContext.SaveChangesAsync(CancellationToken.None);
 
-        var candidate = CreateCandidate(vacancy.Id);
+        var candidate = CreateCandidate(vacancy.Rounds.Single().Id);
         dbContext.Candidates.Add(candidate);
         await dbContext.SaveChangesAsync(CancellationToken.None);
 

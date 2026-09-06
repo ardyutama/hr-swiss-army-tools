@@ -36,6 +36,32 @@ describe('vacancy form schema', () => {
     expect(result.success).toBe(true)
   })
 
+  it('US-9: accepts an unset hiring target and both inclusive bounds', () => {
+    for (const neededHires of [null, 1, 9999]) {
+      const result = vacancyFormSchema.safeParse({
+        title: 'Senior Welder',
+        openedOn: '2026-08-30',
+        neededHires,
+        requirements: [{ id: 0, value: 'MIG welding' }],
+      })
+
+      expect(result.success).toBe(true)
+    }
+  })
+
+  it('US-9: rejects hiring targets outside the 1-9999 range', () => {
+    for (const neededHires of [0, 10000]) {
+      const issues = issuePaths({
+        title: 'Senior Welder',
+        openedOn: '2026-08-30',
+        neededHires,
+        requirements: [{ id: 0, value: 'MIG welding' }],
+      })
+
+      expect(issues.some((issue) => issue.startsWith('neededHires:'))).toBe(true)
+    }
+  })
+
   it('domain: vacancy requirement is ordered and non-empty — trims blanks and preserves order for the payload', () => {
     expect(
       vacancyRequirementValues([' MIG welding ', ' ', 'Blueprint reading']),

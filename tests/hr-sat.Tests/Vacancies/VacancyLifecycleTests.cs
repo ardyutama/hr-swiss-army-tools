@@ -16,6 +16,10 @@ public sealed class VacancyLifecycleTests(ApiFactory factory) : IClassFixture<Ap
         var closeResponse = await client.PostAsync($"{location}/close", content: null);
 
         Assert.Equal(HttpStatusCode.OK, closeResponse.StatusCode);
+        var closed = await closeResponse.Content.ReadFromJsonAsync<VacancyResponse>();
+        Assert.NotNull(closed);
+        var closedRequirement = Assert.Single(closed.Requirements);
+        Assert.Equal("SQL", closedRequirement.Phrase);
         var persisted = await client.GetFromJsonAsync<VacancyResponse>(location);
         Assert.NotNull(persisted);
         Assert.Equal("closed", persisted.Status);
@@ -51,6 +55,10 @@ public sealed class VacancyLifecycleTests(ApiFactory factory) : IClassFixture<Ap
         var reopenResponse = await client.PostAsync($"{location}/reopen", content: null);
 
         Assert.Equal(HttpStatusCode.OK, reopenResponse.StatusCode);
+        var reopened = await reopenResponse.Content.ReadFromJsonAsync<VacancyResponse>();
+        Assert.NotNull(reopened);
+        var reopenedRequirement = Assert.Single(reopened.Requirements);
+        Assert.Equal("SQL", reopenedRequirement.Phrase);
         var persisted = await client.GetFromJsonAsync<VacancyResponse>(location);
         Assert.NotNull(persisted);
         Assert.Equal("open", persisted.Status);
@@ -89,7 +97,10 @@ public sealed class VacancyLifecycleTests(ApiFactory factory) : IClassFixture<Ap
         string Title,
         DateOnly OpenedOn,
         string Status,
-        DateTimeOffset? ClosedAt);
+        DateTimeOffset? ClosedAt,
+        IReadOnlyList<VacancyRequirementResponse> Requirements);
+
+    private sealed record VacancyRequirementResponse(long Id, string Phrase, int Position);
 
     private sealed record ValidationProblemResponse(Dictionary<string, string[]> Errors);
 }

@@ -1,5 +1,6 @@
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.IntakeRounds;
 using hr_sat.Domain.Vacancies;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +21,7 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
 
     public DbSet<Vacancy> Vacancies => Set<Vacancy>();
     public DbSet<VacancyRequirement> VacancyRequirements => Set<VacancyRequirement>();
+    public DbSet<IntakeRound> IntakeRounds => Set<IntakeRound>();
     public DbSet<Candidate> Candidates => Set<Candidate>();
     public DbSet<CandidateRequirementReview> CandidateRequirementReviews => Set<CandidateRequirementReview>();
     public DbSet<CvDocument> CvDocuments => Set<CvDocument>();
@@ -28,12 +30,10 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken) =>
         Database.BeginTransactionAsync(cancellationToken);
 
-    public Task<Vacancy?> FindVacancyForUpdateAsync(
+    public Task<Vacancy?> LockVacancyAsync(
         long id,
         CancellationToken cancellationToken) =>
-        Vacancies
-            .Include(vacancy => vacancy.Requirements)
-            .SingleOrDefaultAsync(vacancy => vacancy.Id == id, cancellationToken);
+        Vacancies.SingleOrDefaultAsync(vacancy => vacancy.Id == id, cancellationToken);
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.UseSqlite(connection);
@@ -59,13 +59,13 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
                 .WithOne()
                 .HasForeignKey(requirement => requirement.VacancyId)
                 .OnDelete(DeleteBehavior.Cascade);
-            entity.HasMany(vacancy => vacancy.Candidates)
+            entity.HasMany(vacancy => vacancy.Rounds)
                 .WithOne()
-                .HasForeignKey(candidate => candidate.VacancyId)
+                .HasForeignKey(round => round.VacancyId)
                 .OnDelete(DeleteBehavior.Cascade);
             entity.Navigation(vacancy => vacancy.Requirements)
                 .UsePropertyAccessMode(PropertyAccessMode.Field);
-            entity.Navigation(vacancy => vacancy.Candidates)
+            entity.Navigation(vacancy => vacancy.Rounds)
                 .UsePropertyAccessMode(PropertyAccessMode.Field);
         });
 
@@ -75,10 +75,25 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
             entity.Property(requirement => requirement.Id).ValueGeneratedOnAdd();
         });
 
+        modelBuilder.Entity<IntakeRound>(entity =>
+        {
+            entity.HasKey(round => round.Id);
+            entity.Property(round => round.Id).ValueGeneratedOnAdd();
+            entity.Property(round => round.ClosedAt)
+                .HasConversion(nullableDateTimeOffsetConverter);
+            entity.HasMany(round => round.Candidates)
+                .WithOne()
+                .HasForeignKey(candidate => candidate.IntakeRoundId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.Navigation(round => round.Candidates)
+                .UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
         modelBuilder.Entity<Candidate>(entity =>
         {
             entity.HasKey(candidate => candidate.Id);
             entity.Property(candidate => candidate.Id).ValueGeneratedOnAdd();
+            entity.Property(candidate => candidate.IntakeRoundId).IsRequired();
             entity.Property(candidate => candidate.SourceSentAt)
                 .HasConversion(nullableDateTimeOffsetConverter);
             entity.Property(candidate => candidate.ImportedAt)

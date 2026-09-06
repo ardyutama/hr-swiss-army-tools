@@ -7,6 +7,7 @@ public sealed class DeleteCandidateCommandValidator : AbstractValidator<DeleteCa
     public DeleteCandidateCommandValidator()
     {
         RuleFor(command => command.VacancyId).GreaterThan(0);
+        RuleFor(command => command.RoundId).GreaterThan(0);
         RuleFor(command => command.CandidateId).GreaterThan(0);
     }
 }

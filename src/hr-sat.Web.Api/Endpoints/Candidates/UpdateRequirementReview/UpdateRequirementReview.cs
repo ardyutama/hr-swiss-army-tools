@@ -9,9 +9,10 @@ internal sealed class UpdateRequirementReview : IEndpoint
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
         app.MapPut(
-                "/api/vacancies/{vacancyId:long}/candidates/{candidateId:long}/requirement-reviews/{requirementId:long}",
+                "/api/vacancies/{vacancyId:long}/rounds/{roundId:long}/candidates/{candidateId:long}/requirement-reviews/{requirementId:long}",
                 async (
                     long vacancyId,
+                    long roundId,
                     long candidateId,
                     long requirementId,
                     UpdateRequirementReviewRequest request,
@@ -21,6 +22,7 @@ internal sealed class UpdateRequirementReview : IEndpoint
                     var result = await handler.Handle(
                         new UpdateCandidateRequirementReviewCommand(
                             vacancyId,
+                            roundId,
                             candidateId,
                             requirementId,
                             request.Confirmed),

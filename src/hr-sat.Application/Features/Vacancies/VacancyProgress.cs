@@ -15,10 +15,16 @@ internal static class VacancyProgress
             vacancy.OpenedOn,
             vacancy.Status == VacancyStatus.Open ? "open" : "closed",
             new VacancyProgressResponse(
-                vacancy.Candidates.Count(candidate =>
+                vacancy.Rounds.SelectMany(round => round.Candidates).Count(candidate =>
                     candidate.ReviewStatus == CandidateReviewStatus.Shortlisted ||
                     candidate.ReviewStatus == CandidateReviewStatus.Rejected),
-                vacancy.Candidates.Count())));
+                vacancy.Rounds.SelectMany(round => round.Candidates).Count()),
+            vacancy.NeededHires.HasValue
+                ? new VacancyHiringResponse(
+                    vacancy.NeededHires.Value,
+                    // Ticket 02 replaces this interim projection with hire-outcome counts.
+                    0)
+                : null));
 
     public static async Task<VacancyProgressResponse> GetAsync(
         long vacancyId,
@@ -39,7 +45,24 @@ internal static class VacancyProgress
         IApplicationDbContext dbContext,
         CancellationToken cancellationToken)
     {
-        var progress = await GetAsync(vacancy.Id, dbContext, cancellationToken);
-        return VacancyDetailsResponse.From(vacancy, progress);
+        var summary = await ProjectSummaries(dbContext.Vacancies
+                .AsNoTracking()
+                .Where(item => item.Id == vacancy.Id))
+            .SingleOrDefaultAsync(cancellationToken);
+        var progress = summary?.Progress ?? new VacancyProgressResponse(0, 0);
+        var rounds = await dbContext.IntakeRounds
+            .AsNoTracking()
+            .Where(round => round.VacancyId == vacancy.Id)
+            .OrderBy(round => round.RoundNumber)
+            .Select(round => new VacancyRoundResponse(
+                round.Id,
+                round.RoundNumber,
+                round.Name,
+                round.IsOpen ? "open" : "closed",
+                round.ClosedAt,
+                round.Candidates.Count()))
+            .ToListAsync(cancellationToken);
+
+        return VacancyDetailsResponse.From(vacancy, progress, rounds, summary?.Hiring);
     }
 }

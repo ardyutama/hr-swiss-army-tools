@@ -1,70 +1,134 @@
 <script setup lang="ts">
-import { computed, shallowRef, toRef } from 'vue'
+import { shallowRef, toRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import StatusBadge from '@/features/vacancies/components/StatusBadge.vue'
+import HiringPlanSummary from '@/features/vacancies/components/HiringPlanSummary.vue'
 import ImportCandidatesDialog from '@/features/candidates/components/ImportCandidatesDialog.vue'
 import CandidateDeleteDialog from '@/features/candidates/components/CandidateDeleteDialog.vue'
 import ImportResultList from '@/features/candidates/components/ImportResultList.vue'
 import CandidateList from '@/features/candidates/components/CandidateList.vue'
 import CandidateToolbar from '@/features/candidates/components/CandidateToolbar.vue'
-import { useVacancyDetail } from '@/features/vacancy-detail/useVacancyDetail'
-import { useCandidateImport } from '@/features/candidates/useCandidateImport'
-import { useCandidates } from '@/features/candidates/useCandidates'
-import { useCandidateFilter } from '@/features/candidates/useCandidateFilter'
-import { formatDate, progressPercent } from '@/features/vacancies/format'
+import RoundList from '@/features/intake-rounds/components/RoundList.vue'
+import CreateRoundDialog from '@/features/intake-rounds/components/CreateRoundDialog.vue'
+import CloseRoundDialog from '@/features/intake-rounds/components/CloseRoundDialog.vue'
+import { useVacancyDetailFlow } from '@/features/vacancy-detail/useVacancyDetailFlow'
+import { formatDate } from '@/features/vacancies/format'
 import type { CandidateSummary } from '@/features/candidates/api'
+import type { VacancyRound } from '@/features/vacancies/api'
 
 const props = defineProps<{
   id: string
 }>()
 
 const router = useRouter()
-const vacancyId = toRef(props, 'id')
-const { vacancy, loadError, viewState, load } = useVacancyDetail(vacancyId)
-const { importing, importError, results, importFiles, clearError } = useCandidateImport(vacancyId)
+
+// Composition surface only: the flow owns vacancy-detail state, rules, and
+// coordination; this view connects routing and renders the returned state.
 const {
-  candidates,
-  loadError: candidatesError,
-  viewState: candidatesViewState,
-  removing,
-  load: loadCandidates,
-  remove,
-} = useCandidates(vacancyId)
-const {
-  status: statusFilter,
-  query: searchQuery,
-  receivedSort,
-  statusCounts,
-  filteredCandidates,
-  toggleReceivedSort,
-  clearFilters,
-} = useCandidateFilter(candidates)
+  vacancy: {
+    vacancy,
+    loadError,
+    viewState,
+    load,
+    progress,
+    vacancyRequirements,
+  },
+  rounds: {
+    rounds,
+    selectedRoundId,
+    selectRound,
+    canOpenRound,
+    roundShortage,
+    showRoundChrome,
+    showRoundManager,
+    roundManagementOpen,
+    openRoundManager,
+    creatingRound,
+    closingRound,
+    createRound,
+    closeRound,
+  },
+  candidates: {
+    candidates,
+    candidatesError,
+    removing,
+    loadCandidates,
+    statusFilter,
+    searchQuery,
+    receivedSort,
+    statusCounts,
+    filteredCandidates,
+    listState,
+    toggleReceivedSort,
+    clearFilters,
+    candidatesReadonly,
+    deleteCandidate,
+  },
+  import: {
+    importing,
+    importError,
+    results,
+    clearError,
+    canImport,
+    importFiles,
+  },
+} = useVacancyDetailFlow(toRef(props, 'id'))
 
 const importOpen = shallowRef(false)
 const deleteOpen = shallowRef(false)
 const deletingCandidate = shallowRef<CandidateSummary | null>(null)
 const deleteError = shallowRef<string | null>(null)
+const createRoundOpen = shallowRef(false)
+const closeRoundOpen = shallowRef(false)
+const roundToClose = shallowRef<VacancyRound | null>(null)
 
-const isClosed = computed(() => vacancy.value?.status === 'closed')
+watch(importOpen, (open) => {
+  if (!open) {
+    clearError()
+  }
+})
 
-const progress = computed(() => (vacancy.value ? progressPercent(vacancy.value.progress) : 0))
-const vacancyRequirements = computed(() => vacancy.value?.requirements.map((requirement) => requirement.phrase) ?? [])
+watch(deleteOpen, (open) => {
+  if (!open) {
+    deletingCandidate.value = null
+    deleteError.value = null
+  }
+})
+
+watch(closeRoundOpen, (open) => {
+  if (!open) {
+    roundToClose.value = null
+  }
+})
 
 function openImport() {
   importOpen.value = true
 }
 
-function closeImport() {
-  importOpen.value = false
-  clearError()
+async function onFiles(files: File[]) {
+  if (await importFiles(files)) {
+    importOpen.value = false
+  }
 }
 
-async function onFiles(files: File[]) {
-  const response = await importFiles(files)
-  if (response) {
-    closeImport()
-    // Refresh so the vacancy progress and the candidate list reflect the import.
-    await Promise.all([load(), loadCandidates()])
+function openCreateRound() {
+  createRoundOpen.value = true
+}
+
+async function onCreateRoundSubmit(payload: { name: string | null }) {
+  if (await createRound(payload.name)) {
+    createRoundOpen.value = false
+  }
+}
+
+function requestCloseRound(round: VacancyRound) {
+  roundToClose.value = round
+  closeRoundOpen.value = true
+}
+
+async function confirmCloseRound(round: VacancyRound) {
+  if (await closeRound(round)) {
+    closeRoundOpen.value = false
   }
 }
 
@@ -74,36 +138,23 @@ function requestDeleteCandidate(candidate: CandidateSummary) {
   deleteOpen.value = true
 }
 
-function closeDelete() {
-  deleteOpen.value = false
-  deleteError.value = null
-}
-
-async function confirmDeleteCandidate() {
-  const candidate = deletingCandidate.value
-  if (!candidate) {
-    return
-  }
-  try {
-    await remove(candidate)
+async function confirmDeleteCandidate(candidate: CandidateSummary) {
+  const error = await deleteCandidate(candidate)
+  if (!error) {
     deleteOpen.value = false
-    deletingCandidate.value = null
-    // Progress counts candidates, so the vacancy details need a refresh too.
-    await load()
-  } catch (error) {
-    deleteError.value = error instanceof Error ? error.message : 'Failed to delete candidate'
+  } else {
+    deleteError.value = error
   }
 }
 
-// The review route is added by ticket 05; until then the push resolves nowhere.
 function openReview(candidate: CandidateSummary) {
-  if (!router.hasRoute('candidate-review')) {
+  if (!router.hasRoute('candidate-review') || selectedRoundId.value === null) {
     return
   }
 
   void router.push({
     name: 'candidate-review',
-    params: { id: props.id, candidateId: candidate.id },
+    params: { id: props.id, roundId: selectedRoundId.value, candidateId: candidate.id },
   })
 }
 </script>
@@ -156,7 +207,16 @@ function openReview(candidate: CandidateSummary) {
           <StatusBadge :status="vacancy.status" />
           <div class="flex flex-wrap items-center gap-3">
             <UButton
-              v-if="!isClosed"
+              v-if="showRoundManager && !roundManagementOpen"
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-layers-2"
+              @click="openRoundManager"
+            >
+              Manage rounds
+            </UButton>
+            <UButton
+              v-if="canImport"
               color="neutral"
               variant="ghost"
               icon="i-lucide-upload"
@@ -171,32 +231,49 @@ function openReview(candidate: CandidateSummary) {
         </div>
       </header>
 
-      <section
-        class="flex flex-col gap-3 rounded-xl border border-default bg-default px-5 py-4 shadow-sm"
-        aria-label="Vacancy progress"
-      >
-        <div class="flex items-baseline justify-between gap-4">
-          <span class="text-sm font-medium text-muted">Candidates processed</span>
-          <span class="text-sm font-semibold tabular-nums text-highlighted">
-            {{ vacancy.progress.processedCandidates }}/{{ vacancy.progress.totalCandidates }}
-          </span>
-        </div>
-        <div class="h-1.5 overflow-hidden rounded-full bg-muted">
-          <div
-            class="h-full rounded-full bg-primary"
-            :style="{ width: `${progress}%` }"
-          />
-        </div>
-      </section>
+      <div class="grid gap-4 lg:grid-cols-2">
+        <section
+          class="flex flex-col gap-3 rounded-xl border border-default bg-default px-5 py-4 shadow-sm"
+          aria-label="Vacancy progress"
+        >
+          <div class="flex items-baseline justify-between gap-4">
+            <span class="text-sm font-medium text-muted">Candidates processed</span>
+            <span class="text-sm font-semibold tabular-nums text-highlighted">
+              {{ vacancy.progress.processedCandidates }}/{{ vacancy.progress.totalCandidates }}
+            </span>
+          </div>
+          <div class="h-1.5 overflow-hidden rounded-full bg-muted">
+            <div
+              class="h-full rounded-full bg-primary"
+              :style="{ width: `${progress}%` }"
+            />
+          </div>
+        </section>
+
+        <HiringPlanSummary :hiring="vacancy.hiring" />
+      </div>
+
+      <RoundList
+        v-if="showRoundChrome"
+        :rounds="rounds"
+        :selected-round-id="selectedRoundId"
+        :can-create-round="canOpenRound"
+        :creating="creatingRound"
+        @select="selectRound"
+        @create="openCreateRound"
+        @close="requestCloseRound"
+      />
+
+      <HiringPlanSummary variant="context" :hiring="vacancy.hiring" />
 
       <section
         class="overflow-hidden rounded-xl border border-default bg-default shadow-sm"
-        :class="candidatesViewState === 'ready' ? 'p-0' : 'p-3'"
+        :class="listState.kind === 'ready' ? 'p-0' : 'p-3'"
         aria-label="Candidates"
       >
         <!-- Shape-matched table skeleton (ADR-0008 decision 14) -->
         <div
-          v-if="candidatesViewState === 'loading'"
+          v-if="listState.kind === 'loading'"
           class="flex flex-col p-2"
           aria-busy="true"
           aria-label="Loading candidates"
@@ -220,7 +297,7 @@ function openReview(candidate: CandidateSummary) {
         </div>
 
         <UAlert
-          v-else-if="candidatesViewState === 'error'"
+          v-else-if="listState.kind === 'error'"
           color="error"
           variant="subtle"
           icon="i-lucide-triangle-alert"
@@ -230,13 +307,30 @@ function openReview(candidate: CandidateSummary) {
           :actions="[{ label: 'Try again', color: 'error', variant: 'outline', onClick: loadCandidates }]"
         />
 
-        <template v-else-if="candidatesViewState === 'empty'">
+        <template v-else-if="listState.kind === 'empty'">
           <!-- Closed vacancy is read-only -->
           <UEmpty
-            v-if="isClosed"
+            v-if="listState.reason === 'vacancy-closed'"
             icon="i-lucide-lock-keyhole"
             title="This vacancy is closed"
             description="A closed vacancy is read-only and can't receive candidate imports."
+            class="min-h-48 px-6 py-10"
+          />
+          <!-- No active round: imports are rejected until a round is opened -->
+          <UEmpty
+            v-else-if="listState.reason === 'no-active-round'"
+            icon="i-lucide-archive"
+            title="No active round"
+            description="Open a new intake round before importing candidates."
+            class="min-h-48 px-6 py-10"
+            :actions="canOpenRound ? [{ label: 'Open a round', icon: 'i-lucide-plus', onClick: openCreateRound }] : []"
+          />
+          <!-- Selected round is closed (read-only) -->
+          <UEmpty
+            v-else-if="listState.reason === 'round-closed'"
+            icon="i-lucide-lock-keyhole"
+            title="This round is closed"
+            description="A closed round is read-only. Open a new round to keep importing."
             class="min-h-48 px-6 py-10"
           />
           <UEmpty
@@ -272,7 +366,7 @@ function openReview(candidate: CandidateSummary) {
             :candidates="filteredCandidates"
             :requirements="vacancyRequirements"
             :received-sort="receivedSort"
-            :readonly="isClosed"
+            :readonly="candidatesReadonly"
             @remove="requestDeleteCandidate"
             @review="openReview"
             @toggle-received-sort="toggleReceivedSort"
@@ -293,19 +387,29 @@ function openReview(candidate: CandidateSummary) {
     </template>
 
     <ImportCandidatesDialog
-      :open="importOpen"
+      v-model:open="importOpen"
       :busy="importing"
       :error="importError"
-      @close="closeImport"
       @files="onFiles"
     />
     <CandidateDeleteDialog
-      :open="deleteOpen"
+      v-model:open="deleteOpen"
       :candidate="deletingCandidate"
       :deleting="removing"
       :error="deleteError"
-      @close="closeDelete"
       @confirm="confirmDeleteCandidate"
+    />
+    <CreateRoundDialog
+      v-model:open="createRoundOpen"
+      :saving="creatingRound"
+      @submit="onCreateRoundSubmit"
+    />
+    <CloseRoundDialog
+      v-model:open="closeRoundOpen"
+      :round="roundToClose"
+      :shortage="roundShortage"
+      :closing="closingRound"
+      @confirm="confirmCloseRound"
     />
   </div>
 </template>

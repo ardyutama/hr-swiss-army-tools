@@ -92,6 +92,10 @@ namespace hr_sat.Infrastructure.Migrations
                         .HasColumnName("imported_at")
                         .HasDefaultValueSql("now()");
 
+                    b.Property<long>("IntakeRoundId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("intake_round_id");
+
                     b.Property<string>("Notes")
                         .HasColumnType("text")
                         .HasColumnName("notes");
@@ -142,22 +146,18 @@ namespace hr_sat.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("source_subject");
 
-                    b.Property<long>("VacancyId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("vacancy_id");
-
                     b.HasKey("Id");
 
                     b.HasIndex("SourceStorageKey")
                         .IsUnique()
                         .HasDatabaseName("candidate_source_storage_key_key");
 
-                    b.HasIndex("VacancyId", "SourceSha256")
+                    b.HasIndex("IntakeRoundId", "SourceSha256")
                         .IsUnique()
-                        .HasDatabaseName("candidate_vacancy_source_sha256_key");
+                        .HasDatabaseName("candidate_round_source_sha256_key");
 
-                    b.HasIndex("VacancyId", "ImportedAt", "Id")
-                        .HasDatabaseName("candidate_vacancy_imported_idx");
+                    b.HasIndex("IntakeRoundId", "ImportedAt", "Id")
+                        .HasDatabaseName("candidate_round_imported_idx");
 
                     b.ToTable("candidate", null, t =>
                         {
@@ -293,6 +293,50 @@ namespace hr_sat.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("hr_sat.Domain.IntakeRounds.IntakeRound", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closed_at");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<int>("RoundNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("round_number");
+
+                    b.Property<long>("VacancyId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("vacancy_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VacancyId")
+                        .IsUnique()
+                        .HasDatabaseName("intake_round_vacancy_active_key")
+                        .HasFilter("closed_at IS NULL");
+
+                    b.HasIndex("VacancyId", "RoundNumber")
+                        .IsUnique()
+                        .HasDatabaseName("intake_round_vacancy_number_key");
+
+                    b.ToTable("intake_round", null, t =>
+                        {
+                            t.HasCheckConstraint("intake_round_name_check", "name IS NULL OR char_length(btrim(name)) BETWEEN 1 AND 200");
+
+                            t.HasCheckConstraint("intake_round_number_check", "round_number >= 1");
+                        });
+                });
+
             modelBuilder.Entity("hr_sat.Domain.Vacancies.Vacancy", b =>
                 {
                     b.Property<long>("Id")
@@ -311,6 +355,10 @@ namespace hr_sat.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("now()");
+
+                    b.Property<int?>("NeededHires")
+                        .HasColumnType("integer")
+                        .HasColumnName("needed_hires");
 
                     b.Property<DateOnly>("OpenedOn")
                         .HasColumnType("date")
@@ -333,6 +381,8 @@ namespace hr_sat.Infrastructure.Migrations
                     b.ToTable("vacancy", null, t =>
                         {
                             t.HasCheckConstraint("vacancy_closed_at_check", "(status = 'open' AND closed_at IS NULL) OR (status = 'closed' AND closed_at IS NOT NULL)");
+
+                            t.HasCheckConstraint("vacancy_needed_hires_check", "needed_hires IS NULL OR needed_hires BETWEEN 1 AND 9999");
 
                             t.HasCheckConstraint("vacancy_status_check", "status IN ('open', 'closed')");
 
@@ -389,9 +439,9 @@ namespace hr_sat.Infrastructure.Migrations
 
             modelBuilder.Entity("hr_sat.Domain.Candidates.Candidate", b =>
                 {
-                    b.HasOne("hr_sat.Domain.Vacancies.Vacancy", null)
+                    b.HasOne("hr_sat.Domain.IntakeRounds.IntakeRound", null)
                         .WithMany("Candidates")
-                        .HasForeignKey("VacancyId")
+                        .HasForeignKey("IntakeRoundId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -420,6 +470,15 @@ namespace hr_sat.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("hr_sat.Domain.IntakeRounds.IntakeRound", b =>
+                {
+                    b.HasOne("hr_sat.Domain.Vacancies.Vacancy", null)
+                        .WithMany("Rounds")
+                        .HasForeignKey("VacancyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("hr_sat.Domain.Vacancies.VacancyRequirement", b =>
                 {
                     b.HasOne("hr_sat.Domain.Vacancies.Vacancy", null)
@@ -436,11 +495,16 @@ namespace hr_sat.Infrastructure.Migrations
                     b.Navigation("RequirementReviews");
                 });
 
-            modelBuilder.Entity("hr_sat.Domain.Vacancies.Vacancy", b =>
+            modelBuilder.Entity("hr_sat.Domain.IntakeRounds.IntakeRound", b =>
                 {
                     b.Navigation("Candidates");
+                });
 
+            modelBuilder.Entity("hr_sat.Domain.Vacancies.Vacancy", b =>
+                {
                     b.Navigation("Requirements");
+
+                    b.Navigation("Rounds");
                 });
 #pragma warning restore 612, 618
         }
