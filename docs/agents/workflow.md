@@ -31,7 +31,8 @@ Each ticket is worked in this order:
 
 - **Backend**: ASP.NET Core monolith, Vertical Slice Architecture (one folder per feature)
   over Clean Architecture layers (Domain / Application / Infrastructure / API host).
-- **Frontend**: Vue SPA, feature-folder VSA (`src/features/`, `src/shared/`).
+- **Frontend**: Vue SPA, feature-first slices whose layout and placement rules are owned by
+  `.agents/skills/vue-feature-slices/SKILL.md` (ADR-0011).
 - Deploy with Docker per `docs/discovery/04-architecture.md` (MVP V1 diagram). The
   queue/worker "maybe final" design is out of scope until a spec says otherwise.
 
