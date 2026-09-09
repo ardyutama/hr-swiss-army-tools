@@ -161,8 +161,12 @@ A hired candidate who no-showed, quit, or went unreachable while the vacancy is 
 _Avoid_: Terminated employee, failed candidate
 
 **Declined**:
-The outcome when a candidate turns down the offer; it does not reopen a needed-hire slot the way a runaway does.
+The outcome when a shortlisted candidate exits on their own initiative: turning down the offer, withdrawing mid-process, or going silent before an offer exists; it does not reopen a needed-hire slot the way a runaway does.
 _Avoid_: Rejected candidate, withdrawn candidate
+
+**Bench**:
+The shortlisted candidates on a vacancy who carry no hire outcome; they are undecided rather than rejected, and remain available as backfill when a hire goes runaway or for promotion into a later round.
+_Avoid_: Talent pool, waitlist
 
 **Shortage**:
 A vacancy's needed hires minus its active hires; the number of slots still to fill, which increases again when a runaway is recorded.
