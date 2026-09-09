@@ -76,6 +76,7 @@ function importedCandidate(id: number, filename: string) {
   return {
     id,
     reviewStatus: 'new',
+    hireOutcome: 'none',
     extractionStatus: 'pending',
     sourceSenderName: 'Alice Applicant',
     sourceSenderEmail: 'alice@example.com',
@@ -102,6 +103,7 @@ function candidateSummary(id: number, overrides: Partial<Record<string, unknown>
     contactEmail: null,
     notes: null,
     reviewStatus: 'new',
+    hireOutcome: 'none',
     sourceSenderName: 'Alice Applicant',
     sourceSenderEmail: 'alice@example.com',
     sourceSubject: 'Application for Welder',
@@ -811,6 +813,52 @@ describe('VacancyDetailView', () => {
     wrapper.unmount()
   })
 
+  it('US-17: HR opens review with the active candidate filters and sort', async () => {
+    stubFetch(
+      () => vacancyDetails(),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(
+            jsonResponse([
+              candidateSummary(1, {
+                sourceSenderName: 'Alice Applicant',
+                reviewStatus: 'shortlisted',
+                sourceSentAt: '2026-08-30T09:00:00Z',
+              }),
+              candidateSummary(2, {
+                sourceSenderName: 'Bob Builder',
+                reviewStatus: 'shortlisted',
+                sourceSentAt: '2026-08-20T09:00:00Z',
+              }),
+              candidateSummary(3, {
+                sourceSenderName: 'Carol Welder',
+                sourceSentAt: '2026-08-10T09:00:00Z',
+              }),
+            ]),
+          )
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper, router } = mountView()
+    await flushPromises()
+
+    const shortlistChip = wrapper
+      .findAll('[aria-label="Filter by review status"] button')
+      .find((button) => button.text().includes('Shortlisted'))
+    await shortlistChip!.trigger('click')
+    await wrapper.find('th[aria-sort] button').trigger('click')
+
+    await wrapper.findAll('.crow')[0]!.trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.fullPath).toBe(
+      '/vacancies/1/rounds/1/review/2?status=shortlisted&sort=oldest',
+    )
+    wrapper.unmount()
+  })
+
   it('US-14: row action buttons do not navigate away from the list', async () => {
     stubFetch(
       () => vacancyDetails(),
@@ -1037,6 +1085,61 @@ describe('VacancyDetailView', () => {
     // The active round is selected, so its candidates are on screen.
     expect(section.find('[aria-current="true"]').text()).toContain('Round 2')
     expect(wrapper.find('[aria-label="Candidates"]').text()).toContain('Alice Applicant')
+    wrapper.unmount()
+  })
+
+  it('domain: switching back to a visited round keeps its candidates responsive during refresh', async () => {
+    let roundTwoRequests = 0
+    let resolveRoundTwoRefresh: ((response: Response) => void) | undefined
+    stubFetch(
+      () =>
+        vacancyDetails({
+          rounds: [
+            closedRound({ id: 1, roundNumber: 1, candidateCount: 1 }),
+            openRound({ id: 2, roundNumber: 2, candidateCount: 1 }),
+          ],
+          progress: { processedCandidates: 0, totalCandidates: 2 },
+        }),
+      (url) => {
+        if (url.includes('/rounds/2/candidates')) {
+          roundTwoRequests += 1
+          if (roundTwoRequests === 1) {
+            return Promise.resolve(jsonResponse([candidateSummary(1)]))
+          }
+          return new Promise<Response>((resolve) => {
+            resolveRoundTwoRefresh = resolve
+          })
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([bobSummary()]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const section = wrapper.find('[aria-label="Intake rounds"]')
+    const roundOne = section
+      .findAll('button')
+      .find((button) => button.text().includes('Round 1'))
+    const roundTwo = section
+      .findAll('button')
+      .find((button) => button.text().includes('Round 2'))
+
+    await roundOne!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[aria-label="Candidates"]').text()).toContain('Bob Builder')
+
+    await roundTwo!.trigger('click')
+
+    expect(section.find('[aria-current="true"]').text()).toContain('Round 2')
+    expect(wrapper.find('[aria-label="Candidates"]').text()).toContain('Alice Applicant')
+    expect(wrapper.find('[aria-label="Loading candidates"]').exists()).toBe(false)
+
+    resolveRoundTwoRefresh?.(jsonResponse([candidateSummary(1)]))
+    await flushPromises()
     wrapper.unmount()
   })
 

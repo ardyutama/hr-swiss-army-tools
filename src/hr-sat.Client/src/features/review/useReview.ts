@@ -2,13 +2,20 @@ import { computed, shallowRef, watch, type Ref } from 'vue'
 import { getVacancy, type VacancyDetails } from '@/features/vacancies/api'
 import {
   listCandidates,
+  type CandidateHireOutcome,
   type CandidateReviewStatus,
   type CandidateSummary,
 } from '@/features/candidates/api'
 import {
+  filterCandidates,
+  sortByReceived,
+  type CandidateFilterState,
+} from '@/features/candidates/filter'
+import {
   getCandidateDetails,
   updateCandidateDetails,
   updateCandidateNotes,
+  updateCandidateOutcome,
   updateCandidateRequirementReview,
   updateCandidateReview,
   type CandidateDetailsPayload,
@@ -34,6 +41,7 @@ export function useReview(
   vacancyId: Ref<string>,
   roundId: Ref<string>,
   candidateId: Ref<string>,
+  filters: Ref<CandidateFilterState>,
 ) {
   const vacancy = shallowRef<VacancyDetails | null>(null)
   const summaries = shallowRef<CandidateSummary[] | null>(null)
@@ -50,27 +58,39 @@ export function useReview(
   const requirementError = shallowRef<string | null>(null)
   const deciding = shallowRef(false)
   const decisionError = shallowRef<string | null>(null)
+  const settingOutcome = shallowRef(false)
+  const outcomeError = shallowRef<string | null>(null)
   const shortlistWarningActive = shallowRef(false)
 
   let contextToken = 0
   let detailsToken = 0
 
-  const currentIndex = computed(
-    () => summaries.value?.findIndex((summary) => String(summary.id) === candidateId.value) ?? -1,
+  const reviewCandidates = computed(() =>
+    sortByReceived(
+      filterCandidates(
+        summaries.value ?? [],
+        filters.value.status,
+        filters.value.query,
+      ),
+      filters.value.receivedSort,
+    ),
+  )
+  const currentIndex = computed(() =>
+    reviewCandidates.value.findIndex((summary) => String(summary.id) === candidateId.value),
   )
   const requirements = computed(() =>
     [...(vacancy.value?.requirements ?? [])].sort((left, right) => left.position - right.position),
   )
   const requirementCount = computed(() => requirements.value.length)
-  const total = computed(() => summaries.value?.length ?? 0)
+  const total = computed(() => reviewCandidates.value.length)
   /** 1-based position of the current candidate; 0 while the ordering is unknown. */
   const position = computed(() => (currentIndex.value < 0 ? 0 : currentIndex.value + 1))
   const previousCandidateId = computed(() =>
-    currentIndex.value > 0 ? String(summaries.value![currentIndex.value - 1]!.id) : null,
+    currentIndex.value > 0 ? String(reviewCandidates.value[currentIndex.value - 1]!.id) : null,
   )
   const nextCandidateId = computed(() =>
     currentIndex.value >= 0 && currentIndex.value < total.value - 1
-      ? String(summaries.value![currentIndex.value + 1]!.id)
+      ? String(reviewCandidates.value[currentIndex.value + 1]!.id)
       : null,
   )
 
@@ -82,6 +102,9 @@ export function useReview(
   // details) — the workspace stays readable but stops mutating.
   const isRoundClosed = computed(
     () => vacancy.value?.rounds.find((round) => String(round.id) === roundId.value)?.status === 'closed',
+  )
+  const canSetHireOutcome = computed(
+    () => vacancy.value?.status === 'open' && candidate.value?.reviewStatus === 'shortlisted',
   )
 
   const viewState = computed<ReviewViewState>(() => {
@@ -116,6 +139,7 @@ export function useReview(
       return
     }
 
+    const previousSummary = summaries.value.find((summary) => summary.id === updated.id)
     summaries.value = summaries.value.map((summary) =>
       summary.id === updated.id
         ? {
@@ -124,6 +148,7 @@ export function useReview(
             contactEmail: updated.contactEmail,
             notes: updated.notes,
             reviewStatus: updated.reviewStatus,
+            hireOutcome: updated.hireOutcome,
           }
         : summary,
     )
@@ -139,6 +164,16 @@ export function useReview(
           processedCandidates,
           totalCandidates: summaries.value.length,
         },
+        hiring: vacancy.value.hiring
+          ? {
+              ...vacancy.value.hiring,
+              activeHires: previousSummary
+                ? vacancy.value.hiring.activeHires
+                    - (previousSummary.hireOutcome === 'hired' ? 1 : 0)
+                    + (updated.hireOutcome === 'hired' ? 1 : 0)
+                : vacancy.value.hiring.activeHires,
+            }
+          : vacancy.value.hiring,
       }
     }
   }
@@ -249,6 +284,35 @@ export function useReview(
     }
   }
 
+  async function setOutcome(outcome: CandidateHireOutcome): Promise<boolean> {
+    const current = candidate.value
+    if (!current || settingOutcome.value || !canSetHireOutcome.value) {
+      return false
+    }
+
+    settingOutcome.value = true
+    outcomeError.value = null
+    try {
+      const updated = await updateCandidateOutcome(
+        vacancyId.value,
+        roundId.value,
+        current.id,
+        { outcome },
+      )
+      if (candidate.value?.id !== updated.id) {
+        return false
+      }
+      candidate.value = updated
+      patchSummary(updated)
+      return true
+    } catch (error) {
+      outcomeError.value = error instanceof Error ? error.message : 'Failed to save the hire outcome'
+      return false
+    } finally {
+      settingOutcome.value = false
+    }
+  }
+
   async function toggleRequirementAt(index: number): Promise<boolean> {
     const current = candidate.value
     const requirement = requirements.value[index]
@@ -308,6 +372,7 @@ export function useReview(
     if (!current || deciding.value) {
       return { applied: false, nextCandidateId: null }
     }
+    const nextCandidateAfterDecision = nextCandidateId.value
     if (status === 'shortlisted' && !hasCandidateDetails(current)) {
       shortlistWarningActive.value = true
       return { applied: false, nextCandidateId: null }
@@ -335,7 +400,7 @@ export function useReview(
       if (candidateDetailsWarning.value) {
         return { applied: true, nextCandidateId: null }
       }
-      return { applied: true, nextCandidateId: nextCandidateId.value }
+      return { applied: true, nextCandidateId: nextCandidateAfterDecision }
     } catch (error) {
       decisionError.value =
         error instanceof Error ? error.message : 'Failed to save the review decision'
@@ -376,6 +441,7 @@ export function useReview(
       savingRequirementId.value = null
       requirementError.value = null
       decisionError.value = null
+      outcomeError.value = null
       void loadDetails()
     },
     { immediate: true },
@@ -404,6 +470,9 @@ export function useReview(
     requirementError,
     deciding,
     decisionError,
+    settingOutcome,
+    outcomeError,
+    canSetHireOutcome,
     load: async () => {
       await loadContext()
       await loadDetails()
@@ -413,6 +482,7 @@ export function useReview(
     updateDetails,
     updateRequirementReview,
     toggleRequirementAt,
+    setOutcome,
     decide,
   }
 }

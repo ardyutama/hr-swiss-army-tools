@@ -167,6 +167,19 @@ public sealed class Vacancy : Entity
             : EnsureOpenRound(roundId, requireActive: false);
     }
 
+    public Result<IntakeRound> EnsureCanRecordHireOutcome(long roundId)
+    {
+        if (Status == VacancyStatus.Closed)
+        {
+            return Result<IntakeRound>.Failure(VacancyErrors.Closed(Id));
+        }
+
+        var round = _rounds.SingleOrDefault(item => item.Id == roundId);
+        return round is null
+            ? Result<IntakeRound>.Failure(IntakeRoundErrors.NotFound(roundId))
+            : round;
+    }
+
     private Result EnsureOpen(string message)
     {
         if (Status == VacancyStatus.Closed)

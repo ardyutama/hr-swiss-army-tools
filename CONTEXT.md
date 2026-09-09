@@ -148,6 +148,10 @@ _Avoid_: Headcount request, batch size, round quota
 The display state of a vacancy whose active hires have reached its needed hires; the vacancy remains open.
 _Avoid_: Auto-closed vacancy, completed vacancy
 
+**Hire Outcome**:
+The bookkeeping record of how a shortlisted candidate's hiring stands: none, hired, runaway, or declined. Set only on shortlisted candidates, editable until the vacancy closes, and never altered by review-status decisions; a runaway re-opens one needed-hire slot.
+_Avoid_: Hiring status, review decision
+
 **Hired Candidate**:
 A shortlisted candidate who has started the job; the hire is active until they are marked as runaway.
 _Avoid_: Accepted candidate, permanent employee

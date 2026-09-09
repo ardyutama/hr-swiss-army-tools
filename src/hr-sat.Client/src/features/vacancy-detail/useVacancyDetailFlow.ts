@@ -1,5 +1,6 @@
 import { computed, shallowRef, watch, type Ref } from 'vue'
 import type { CandidateSummary } from '@/features/candidates/api'
+import type { CandidateFilterState } from '@/features/candidates/filter'
 import { useCandidateFilter } from '@/features/candidates/useCandidateFilter'
 import { useCandidateImport } from '@/features/candidates/useCandidateImport'
 import { useCandidates } from '@/features/candidates/useCandidates'
@@ -21,7 +22,10 @@ import { useVacancyDetail } from './useVacancyDetail'
  * imports and deletions change both the vacancy rollup (progress, round counts)
  * and the candidate list, so both reload together.
  */
-export function useVacancyDetailFlow(vacancyId: Ref<string>) {
+export function useVacancyDetailFlow(
+  vacancyId: Ref<string>,
+  initialCandidateFilters: Partial<CandidateFilterState> = {},
+) {
   const { vacancy, loadError, viewState, load } = useVacancyDetail(vacancyId)
 
   const rounds = computed<VacancyRound[]>(() => vacancy.value?.rounds ?? [])
@@ -104,7 +108,7 @@ export function useVacancyDetailFlow(vacancyId: Ref<string>) {
     vacancyClosed: isClosed,
     hasActiveRound: computed(() => activeRound.value !== null),
     selectedRoundClosed,
-  })
+  }, initialCandidateFilters)
 
   // The round manager stays flow-owned because it controls round chrome.
   const roundManagementOpen = shallowRef(false)

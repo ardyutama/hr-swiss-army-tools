@@ -90,6 +90,155 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
     }
 
     [Fact]
+    public async Task Hire_outcomes_follow_transition_rules_and_update_candidate_details()
+    {
+        using var client = factory.CreateClient();
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client, "SQL");
+        var candidate = await ImportCandidateAsync(client, vacancyLocation, roundId, "Alice Applicant");
+
+        var beforeShortlist = await client.PutAsJsonAsync(
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "outcome"),
+            new { outcome = "hired" });
+        Assert.Equal(HttpStatusCode.BadRequest, beforeShortlist.StatusCode);
+
+        await UpdateReviewAsync(client, vacancyLocation, roundId, candidate.Id, "shortlisted");
+
+        var hired = await client.PutAsJsonAsync(
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "outcome"),
+            new { outcome = "hired" });
+        Assert.Equal(HttpStatusCode.OK, hired.StatusCode);
+        var hiredDetails = await hired.Content.ReadFromJsonAsync<CandidateDetails>();
+        Assert.NotNull(hiredDetails);
+        Assert.Equal("shortlisted", hiredDetails.ReviewStatus);
+        Assert.Equal("hired", hiredDetails.HireOutcome);
+
+        var blockedReview = await client.PutAsJsonAsync(
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "review"),
+            new { reviewStatus = "flagged", notes = "Should remain shortlisted." });
+        Assert.Equal(HttpStatusCode.BadRequest, blockedReview.StatusCode);
+
+        var runaway = await client.PutAsJsonAsync(
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "outcome"),
+            new { outcome = "runaway" });
+        Assert.Equal(HttpStatusCode.OK, runaway.StatusCode);
+
+        var rehire = await client.PutAsJsonAsync(
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "outcome"),
+            new { outcome = "hired" });
+        Assert.Equal(HttpStatusCode.OK, rehire.StatusCode);
+
+        var invalidDecline = await client.PutAsJsonAsync(
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "outcome"),
+            new { outcome = "declined" });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidDecline.StatusCode);
+
+        var cleared = await client.PutAsJsonAsync(
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "outcome"),
+            new { outcome = "none" });
+        Assert.Equal(HttpStatusCode.OK, cleared.StatusCode);
+
+        var declined = await client.PutAsJsonAsync(
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "outcome"),
+            new { outcome = "declined" });
+        Assert.Equal(HttpStatusCode.OK, declined.StatusCode);
+
+        var changedMind = await client.PutAsJsonAsync(
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "outcome"),
+            new { outcome = "hired" });
+        Assert.Equal(HttpStatusCode.OK, changedMind.StatusCode);
+        var persisted = await client.GetFromJsonAsync<CandidateDetails>(
+            CandidatePath(vacancyLocation, roundId, candidate.Id));
+        Assert.NotNull(persisted);
+        Assert.Equal("hired", persisted.HireOutcome);
+    }
+
+    [Fact]
+    public async Task Hire_outcome_changes_are_allowed_after_round_closes_when_vacancy_is_open()
+    {
+        using var client = factory.CreateClient();
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client, "SQL");
+        var candidate = await ImportCandidateAsync(client, vacancyLocation, roundId, "Alice Applicant");
+        await UpdateReviewAsync(client, vacancyLocation, roundId, candidate.Id, "shortlisted");
+
+        var closeResponse = await client.PutAsync(
+            $"{vacancyLocation}/rounds/{roundId}/close",
+            content: null);
+        Assert.Equal(HttpStatusCode.OK, closeResponse.StatusCode);
+
+        var outcomeResponse = await client.PutAsJsonAsync(
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "outcome"),
+            new { outcome = "hired" });
+
+        Assert.Equal(HttpStatusCode.OK, outcomeResponse.StatusCode);
+        var details = await outcomeResponse.Content.ReadFromJsonAsync<CandidateDetails>();
+        Assert.NotNull(details);
+        Assert.Equal("hired", details.HireOutcome);
+    }
+
+    [Fact]
+    public async Task Closed_vacancy_rejects_hire_outcome_changes_with_conflict()
+    {
+        using var client = factory.CreateClient();
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client, "SQL");
+        var candidate = await ImportCandidateAsync(client, vacancyLocation, roundId, "Alice Applicant");
+        await UpdateReviewAsync(client, vacancyLocation, roundId, candidate.Id, "shortlisted");
+
+        var closeResponse = await client.PostAsync($"{vacancyLocation}/close", content: null);
+        Assert.Equal(HttpStatusCode.OK, closeResponse.StatusCode);
+
+        var outcomeResponse = await client.PutAsJsonAsync(
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "outcome"),
+            new { outcome = "hired" });
+
+        Assert.Equal(HttpStatusCode.Conflict, outcomeResponse.StatusCode);
+        var problem = await outcomeResponse.Content.ReadFromJsonAsync<ProblemResponse>();
+        Assert.NotNull(problem);
+        Assert.Equal("Vacancies.Closed", problem.Title);
+    }
+
+    [Fact]
+    public async Task Active_hire_count_projects_hired_candidates_across_rounds()
+    {
+        using var client = factory.CreateClient();
+        var (vacancyLocation, firstRoundId) = await CreateVacancyWithNeededHiresAsync(client, 2, "SQL");
+        var firstCandidate = await ImportCandidateAsync(client, vacancyLocation, firstRoundId, "Alice Applicant");
+        await UpdateReviewAsync(client, vacancyLocation, firstRoundId, firstCandidate.Id, "shortlisted");
+        var firstHire = await client.PutAsJsonAsync(
+            CandidatePath(vacancyLocation, firstRoundId, firstCandidate.Id, "outcome"),
+            new { outcome = "hired" });
+        Assert.Equal(HttpStatusCode.OK, firstHire.StatusCode);
+
+        var closeResponse = await client.PutAsync(
+            $"{vacancyLocation}/rounds/{firstRoundId}/close",
+            content: null);
+        Assert.Equal(HttpStatusCode.OK, closeResponse.StatusCode);
+
+        var createRoundResponse = await client.PostAsJsonAsync(
+            $"{vacancyLocation}/rounds",
+            new { name = "Second wave" });
+        Assert.Equal(HttpStatusCode.OK, createRoundResponse.StatusCode);
+        var secondRound = await createRoundResponse.Content.ReadFromJsonAsync<RoundDetails>();
+        Assert.NotNull(secondRound);
+
+        var secondCandidate = await ImportCandidateAsync(
+            client,
+            vacancyLocation,
+            secondRound.Id,
+            "Bob Applicant");
+        await UpdateReviewAsync(client, vacancyLocation, secondRound.Id, secondCandidate.Id, "shortlisted");
+        var secondHire = await client.PutAsJsonAsync(
+            CandidatePath(vacancyLocation, secondRound.Id, secondCandidate.Id, "outcome"),
+            new { outcome = "hired" });
+        Assert.Equal(HttpStatusCode.OK, secondHire.StatusCode);
+
+        var vacancy = await client.GetFromJsonAsync<VacancyDetails>(vacancyLocation);
+        Assert.NotNull(vacancy);
+        Assert.NotNull(vacancy.Hiring);
+        Assert.Equal(2, vacancy.Hiring.NeededHires);
+        Assert.Equal(2, vacancy.Hiring.ActiveHires);
+    }
+
+    [Fact]
     public async Task Requirement_review_persists_and_progress_counts_only_shortlisted_or_rejected()
     {
         using var client = factory.CreateClient();
@@ -206,6 +355,25 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
             title = "Data Analyst",
             openedOn = "2026-08-20",
             requirements
+        });
+        response.EnsureSuccessStatusCode();
+        var location = response.Headers.Location!.OriginalString;
+        var vacancy = await response.Content.ReadFromJsonAsync<VacancyDetails>();
+        Assert.NotNull(vacancy);
+        return (location, Assert.Single(vacancy.Rounds).Id);
+    }
+
+    private static async Task<(string Location, long RoundId)> CreateVacancyWithNeededHiresAsync(
+        HttpClient client,
+        int neededHires,
+        params string[] requirements)
+    {
+        var response = await client.PostAsJsonAsync("/api/vacancies", new
+        {
+            title = "Data Analyst",
+            openedOn = "2026-08-20",
+            requirements,
+            neededHires
         });
         response.EnsureSuccessStatusCode();
         var location = response.Headers.Location!.OriginalString;
@@ -334,6 +502,7 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
     private sealed record CandidateDetails(
         long Id,
         string ReviewStatus,
+        string HireOutcome,
         string? FullName,
         string? ContactEmail,
         string? Notes,
@@ -353,12 +522,18 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
         string? FullName,
         string? ContactEmail,
         string? Notes,
-        string ReviewStatus);
+        string ReviewStatus,
+        string HireOutcome);
 
     private sealed record VacancyDetails(
         IReadOnlyList<VacancyRequirement> Requirements,
         IReadOnlyList<VacancyRound> Rounds,
-        VacancyProgress Progress);
+        VacancyProgress Progress,
+        VacancyHiring? Hiring);
+
+    private sealed record RoundDetails(long Id);
+
+    private sealed record VacancyHiring(int NeededHires, int ActiveHires);
 
     private sealed record VacancyRequirement(long Id, string Phrase, int Position);
 
@@ -367,4 +542,6 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
     private sealed record VacancyProgress(int ProcessedCandidates, int TotalCandidates);
 
     private sealed record ValidationProblemResponse(Dictionary<string, string[]> Errors);
+
+    private sealed record ProblemResponse(string? Title, int? Status, string? Detail);
 }

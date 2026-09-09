@@ -24,6 +24,7 @@ internal static class CandidateDetailsReader
             .Select(candidate => new CandidateDetailsResponse(
                 candidate.Id,
                 candidate.ReviewStatus.ToString().ToLowerInvariant(),
+                candidate.HireOutcome.ToString().ToLowerInvariant(),
                 candidate.FullName,
                 candidate.ContactEmail,
                 candidate.Notes,

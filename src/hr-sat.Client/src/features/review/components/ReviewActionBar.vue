@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CandidateReviewStatus } from '@/features/candidates/api'
+import type { CandidateHireOutcome, CandidateReviewStatus } from '@/features/candidates/api'
 
 interface Decision {
   status: Exclude<CandidateReviewStatus, 'new'>
@@ -15,23 +15,54 @@ const decisions: Decision[] = [
   { status: 'rejected', label: 'Reject', shortcut: 'R', color: 'error' },
 ]
 
+interface Outcome {
+  outcome: Exclude<CandidateHireOutcome, 'none'>
+  label: string
+  shortcut: string
+  color: 'success' | 'error' | 'neutral'
+}
+
+const outcomes: Outcome[] = [
+  { outcome: 'hired', label: 'Mark Hired', shortcut: 'H', color: 'success' },
+  { outcome: 'runaway', label: 'Mark Runaway', shortcut: 'U', color: 'error' },
+  { outcome: 'declined', label: 'Mark Declined', shortcut: 'D', color: 'neutral' },
+]
+
 const props = withDefaults(
   defineProps<{
     reviewStatus: CandidateReviewStatus
+    hireOutcome: CandidateHireOutcome
+    canSetOutcome: boolean
     canPrev: boolean
     canNext: boolean
     busy?: boolean
     error?: string | null
+    outcomeBusy?: boolean
+    outcomeError?: string | null
   }>(),
-  { busy: false, error: null },
+  { busy: false, error: null, outcomeBusy: false, outcomeError: null },
 )
 
 const emit = defineEmits<{
   prev: []
   next: []
   decide: [status: CandidateReviewStatus]
+  setOutcome: [outcome: CandidateHireOutcome]
   help: []
 }>()
+
+function outcomeDisabled(outcome: Exclude<CandidateHireOutcome, 'none'>): boolean {
+  if (!props.canSetOutcome || props.busy || props.outcomeBusy) {
+    return true
+  }
+  if (outcome === 'runaway') {
+    return props.hireOutcome !== 'hired'
+  }
+  if (outcome === 'declined') {
+    return props.hireOutcome !== 'none'
+  }
+  return props.hireOutcome === 'hired'
+}
 </script>
 
 <template>
@@ -40,6 +71,7 @@ const emit = defineEmits<{
     aria-label="Review actions"
   >
     <p v-if="error" class="m-0 w-full text-sm text-error" role="alert">{{ error }}</p>
+    <p v-if="outcomeError" class="m-0 w-full text-sm text-error" role="alert">{{ outcomeError }}</p>
     <div class="flex flex-wrap items-center justify-between gap-3">
       <UButton
         color="neutral"
@@ -72,6 +104,40 @@ const emit = defineEmits<{
             class="ml-1 rounded border border-current/40 px-1.5 py-0.5 text-[0.65rem] font-semibold"
             aria-hidden="true"
           >{{ decision.shortcut }}</kbd>
+        </UButton>
+      </div>
+
+      <div
+        v-if="reviewStatus === 'shortlisted'"
+        class="flex flex-wrap items-center gap-2"
+        role="group"
+        aria-label="Hire outcomes"
+      >
+        <UButton
+          v-for="outcome in outcomes"
+          :key="outcome.outcome"
+          :color="outcome.color"
+          :variant="hireOutcome === outcome.outcome ? 'solid' : 'outline'"
+          class="min-h-10"
+          :disabled="outcomeDisabled(outcome.outcome)"
+          :aria-keyshortcuts="outcome.shortcut"
+          @click="emit('setOutcome', outcome.outcome)"
+        >
+          {{ outcome.label }}
+          <kbd
+            class="ml-1 rounded border border-current/40 px-1.5 py-0.5 text-[0.65rem] font-semibold"
+            aria-hidden="true"
+          >{{ outcome.shortcut }}</kbd>
+        </UButton>
+        <UButton
+          v-if="hireOutcome !== 'none'"
+          color="neutral"
+          variant="ghost"
+          class="min-h-10"
+          :disabled="!canSetOutcome || busy || outcomeBusy"
+          @click="emit('setOutcome', 'none')"
+        >
+          Clear outcome
         </UButton>
       </div>
 

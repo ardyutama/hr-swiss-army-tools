@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { formatDate } from '@/features/vacancies/format'
+import type { LocationQueryRaw } from 'vue-router'
 
 defineProps<{
   vacancyId: string
@@ -10,13 +11,14 @@ defineProps<{
   total: number
   processed: number
   progressTotal: number
+  backQuery: LocationQueryRaw
 }>()
 </script>
 
 <template>
   <header class="flex items-center gap-3">
     <RouterLink
-      :to="{ name: 'vacancy-detail', params: { id: vacancyId } }"
+      :to="{ name: 'vacancy-detail', params: { id: vacancyId }, query: backQuery }"
       aria-label="Back to candidate list"
       title="Back to candidate list"
       class="-ml-2 inline-flex size-10 shrink-0 items-center justify-center rounded-xl text-muted transition-colors hover:bg-muted hover:text-highlighted"

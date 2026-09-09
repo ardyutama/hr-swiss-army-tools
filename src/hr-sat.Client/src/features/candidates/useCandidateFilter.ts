@@ -2,6 +2,7 @@ import { computed, shallowRef, type Ref } from 'vue'
 import type { CandidateSummary } from './api'
 import type { CandidatesViewState } from './useCandidates'
 import {
+  type CandidateFilterState,
   countByReviewStatus,
   filterCandidates,
   sortByReceived,
@@ -49,10 +50,11 @@ export interface CandidateListContext {
 export function useCandidateFilter(
   candidates: Ref<CandidateSummary[] | null>,
   context: CandidateListContext,
+  initial: Partial<CandidateFilterState> = {},
 ) {
-  const status = shallowRef<CandidateStatusFilter>('all')
-  const query = shallowRef('')
-  const receivedSort = shallowRef<ReceivedSort>('newest')
+  const status = shallowRef<CandidateStatusFilter>(initial.status ?? 'all')
+  const query = shallowRef(initial.query ?? '')
+  const receivedSort = shallowRef<ReceivedSort>(initial.receivedSort ?? 'newest')
 
   const statusCounts = computed(() => countByReviewStatus(candidates.value ?? []))
 

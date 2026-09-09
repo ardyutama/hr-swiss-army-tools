@@ -1,9 +1,14 @@
 import { getJson, putJson } from '@/shared/http'
-import type { CandidateReviewStatus, CvDocumentResult } from '@/features/candidates/api'
+import type {
+  CandidateHireOutcome,
+  CandidateReviewStatus,
+  CvDocumentResult,
+} from '@/features/candidates/api'
 
 export interface CandidateDetails {
   id: number
   reviewStatus: CandidateReviewStatus
+  hireOutcome: CandidateHireOutcome
   fullName: string | null
   contactEmail: string | null
   notes: string | null
@@ -30,6 +35,10 @@ export interface CandidateDetailsPayload {
 export interface ReviewDecisionPayload {
   reviewStatus: CandidateReviewStatus
   notes: string
+}
+
+export interface CandidateOutcomePayload {
+  outcome: CandidateHireOutcome
 }
 
 function candidatePath(vacancyId: string, roundId: string, candidateId: number): string {
@@ -69,6 +78,15 @@ export function updateCandidateReview(
   payload: ReviewDecisionPayload,
 ): Promise<CandidateDetails> {
   return putJson<CandidateDetails>(`${candidatePath(vacancyId, roundId, candidateId)}/review`, payload)
+}
+
+export function updateCandidateOutcome(
+  vacancyId: string,
+  roundId: string,
+  candidateId: number,
+  payload: CandidateOutcomePayload,
+): Promise<CandidateDetails> {
+  return putJson<CandidateDetails>(`${candidatePath(vacancyId, roundId, candidateId)}/outcome`, payload)
 }
 
 export function updateCandidateRequirementReview(

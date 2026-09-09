@@ -3,6 +3,7 @@ namespace hr_sat.Application.Features.Candidates;
 public sealed record CandidateDetailsResponse(
     long Id,
     string ReviewStatus,
+    string HireOutcome,
     string? FullName,
     string? ContactEmail,
     string? Notes,

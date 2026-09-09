@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, shallowRef, toRef, useTemplateRef, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useToast } from '@nuxt/ui/composables/useToast'
 import { candidateDisplayName } from '@/features/candidates/format'
 import ReviewHeader from '@/features/review/components/ReviewHeader.vue'
@@ -17,7 +17,8 @@ import {
   type NotesFocusHandle,
   type SourceEmailHandle,
 } from '@/features/review/useReviewShortcuts'
-import type { CandidateReviewStatus } from '@/features/candidates/api'
+import type { CandidateHireOutcome, CandidateReviewStatus } from '@/features/candidates/api'
+import { candidateFilterStateFromQuery } from '@/features/candidates/filter'
 import type { CandidateDetailsPayload } from '@/features/review/api'
 
 const props = defineProps<{
@@ -27,7 +28,9 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
+const route = useRoute()
 const toast = useToast()
+const reviewFilters = computed(() => candidateFilterStateFromQuery(route.query))
 const {
   vacancy,
   requirements,
@@ -51,14 +54,23 @@ const {
   requirementError,
   deciding,
   decisionError,
+  settingOutcome,
+  outcomeError,
+  canSetHireOutcome,
   load,
   saveNotes,
   updateDetails,
   updateRequirementReview,
   toggleRequirementAt,
+  setOutcome,
   decide,
   advanceToNextCandidate,
-} = useReview(toRef(props, 'id'), toRef(props, 'roundId'), toRef(props, 'candidateId'))
+} = useReview(
+  toRef(props, 'id'),
+  toRef(props, 'roundId'),
+  toRef(props, 'candidateId'),
+  reviewFilters,
+)
 
 const notesEditor = useTemplateRef<NotesFocusHandle>('notesEditor')
 const candidateDetailsPanel = useTemplateRef<{ focusEditing: () => void }>('candidateDetailsPanel')
@@ -67,6 +79,7 @@ const shortcutsHelpOpen = shallowRef(false)
 const announcement = shallowRef('')
 const canPrev = computed(() => previousCandidateId.value !== null)
 const canNext = computed(() => nextCandidateId.value !== null)
+const currentHireOutcome = computed<CandidateHireOutcome>(() => candidate.value?.hireOutcome ?? 'none')
 
 type PendingAnnouncement =
   | { kind: 'decision'; verb: string }
@@ -100,6 +113,7 @@ function goToCandidate(id: string | null, nextAnnouncement: PendingAnnouncement 
   void router.push({
     name: 'candidate-review',
     params: { id: props.id, roundId: props.roundId, candidateId: id },
+    query: route.query,
   })
 }
 
@@ -137,6 +151,10 @@ function onDetailsSave(payload: CandidateDetailsPayload) {
   void updateDetails(payload)
 }
 
+function onSetOutcome(outcome: CandidateHireOutcome) {
+  void setOutcome(outcome)
+}
+
 function onRequirementToggle(requirementId: number, confirmed: boolean) {
   void updateRequirementReview(requirementId, confirmed)
 }
@@ -171,6 +189,9 @@ useReviewShortcuts({
   onPrev,
   onNext,
   onDecide,
+  canSetOutcome: canSetHireOutcome,
+  hireOutcome: currentHireOutcome,
+  onSetOutcome,
   onToggleRequirement: (index) => {
     void toggleRequirementAt(index)
   },
@@ -232,6 +253,7 @@ useReviewShortcuts({
 
       <ReviewHeader
         :vacancy-id="id"
+        :back-query="route.query"
         :title="vacancy.title"
         :opened-on="vacancy.openedOn"
         :position="position"
@@ -282,13 +304,18 @@ useReviewShortcuts({
 
       <ReviewActionBar
         :review-status="candidate.reviewStatus"
+        :hire-outcome="candidate.hireOutcome"
+        :can-set-outcome="canSetHireOutcome"
         :can-prev="previousCandidateId !== null"
         :can-next="nextCandidateId !== null"
         :busy="deciding"
         :error="decisionError"
+        :outcome-busy="settingOutcome"
+        :outcome-error="outcomeError"
         @prev="onPrev"
         @next="onNext"
         @decide="onDecide"
+        @set-outcome="onSetOutcome"
         @help="shortcutsHelpOpen = true"
       />
     </template>

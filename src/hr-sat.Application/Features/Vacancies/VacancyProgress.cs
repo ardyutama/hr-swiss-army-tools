@@ -22,8 +22,8 @@ internal static class VacancyProgress
             vacancy.NeededHires.HasValue
                 ? new VacancyHiringResponse(
                     vacancy.NeededHires.Value,
-                    // Ticket 02 replaces this interim projection with hire-outcome counts.
-                    0)
+                        vacancy.Rounds.SelectMany(round => round.Candidates).Count(candidate =>
+                            candidate.HireOutcome == CandidateHireOutcome.Hired))
                 : null));
 
     public static async Task<VacancyProgressResponse> GetAsync(

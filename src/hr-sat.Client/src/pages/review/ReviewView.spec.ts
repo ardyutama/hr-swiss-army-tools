@@ -64,7 +64,7 @@ function vacancyDetails(overrides: Partial<Record<string, unknown>> = {}) {
 
 const candidateNames = ['Jane Doe', 'Bob Builder', 'Ann Lee']
 
-function candidateSummary(id: number) {
+function candidateSummary(id: number, overrides: Record<string, unknown> = {}) {
   const name = candidateNames[id - 1] ?? `Candidate ${id}`
   return {
     id,
@@ -73,10 +73,12 @@ function candidateSummary(id: number) {
     contactPhone: null,
     notes: null,
     reviewStatus: 'new',
+    hireOutcome: 'none',
     sourceSenderName: name,
     sourceSenderEmail: `candidate${id}@mail.com`,
     sourceSubject: `${name} application`,
     sourceSentAt: '2026-08-10T09:00:00Z',
+    ...overrides,
   }
 }
 
@@ -85,6 +87,7 @@ function candidateDetails(id: number, overrides: Record<string, unknown> = {}) {
   return {
     id,
     reviewStatus: 'new',
+    hireOutcome: 'none',
     fullName: name,
     contactEmail: `candidate${id}@mail.com`,
     notes: null,
@@ -121,6 +124,7 @@ interface CapturedRequest {
 function stubApi(
   options: {
     candidateCount?: number
+    candidates?: ReturnType<typeof candidateSummary>[]
     details?: Record<number, Record<string, unknown>>
     vacancy?: Record<string, unknown>
   } = {},
@@ -156,6 +160,17 @@ function stubApi(
         ),
       )
     }
+    if (method === 'PUT' && url.endsWith('/outcome')) {
+      const id = Number(/\/candidates\/(\d+)\/outcome/.exec(url)?.[1])
+      return Promise.resolve(
+        jsonResponse(
+          candidateDetails(id, {
+            ...options.details?.[id],
+            hireOutcome: body?.outcome,
+          }),
+        ),
+      )
+    }
     if (method === 'PUT' && url.endsWith('/notes')) {
       const id = Number(/\/candidates\/(\d+)\/notes/.exec(url)?.[1])
       return Promise.resolve(jsonResponse(candidateDetails(id, { notes: body?.notes })))
@@ -183,7 +198,10 @@ function stubApi(
     }
     if (method === 'GET' && url.endsWith('/candidates')) {
       return Promise.resolve(
-        jsonResponse(Array.from({ length: count }, (_, index) => candidateSummary(index + 1))),
+        jsonResponse(
+          options.candidates ??
+            Array.from({ length: count }, (_, index) => candidateSummary(index + 1)),
+        ),
       )
     }
     if (method === 'GET' && url.endsWith('/vacancies/1')) {
@@ -197,7 +215,10 @@ function stubApi(
 
 const Harness = { template: '<router-view />' }
 
-async function mountReview(startCandidateId = '1'): Promise<{
+async function mountReview(
+  startCandidateId = '1',
+  query: Record<string, string> = {},
+): Promise<{
   wrapper: VueWrapper
   router: Router
 }> {
@@ -213,7 +234,11 @@ async function mountReview(startCandidateId = '1'): Promise<{
       },
     ],
   })
-  await router.push(`/vacancies/1/rounds/1/review/${startCandidateId}`)
+  await router.push({
+    name: 'candidate-review',
+    params: { id: '1', roundId: '1', candidateId: startCandidateId },
+    query,
+  })
   const wrapper = mount(Harness, { attachTo: document.body, global: { plugins: [router] } })
   return { wrapper, router }
 }
@@ -293,6 +318,40 @@ describe('ReviewView', () => {
 
     await viewer.trigger('keydown', { key: 'ArrowRight', shiftKey: true })
     expect(wrapper.find('[data-testid="pdf-page"]').attributes('data-page')).toBe('5')
+    wrapper.unmount()
+  })
+
+  it('US-17: HR reviews the sorted, filtered candidate queue', async () => {
+    stubApi({
+      candidates: [
+        candidateSummary(1, {
+          reviewStatus: 'shortlisted',
+          sourceSentAt: '2026-08-30T09:00:00Z',
+        }),
+        candidateSummary(2, {
+          reviewStatus: 'shortlisted',
+          sourceSentAt: '2026-08-20T09:00:00Z',
+        }),
+        candidateSummary(3, {
+          reviewStatus: 'new',
+          sourceSentAt: '2026-08-10T09:00:00Z',
+        }),
+      ],
+    })
+    const { wrapper, router } = await mountReview('2', {
+      status: 'shortlisted',
+      sort: 'oldest',
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Bob Builder')
+    expect(wrapper.text()).toContain('1 / 2')
+
+    await findButton(wrapper, 'Next').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.params.candidateId).toBe('1')
+    expect(wrapper.text()).toContain('Jane Doe')
     wrapper.unmount()
   })
 
@@ -598,6 +657,80 @@ describe('ReviewView', () => {
     expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain(
       'Keyboard shortcuts',
     )
+    wrapper.unmount()
+  })
+
+  it('domain: shortlisted candidates can record outcomes while the vacancy is open', async () => {
+    const { requests } = stubApi({
+      vacancy: vacancyDetails({ hiring: { neededHires: 2, activeHires: 0 } }),
+      details: { 1: candidateDetails(1, { reviewStatus: 'shortlisted' }) },
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    const outcomes = wrapper.find('[aria-label="Hire outcomes"]')
+    expect(outcomes.exists()).toBe(true)
+    expect(findButton(wrapper, 'Mark Hired').attributes('aria-keyshortcuts')).toBe('H')
+    expect(findButton(wrapper, 'Mark Runaway').attributes('disabled')).toBeDefined()
+    expect(findButton(wrapper, 'Mark Declined').attributes('disabled')).toBeUndefined()
+
+    await findButton(wrapper, 'Mark Hired').trigger('click')
+    await flushPromises()
+
+    expect(requests.find((request) => request.url.endsWith('/outcome'))?.body).toEqual({
+      outcome: 'hired',
+    })
+    expect(wrapper.text()).toContain('Hired')
+    expect(findButton(wrapper, 'Clear outcome').exists()).toBe(true)
+    expect(findButton(wrapper, 'Mark Runaway').attributes('disabled')).toBeUndefined()
+    expect(findButton(wrapper, 'Mark Declined').attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+  })
+
+  it('domain: hire outcome actions stay enabled in a closed round but not a closed vacancy', async () => {
+    stubApi({
+      vacancy: vacancyDetails({
+        rounds: [openRound({ status: 'closed', closedAt: '2026-09-05T00:00:00Z' })],
+      }),
+      details: { 1: candidateDetails(1, { reviewStatus: 'shortlisted' }) },
+    })
+    const closedRoundView = await mountReview()
+    await flushPromises()
+    expect(findButton(closedRoundView.wrapper, 'Mark Hired').attributes('disabled')).toBeUndefined()
+    closedRoundView.wrapper.unmount()
+
+    stubApi({
+      vacancy: vacancyDetails({ status: 'closed', closedAt: '2026-09-06T00:00:00Z' }),
+      details: { 1: candidateDetails(1, { reviewStatus: 'shortlisted' }) },
+    })
+    const closedVacancyView = await mountReview()
+    await flushPromises()
+    expect(findButton(closedVacancyView.wrapper, 'Mark Hired').attributes('disabled')).toBeDefined()
+    closedVacancyView.wrapper.unmount()
+  })
+
+  it('domain: H, U, and D shortcuts follow the hire outcome transitions', async () => {
+    const { requests } = stubApi({
+      details: { 1: candidateDetails(1, { reviewStatus: 'shortlisted' }) },
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'h' }))
+    await flushPromises()
+    expect(requests.filter((request) => request.url.endsWith('/outcome'))).toHaveLength(1)
+    expect(requests.find((request) => request.url.endsWith('/outcome'))?.body).toEqual({ outcome: 'hired' })
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'u' }))
+    await flushPromises()
+    expect(requests.filter((request) => request.url.endsWith('/outcome'))).toHaveLength(2)
+    expect(requests.at(-1)?.body).toEqual({ outcome: 'runaway' })
+
+    await findButton(wrapper, 'Clear outcome').trigger('click')
+    await flushPromises()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd' }))
+    await flushPromises()
+    expect(requests.at(-1)?.body).toEqual({ outcome: 'declined' })
     wrapper.unmount()
   })
 

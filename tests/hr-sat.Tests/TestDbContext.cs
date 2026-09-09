@@ -99,6 +99,7 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
             entity.Property(candidate => candidate.ImportedAt)
                 .HasConversion(dateTimeOffsetConverter);
             entity.Property(candidate => candidate.ReviewStatus).HasConversion<string>();
+            entity.Property(candidate => candidate.HireOutcome).HasConversion<string>();
             entity.Property(candidate => candidate.ExtractionStatus).HasConversion<string>();
             entity.HasMany(candidate => candidate.CvDocuments)
                 .WithOne()

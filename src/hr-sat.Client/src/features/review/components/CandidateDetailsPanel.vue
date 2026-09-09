@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, shallowRef, useTemplateRef, watch } from 'vue'
 import { candidateDisplayName } from '@/features/candidates/format'
+import type { CandidateHireOutcome } from '@/features/candidates/api'
 import type { CandidateDetails, CandidateDetailsPayload } from '../api'
 import { candidateDetailsValidationErrors } from '../validation'
 
@@ -21,6 +22,18 @@ const editing = shallowRef(false)
 const draftFullName = shallowRef('')
 const draftContactEmail = shallowRef('')
 const fullNameInput = useTemplateRef<HTMLInputElement>('fullNameInput')
+
+const hireOutcomeLabels: Record<Exclude<CandidateHireOutcome, 'none'>, string> = {
+  hired: 'Hired',
+  runaway: 'Runaway',
+  declined: 'Declined',
+}
+
+const hireOutcomeColors: Record<Exclude<CandidateHireOutcome, 'none'>, 'success' | 'error' | 'neutral'> = {
+  hired: 'success',
+  runaway: 'error',
+  declined: 'neutral',
+}
 
 function resetDraft() {
   draftFullName.value = props.candidate.fullName ?? props.candidate.sourceSenderName ?? ''
@@ -87,9 +100,18 @@ defineExpose({ focusEditing })
     aria-label="Candidate details"
   >
     <div class="mb-3 flex items-center justify-between gap-3">
-      <h2 class="text-xs font-semibold uppercase tracking-[0.06em] text-muted">
-        Candidate details
-      </h2>
+      <div class="flex min-w-0 items-center gap-2">
+        <h2 class="text-xs font-semibold uppercase tracking-[0.06em] text-muted">
+          Candidate details
+        </h2>
+        <UBadge
+          v-if="candidate.hireOutcome !== 'none'"
+          :color="hireOutcomeColors[candidate.hireOutcome]"
+          variant="subtle"
+        >
+          {{ hireOutcomeLabels[candidate.hireOutcome] }}
+        </UBadge>
+      </div>
       <UButton
         v-if="!editing"
         color="neutral"

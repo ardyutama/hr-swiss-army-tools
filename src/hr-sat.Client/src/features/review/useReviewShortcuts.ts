@@ -1,4 +1,4 @@
-import type { CandidateReviewStatus } from '@/features/candidates/api'
+import type { CandidateHireOutcome, CandidateReviewStatus } from '@/features/candidates/api'
 import { computed, type Ref } from 'vue'
 
 export const requirementShortcutKeys = ['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const
@@ -24,10 +24,13 @@ interface UseReviewShortcutsOptions {
   sourceEmailPanel: Readonly<Ref<SourceEmailHandle | null>>
   shortcutsHelpOpen: Ref<boolean>
   requirementCount: Readonly<Ref<number>>
+  canSetOutcome: Readonly<Ref<boolean>>
+  hireOutcome: Readonly<Ref<CandidateHireOutcome>>
   onPrev: () => void | Promise<void>
   onNext: () => void | Promise<void>
   onEditDetails: () => void
   onDecide: (status: Exclude<CandidateReviewStatus, 'new'>) => void | Promise<void>
+  onSetOutcome: (outcome: CandidateHireOutcome) => void | Promise<void>
   onToggleRequirement: (index: number) => void | Promise<void>
   saveNotes: () => Promise<boolean>
 }
@@ -139,6 +142,21 @@ export function useReviewShortcuts(options: UseReviewShortcutsOptions) {
           void options.onDecide('rejected')
         }
       },
+        H: (event) => {
+          if (isArmed(event) && options.canSetOutcome.value && options.hireOutcome.value !== 'hired' && !busy.value) {
+            void options.onSetOutcome('hired')
+          }
+        },
+        U: (event) => {
+          if (isArmed(event) && options.canSetOutcome.value && options.hireOutcome.value === 'hired' && !busy.value) {
+            void options.onSetOutcome('runaway')
+          }
+        },
+        D: (event) => {
+          if (isArmed(event) && options.canSetOutcome.value && options.hireOutcome.value === 'none' && !busy.value) {
+            void options.onSetOutcome('declined')
+          }
+        },
       N: {
         handler: () => {
           void toggleNotes()

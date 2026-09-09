@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { shallowRef, toRef, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import StatusBadge from '@/features/vacancies/components/StatusBadge.vue'
 import HiringPlanSummary from '@/features/vacancies/components/HiringPlanSummary.vue'
 import ImportCandidatesDialog from '@/features/candidates/components/ImportCandidatesDialog.vue'
@@ -11,6 +11,7 @@ import CandidateToolbar from '@/features/candidates/components/CandidateToolbar.
 import RoundList from '@/features/intake-rounds/components/RoundList.vue'
 import CreateRoundDialog from '@/features/intake-rounds/components/CreateRoundDialog.vue'
 import CloseRoundDialog from '@/features/intake-rounds/components/CloseRoundDialog.vue'
+import { candidateFilterQuery, candidateFilterStateFromQuery } from '@/features/candidates/filter'
 import { useVacancyDetailFlow } from '@/features/vacancy-detail/useVacancyDetailFlow'
 import { formatDate } from '@/features/vacancies/format'
 import type { CandidateSummary } from '@/features/candidates/api'
@@ -21,6 +22,7 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
+const route = useRoute()
 
 // Composition surface only: the flow owns vacancy-detail state, rules, and
 // coordination; this view connects routing and renders the returned state.
@@ -72,7 +74,10 @@ const {
     canImport,
     importFiles,
   },
-} = useVacancyDetailFlow(toRef(props, 'id'))
+} = useVacancyDetailFlow(
+  toRef(props, 'id'),
+  candidateFilterStateFromQuery(route.query),
+)
 
 const importOpen = shallowRef(false)
 const deleteOpen = shallowRef(false)
@@ -155,6 +160,11 @@ function openReview(candidate: CandidateSummary) {
   void router.push({
     name: 'candidate-review',
     params: { id: props.id, roundId: selectedRoundId.value, candidateId: candidate.id },
+    query: candidateFilterQuery({
+      status: statusFilter.value,
+      query: searchQuery.value,
+      receivedSort: receivedSort.value,
+    }),
   })
 }
 </script>

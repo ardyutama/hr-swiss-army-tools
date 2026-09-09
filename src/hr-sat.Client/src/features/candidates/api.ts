@@ -1,6 +1,7 @@
 import { delJson, getJson, postFormData } from '@/shared/http'
 
 export type CandidateReviewStatus = 'new' | 'flagged' | 'shortlisted' | 'rejected'
+export type CandidateHireOutcome = 'none' | 'hired' | 'runaway' | 'declined'
 
 export interface CvDocumentResult {
   id: number
@@ -13,6 +14,7 @@ export interface CvDocumentResult {
 export interface ImportedCandidate {
   id: number
   reviewStatus: CandidateReviewStatus
+  hireOutcome: CandidateHireOutcome
   sourceSenderName: string | null
   sourceSenderEmail: string | null
   sourceSubject: string | null
@@ -56,6 +58,7 @@ export interface CandidateSummary {
   contactEmail: string | null
   notes: string | null
   reviewStatus: CandidateReviewStatus
+  hireOutcome: CandidateHireOutcome
   sourceSenderName: string | null
   sourceSenderEmail: string | null
   sourceSubject: string | null

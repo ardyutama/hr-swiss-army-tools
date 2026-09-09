@@ -16,6 +16,9 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
                 "candidate_review_status_check",
                 "review_status IN ('new', 'flagged', 'shortlisted', 'rejected')");
             table.HasCheckConstraint(
+                "candidate_hire_outcome_check",
+                "hire_outcome IN ('none', 'hired', 'runaway', 'declined')");
+            table.HasCheckConstraint(
                 "candidate_extraction_status_check",
                 "extraction_status IN ('pending', 'succeeded', 'failed')");
             table.HasCheckConstraint(
@@ -61,6 +64,14 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
                 status => ToDatabaseValue(status),
                 value => FromDatabaseValue<CandidateReviewStatus>(value))
             .HasDefaultValue(CandidateReviewStatus.New)
+            .IsRequired();
+        entity.Property(candidate => candidate.HireOutcome)
+            .HasColumnName("hire_outcome")
+            .HasColumnType("text")
+            .HasConversion(
+                outcome => ToDatabaseValue(outcome),
+                value => FromDatabaseValue<CandidateHireOutcome>(value))
+            .HasDefaultValue(CandidateHireOutcome.None)
             .IsRequired();
         entity.Property(candidate => candidate.ExtractionStatus)
             .HasColumnName("extraction_status")

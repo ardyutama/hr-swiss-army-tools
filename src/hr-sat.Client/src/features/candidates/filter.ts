@@ -6,6 +6,56 @@ export type CandidateStatusFilter = 'all' | CandidateReviewStatus
 /** Sort direction for the Received column: source sent-at, oldest first by default. */
 export type ReceivedSort = 'oldest' | 'newest'
 
+export interface CandidateFilterState {
+  status: CandidateStatusFilter
+  query: string
+  receivedSort: ReceivedSort
+}
+
+const candidateStatusFilters: CandidateStatusFilter[] = [
+  'all',
+  'new',
+  'flagged',
+  'shortlisted',
+  'rejected',
+]
+
+function queryString(value: unknown): string {
+  if (Array.isArray(value)) {
+    return queryString(value[0])
+  }
+  return typeof value === 'string' ? value : ''
+}
+
+/** Reads the list state from route query values, falling back to list defaults. */
+export function candidateFilterStateFromQuery(
+  query: Readonly<Record<string, unknown>>,
+): CandidateFilterState {
+  const statusValue = queryString(query.status)
+  return {
+    status: candidateStatusFilters.includes(statusValue as CandidateStatusFilter)
+      ? (statusValue as CandidateStatusFilter)
+      : 'all',
+    query: queryString(query.query),
+    receivedSort: queryString(query.sort) === 'oldest' ? 'oldest' : 'newest',
+  }
+}
+
+/** Serializes non-default list state so review navigation preserves the visible queue. */
+export function candidateFilterQuery(filters: CandidateFilterState): Record<string, string> {
+  const query: Record<string, string> = {}
+  if (filters.status !== 'all') {
+    query.status = filters.status
+  }
+  if (filters.query.trim() !== '') {
+    query.query = filters.query.trim()
+  }
+  if (filters.receivedSort !== 'newest') {
+    query.sort = filters.receivedSort
+  }
+  return query
+}
+
 /** True when the query matches the display name, the source sender email, or the email subject. */
 export function matchesCandidateQuery(candidate: CandidateSummary, query: string): boolean {
   const needle = query.trim().toLowerCase()

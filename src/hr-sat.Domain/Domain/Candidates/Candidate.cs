@@ -26,6 +26,7 @@ public sealed class Candidate : Entity
     {
         IntakeRoundId = intakeRoundId;
         ReviewStatus = CandidateReviewStatus.New;
+        HireOutcome = CandidateHireOutcome.None;
         ExtractionStatus = CandidateExtractionStatus.Pending;
         SourceSenderName = sourceSenderName;
         SourceSenderEmail = sourceSenderEmail;
@@ -41,6 +42,7 @@ public sealed class Candidate : Entity
 
     public long IntakeRoundId { get; private set; }
     public CandidateReviewStatus ReviewStatus { get; private set; }
+    public CandidateHireOutcome HireOutcome { get; private set; }
     public CandidateExtractionStatus ExtractionStatus { get; private set; }
     public string? FullName { get; private set; }
     public string? ContactEmail { get; private set; }
@@ -98,6 +100,14 @@ public sealed class Candidate : Entity
 
     internal Result ApplyReview(CandidateReviewStatus status, string? notes)
     {
+        if (HireOutcome is CandidateHireOutcome.Hired or CandidateHireOutcome.Runaway)
+        {
+            return CandidateErrors.Invalid(new Dictionary<string, string[]>
+            {
+                ["reviewStatus"] = ["Review status cannot change while the hire outcome is hired or runaway."]
+            });
+        }
+
         if (status == CandidateReviewStatus.New)
         {
             return CandidateErrors.Invalid(new Dictionary<string, string[]>
@@ -113,6 +123,37 @@ public sealed class Candidate : Entity
         }
 
         ReviewStatus = status;
+        return Result.Success();
+    }
+
+    internal Result SetHireOutcome(CandidateHireOutcome outcome)
+    {
+        if (outcome != CandidateHireOutcome.None && ReviewStatus != CandidateReviewStatus.Shortlisted)
+        {
+            return CandidateErrors.Invalid(new Dictionary<string, string[]>
+            {
+                ["reviewStatus"] = ["A hire outcome can only be set for a shortlisted candidate."]
+            });
+        }
+
+        var isAllowed = outcome switch
+        {
+            CandidateHireOutcome.None => true,
+            CandidateHireOutcome.Hired => HireOutcome is
+                CandidateHireOutcome.None or CandidateHireOutcome.Declined or CandidateHireOutcome.Runaway,
+            CandidateHireOutcome.Runaway => HireOutcome == CandidateHireOutcome.Hired,
+            CandidateHireOutcome.Declined => HireOutcome == CandidateHireOutcome.None,
+            _ => false
+        };
+        if (!isAllowed)
+        {
+            return CandidateErrors.Invalid(new Dictionary<string, string[]>
+            {
+                ["hireOutcome"] = ["The requested hire outcome transition is not allowed."]
+            });
+        }
+
+        HireOutcome = outcome;
         return Result.Success();
     }
 

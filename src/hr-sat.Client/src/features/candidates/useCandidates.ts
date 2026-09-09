@@ -10,6 +10,7 @@ export function useCandidates(vacancyId: Ref<string>, roundId: Ref<string>) {
   const candidates = shallowRef<CandidateSummary[] | null>(null)
   const loadError = shallowRef<string | null>(null)
   const removing = shallowRef(false)
+  const candidateCache = new Map<string, CandidateSummary[]>()
   let requestToken = 0
 
   const viewState = computed<CandidatesViewState>(() => {
@@ -23,20 +24,24 @@ export function useCandidates(vacancyId: Ref<string>, roundId: Ref<string>) {
   })
 
   async function load() {
-    // No round pinned yet (the vacancy rollup is still resolving). Stay in the
-    // loading state; every vacancy always has rounds, so the watch re-fires
-    // with a real round id once the selection is pinned.
-    if (roundId.value === '') {
-      return
-    }
     const token = ++requestToken
     loadError.value = null
+
+    if (roundId.value === '') {
+      candidates.value = null
+      return
+    }
+
+    const cacheKey = `${vacancyId.value}:${roundId.value}`
+    candidates.value = candidateCache.get(cacheKey) ?? null
+
     try {
       const list = await listCandidates(vacancyId.value, roundId.value)
       // Ignore stale responses when the route param changed meanwhile.
       if (token !== requestToken) {
         return
       }
+      candidateCache.set(cacheKey, list)
       candidates.value = list
     } catch (error) {
       if (token !== requestToken) {
@@ -50,8 +55,6 @@ export function useCandidates(vacancyId: Ref<string>, roundId: Ref<string>) {
   watch(
     [vacancyId, roundId],
     () => {
-      candidates.value = null
-      loadError.value = null
       void load()
     },
     { immediate: true },
