@@ -24,6 +24,7 @@ interface UseReviewShortcutsOptions {
   sourceEmailPanel: Readonly<Ref<SourceEmailHandle | null>>
   shortcutsHelpOpen: Ref<boolean>
   requirementCount: Readonly<Ref<number>>
+  outcomeDialogOpen: Readonly<Ref<boolean>>
   canSetOutcome: Readonly<Ref<boolean>>
   hireOutcome: Readonly<Ref<CandidateHireOutcome>>
   onPrev: () => void | Promise<void>
@@ -100,6 +101,7 @@ export function useReviewShortcuts(options: UseReviewShortcutsOptions) {
   function isArmed(event?: KeyboardEvent) {
     return (
       !shortcutsHelpOpen.value &&
+      !options.outcomeDialogOpen.value &&
       !isEditableTarget(event?.target ?? null) &&
       !isEditableElement(document.activeElement)
     )
@@ -165,6 +167,9 @@ export function useReviewShortcuts(options: UseReviewShortcutsOptions) {
       Escape: {
         usingInput: true,
         handler: () => {
+          if (options.outcomeDialogOpen.value) {
+            return
+          }
           if (shortcutsHelpOpen.value) {
             shortcutsHelpOpen.value = false
             return

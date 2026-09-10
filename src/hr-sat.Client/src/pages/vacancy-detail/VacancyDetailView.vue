@@ -11,6 +11,7 @@ import CandidateToolbar from '@/features/candidates/components/CandidateToolbar.
 import RoundList from '@/features/intake-rounds/components/RoundList.vue'
 import CreateRoundDialog from '@/features/intake-rounds/components/CreateRoundDialog.vue'
 import CloseRoundDialog from '@/features/intake-rounds/components/CloseRoundDialog.vue'
+import PromoteCandidatesDialog from '@/features/promote-candidates/components/PromoteCandidatesDialog.vue'
 import { candidateFilterQuery, candidateFilterStateFromQuery } from '@/features/candidates/filter'
 import { useVacancyDetailFlow } from '@/features/vacancy-detail/useVacancyDetailFlow'
 import { formatDate } from '@/features/vacancies/format'
@@ -37,6 +38,7 @@ const {
   },
   rounds: {
     rounds,
+    closedRounds,
     selectedRoundId,
     selectRound,
     canOpenRound,
@@ -50,15 +52,31 @@ const {
     createRound,
     closeRound,
   },
+  promote: {
+    canPromote,
+    open: promoteOpen,
+    sourceRoundId: promoteSourceRoundId,
+    promotableCandidates,
+    sourceLoading: promoteSourceLoading,
+    sourceError: promoteSourceError,
+    selectedCandidateIds: promoteSelectedCandidateIds,
+    submitting: promoting,
+    submitError: promoteSubmitError,
+    canSubmit: canPromoteSubmit,
+    openDialog: openPromoteDialog,
+    submit: submitPromotions,
+  },
   candidates: {
     candidates,
     candidatesError,
     removing,
     loadCandidates,
     statusFilter,
+    outcomeFilter,
     searchQuery,
     receivedSort,
     statusCounts,
+    outcomeCounts,
     filteredCandidates,
     listState,
     toggleReceivedSort,
@@ -162,6 +180,7 @@ function openReview(candidate: CandidateSummary) {
     params: { id: props.id, roundId: selectedRoundId.value, candidateId: candidate.id },
     query: candidateFilterQuery({
       status: statusFilter.value,
+      outcome: outcomeFilter.value,
       query: searchQuery.value,
       receivedSort: receivedSort.value,
     }),
@@ -281,6 +300,16 @@ function openReview(candidate: CandidateSummary) {
         :class="listState.kind === 'ready' ? 'p-0' : 'p-3'"
         aria-label="Candidates"
       >
+        <div v-if="canPromote" class="flex justify-end border-b border-default px-5 py-3">
+          <UButton
+            color="primary"
+            variant="soft"
+            icon="i-lucide-arrow-up-right"
+            @click="openPromoteDialog"
+          >
+            Promote from…
+          </UButton>
+        </div>
         <!-- Shape-matched table skeleton (ADR-0008 decision 14) -->
         <div
           v-if="listState.kind === 'loading'"
@@ -357,15 +386,17 @@ function openReview(candidate: CandidateSummary) {
           <div class="border-b border-default px-5 py-3">
             <CandidateToolbar
               v-model:status="statusFilter"
+              v-model:outcome="outcomeFilter"
               v-model:query="searchQuery"
               :counts="statusCounts"
+              :outcome-counts="outcomeCounts"
               :total="(candidates ?? []).length"
             />
           </div>
           <UEmpty
             v-if="filteredCandidates.length === 0"
             icon="i-lucide-search-x"
-            title="No candidates match"
+            title="No candidates match these filters"
             description="Try a different search or clear the filters."
             class="min-h-40 px-6 py-10"
             :actions="[{ label: 'Clear filters', icon: 'i-lucide-x', onClick: clearFilters }]"
@@ -420,6 +451,19 @@ function openReview(candidate: CandidateSummary) {
       :shortage="roundShortage"
       :closing="closingRound"
       @confirm="confirmCloseRound"
+    />
+    <PromoteCandidatesDialog
+      v-model:open="promoteOpen"
+      v-model:source-round-id="promoteSourceRoundId"
+      v-model:selected-candidate-ids="promoteSelectedCandidateIds"
+      :rounds="closedRounds"
+      :promotable-candidates="promotableCandidates"
+      :loading="promoteSourceLoading"
+      :error="promoteSourceError"
+      :submitting="promoting"
+      :submit-error="promoteSubmitError"
+      :can-submit="canPromoteSubmit"
+      @submit="submitPromotions"
     />
   </div>
 </template>

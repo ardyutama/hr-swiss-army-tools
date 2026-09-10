@@ -4,6 +4,8 @@ public sealed record CandidateDetailsResponse(
     long Id,
     string ReviewStatus,
     string HireOutcome,
+    int? PromotedFromRoundNumber,
+    DateTimeOffset? PromotedAt,
     string? FullName,
     string? ContactEmail,
     string? Notes,

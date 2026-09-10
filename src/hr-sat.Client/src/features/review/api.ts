@@ -9,6 +9,8 @@ export interface CandidateDetails {
   id: number
   reviewStatus: CandidateReviewStatus
   hireOutcome: CandidateHireOutcome
+  promotedFromRoundNumber: number | null
+  promotedAt: string | null
   fullName: string | null
   contactEmail: string | null
   notes: string | null
@@ -39,6 +41,7 @@ export interface ReviewDecisionPayload {
 
 export interface CandidateOutcomePayload {
   outcome: CandidateHireOutcome
+  note?: string
 }
 
 function candidatePath(vacancyId: string, roundId: string, candidateId: number): string {

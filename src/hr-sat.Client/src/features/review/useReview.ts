@@ -71,6 +71,7 @@ export function useReview(
         summaries.value ?? [],
         filters.value.status,
         filters.value.query,
+        filters.value.outcome,
       ),
       filters.value.receivedSort,
     ),
@@ -284,9 +285,12 @@ export function useReview(
     }
   }
 
-  async function setOutcome(outcome: CandidateHireOutcome): Promise<boolean> {
+  async function setOutcome(outcome: CandidateHireOutcome, note?: string): Promise<boolean> {
     const current = candidate.value
     if (!current || settingOutcome.value || !canSetHireOutcome.value) {
+      return false
+    }
+    if (!(await saveNotes())) {
       return false
     }
 
@@ -297,12 +301,13 @@ export function useReview(
         vacancyId.value,
         roundId.value,
         current.id,
-        { outcome },
+        note?.trim() ? { outcome, note: note.trim() } : { outcome },
       )
       if (candidate.value?.id !== updated.id) {
         return false
       }
       candidate.value = updated
+      notes.value = updated.notes ?? ''
       patchSummary(updated)
       return true
     } catch (error) {

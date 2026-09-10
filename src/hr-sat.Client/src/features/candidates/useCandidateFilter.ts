@@ -3,9 +3,11 @@ import type { CandidateSummary } from './api'
 import type { CandidatesViewState } from './useCandidates'
 import {
   type CandidateFilterState,
+  countByHireOutcome,
   countByReviewStatus,
   filterCandidates,
   sortByReceived,
+  type CandidateOutcomeFilter,
   type CandidateStatusFilter,
   type ReceivedSort,
 } from './filter'
@@ -53,14 +55,18 @@ export function useCandidateFilter(
   initial: Partial<CandidateFilterState> = {},
 ) {
   const status = shallowRef<CandidateStatusFilter>(initial.status ?? 'all')
+  const outcome = shallowRef<CandidateOutcomeFilter>(initial.outcome ?? 'any')
   const query = shallowRef(initial.query ?? '')
   const receivedSort = shallowRef<ReceivedSort>(initial.receivedSort ?? 'newest')
 
   const statusCounts = computed(() => countByReviewStatus(candidates.value ?? []))
+  const outcomeCounts = computed(() => countByHireOutcome(candidates.value ?? []))
 
   const filteredCandidates = computed(() =>
     sortByReceived(
-      filterCandidates(candidates.value ?? [], status.value, query.value),
+      // Outcome is an independent facet and composes with review status/search.
+      // The helper also applies the shortlisted-only scope for non-any values.
+      filterCandidates(candidates.value ?? [], status.value, query.value, outcome.value),
       receivedSort.value,
     ),
   )
@@ -95,14 +101,17 @@ export function useCandidateFilter(
 
   function clearFilters() {
     status.value = 'all'
+    outcome.value = 'any'
     query.value = ''
   }
 
   return {
     status,
+    outcome,
     query,
     receivedSort,
     statusCounts,
+    outcomeCounts,
     filteredCandidates,
     listState,
     toggleReceivedSort,

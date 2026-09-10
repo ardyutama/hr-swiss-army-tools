@@ -1,13 +1,18 @@
-import type { CandidateReviewStatus, CandidateSummary } from './api'
+import type { CandidateHireOutcome, CandidateReviewStatus, CandidateSummary } from './api'
 import { candidateDisplayName } from './format'
 
 export type CandidateStatusFilter = 'all' | CandidateReviewStatus
+export type CandidateOutcomeFilter =
+  | 'any'
+  | 'undecided'
+  | Exclude<CandidateHireOutcome, 'none'>
 
 /** Sort direction for the Received column: source sent-at, oldest first by default. */
 export type ReceivedSort = 'oldest' | 'newest'
 
 export interface CandidateFilterState {
   status: CandidateStatusFilter
+  outcome: CandidateOutcomeFilter
   query: string
   receivedSort: ReceivedSort
 }
@@ -18,6 +23,14 @@ const candidateStatusFilters: CandidateStatusFilter[] = [
   'flagged',
   'shortlisted',
   'rejected',
+]
+
+const candidateOutcomeFilters: CandidateOutcomeFilter[] = [
+  'any',
+  'undecided',
+  'hired',
+  'runaway',
+  'declined',
 ]
 
 function queryString(value: unknown): string {
@@ -32,10 +45,17 @@ export function candidateFilterStateFromQuery(
   query: Readonly<Record<string, unknown>>,
 ): CandidateFilterState {
   const statusValue = queryString(query.status)
+  const outcomeValue = queryString(query.outcome)
+  const status = candidateStatusFilters.includes(statusValue as CandidateStatusFilter)
+    ? (statusValue as CandidateStatusFilter)
+    : 'all'
+  const rawOutcome = candidateOutcomeFilters.includes(outcomeValue as CandidateOutcomeFilter)
+    ? (outcomeValue as CandidateOutcomeFilter)
+    : 'any'
   return {
-    status: candidateStatusFilters.includes(statusValue as CandidateStatusFilter)
-      ? (statusValue as CandidateStatusFilter)
-      : 'all',
+    status,
+    // Outcome only exists under Shortlisted (or All); other statuses sanitize to 'any'.
+    outcome: status === 'all' || status === 'shortlisted' ? rawOutcome : 'any',
     query: queryString(query.query),
     receivedSort: queryString(query.sort) === 'oldest' ? 'oldest' : 'newest',
   }
@@ -46,6 +66,9 @@ export function candidateFilterQuery(filters: CandidateFilterState): Record<stri
   const query: Record<string, string> = {}
   if (filters.status !== 'all') {
     query.status = filters.status
+  }
+  if (filters.outcome !== 'any') {
+    query.outcome = filters.outcome
   }
   if (filters.query.trim() !== '') {
     query.query = filters.query.trim()
@@ -74,12 +97,42 @@ export function filterCandidates(
   candidates: CandidateSummary[],
   status: CandidateStatusFilter,
   query: string,
+  outcome: CandidateOutcomeFilter = 'any',
 ): CandidateSummary[] {
   return candidates.filter(
     (candidate) =>
       (status === 'all' || candidate.reviewStatus === status) &&
+      (outcome === 'any' ||
+        (candidate.reviewStatus === 'shortlisted' &&
+          (outcome === 'undecided'
+            ? candidate.hireOutcome === 'none'
+            : candidate.hireOutcome === outcome))) &&
       matchesCandidateQuery(candidate, query),
   )
+}
+
+/** Counts outcome facets from the selected round, independent of other filters. */
+export function countByHireOutcome(
+  candidates: CandidateSummary[],
+): Record<CandidateOutcomeFilter, number> {
+  const counts: Record<CandidateOutcomeFilter, number> = {
+    any: candidates.length,
+    undecided: 0,
+    hired: 0,
+    runaway: 0,
+    declined: 0,
+  }
+  for (const candidate of candidates) {
+    if (candidate.reviewStatus !== 'shortlisted') {
+      continue
+    }
+    if (candidate.hireOutcome === 'none') {
+      counts.undecided += 1
+    } else {
+      counts[candidate.hireOutcome] += 1
+    }
+  }
+  return counts
 }
 
 /** Live counts per review status for the filter chips. */

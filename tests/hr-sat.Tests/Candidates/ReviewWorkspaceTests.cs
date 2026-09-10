@@ -153,6 +153,74 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
     }
 
     [Fact]
+    public async Task Hire_outcome_appends_note_and_preserves_notes_for_blank_note()
+    {
+        using var client = factory.CreateClient();
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client, "SQL");
+        var candidate = await ImportCandidateAsync(client, vacancyLocation, roundId, "Alice Applicant");
+        await UpdateReviewAsync(client, vacancyLocation, roundId, candidate.Id, "shortlisted");
+
+        var existingNotes = await client.PutAsJsonAsync(
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "notes"),
+            new { notes = "Existing review context." });
+        Assert.Equal(HttpStatusCode.OK, existingNotes.StatusCode);
+
+        var hired = await client.PutAsJsonAsync(
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "outcome"),
+            new { outcome = "hired", note = "  Started on Monday.  " });
+        Assert.Equal(HttpStatusCode.OK, hired.StatusCode);
+        var hiredDetails = await hired.Content.ReadFromJsonAsync<CandidateDetails>();
+        Assert.NotNull(hiredDetails);
+        Assert.Equal("hired", hiredDetails.HireOutcome);
+        Assert.Equal("Existing review context.\nStarted on Monday.", hiredDetails.Notes);
+
+        var cleared = await client.PutAsJsonAsync(
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "outcome"),
+            new { outcome = "none", note = "   " });
+        Assert.Equal(HttpStatusCode.OK, cleared.StatusCode);
+        var clearedDetails = await cleared.Content.ReadFromJsonAsync<CandidateDetails>();
+        Assert.NotNull(clearedDetails);
+        Assert.Equal("none", clearedDetails.HireOutcome);
+        Assert.Equal("Existing review context.\nStarted on Monday.", clearedDetails.Notes);
+
+        var persisted = await client.GetFromJsonAsync<CandidateDetails>(
+            CandidatePath(vacancyLocation, roundId, candidate.Id));
+        Assert.NotNull(persisted);
+        Assert.Equal("none", persisted.HireOutcome);
+        Assert.Equal("Existing review context.\nStarted on Monday.", persisted.Notes);
+    }
+
+    [Fact]
+    public async Task Hire_outcome_rejects_an_overlong_combined_note_without_mutating_state()
+    {
+        using var client = factory.CreateClient();
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client, "SQL");
+        var candidate = await ImportCandidateAsync(client, vacancyLocation, roundId, "Alice Applicant");
+        await UpdateReviewAsync(client, vacancyLocation, roundId, candidate.Id, "shortlisted");
+
+        var existingNotes = new string('x', 3999);
+        var notesResponse = await client.PutAsJsonAsync(
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "notes"),
+            new { notes = existingNotes });
+        Assert.Equal(HttpStatusCode.OK, notesResponse.StatusCode);
+
+        var outcomeResponse = await client.PutAsJsonAsync(
+            CandidatePath(vacancyLocation, roundId, candidate.Id, "outcome"),
+            new { outcome = "declined", note = "x" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, outcomeResponse.StatusCode);
+        var problem = await outcomeResponse.Content.ReadFromJsonAsync<ValidationProblemResponse>();
+        Assert.NotNull(problem);
+        Assert.Contains("notes", problem.Errors.Keys);
+
+        var persisted = await client.GetFromJsonAsync<CandidateDetails>(
+            CandidatePath(vacancyLocation, roundId, candidate.Id));
+        Assert.NotNull(persisted);
+        Assert.Equal("none", persisted.HireOutcome);
+        Assert.Equal(existingNotes, persisted.Notes);
+    }
+
+    [Fact]
     public async Task Hire_outcome_changes_are_allowed_after_round_closes_when_vacancy_is_open()
     {
         using var client = factory.CreateClient();

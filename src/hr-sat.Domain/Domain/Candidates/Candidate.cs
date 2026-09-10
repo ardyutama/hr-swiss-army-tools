@@ -41,6 +41,8 @@ public sealed class Candidate : Entity
     }
 
     public long IntakeRoundId { get; private set; }
+    public int? PromotedFromRoundNumber { get; private set; }
+    public DateTimeOffset? PromotedAt { get; private set; }
     public CandidateReviewStatus ReviewStatus { get; private set; }
     public CandidateHireOutcome HireOutcome { get; private set; }
     public CandidateExtractionStatus ExtractionStatus { get; private set; }
@@ -126,7 +128,7 @@ public sealed class Candidate : Entity
         return Result.Success();
     }
 
-    internal Result SetHireOutcome(CandidateHireOutcome outcome)
+    internal Result SetHireOutcome(CandidateHireOutcome outcome, string? note = null)
     {
         if (outcome != CandidateHireOutcome.None && ReviewStatus != CandidateReviewStatus.Shortlisted)
         {
@@ -153,7 +155,52 @@ public sealed class Candidate : Entity
             });
         }
 
+        var normalizedNote = note?.Trim();
+        var updatedNotes = Notes;
+        if (!string.IsNullOrWhiteSpace(normalizedNote))
+        {
+            updatedNotes = string.IsNullOrWhiteSpace(Notes)
+                ? normalizedNote
+                : $"{Notes}\n{normalizedNote}";
+            if (updatedNotes.Length > 4000)
+            {
+                return CandidateErrors.Invalid(new Dictionary<string, string[]>
+                {
+                    ["notes"] = ["Notes must be 4000 characters or fewer."]
+                });
+            }
+        }
+
         HireOutcome = outcome;
+        Notes = updatedNotes;
+        return Result.Success();
+    }
+
+    internal bool CanBePromoted =>
+        ReviewStatus is (CandidateReviewStatus.New or CandidateReviewStatus.Flagged or CandidateReviewStatus.Shortlisted) &&
+        HireOutcome == CandidateHireOutcome.None;
+
+    internal Result PromoteTo(long targetRoundId, int sourceRoundNumber, DateTimeOffset promotedAt)
+    {
+        if (!CanBePromoted)
+        {
+            return CandidateErrors.Invalid(new Dictionary<string, string[]>
+            {
+                ["candidateId"] = ["Candidate is not promotable from its current round."]
+            });
+        }
+
+        if (targetRoundId <= 0 || sourceRoundNumber <= 0 || promotedAt == default)
+        {
+            return CandidateErrors.Invalid(new Dictionary<string, string[]>
+            {
+                ["promotion"] = ["Promotion details are invalid."]
+            });
+        }
+
+        IntakeRoundId = targetRoundId;
+        PromotedFromRoundNumber = sourceRoundNumber;
+        PromotedAt = promotedAt;
         return Result.Success();
     }
 

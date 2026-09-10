@@ -88,6 +88,8 @@ function candidateDetails(id: number, overrides: Record<string, unknown> = {}) {
     id,
     reviewStatus: 'new',
     hireOutcome: 'none',
+    promotedFromRoundNumber: null,
+    promotedAt: null,
     fullName: name,
     contactEmail: `candidate${id}@mail.com`,
     notes: null,
@@ -162,11 +164,18 @@ function stubApi(
     }
     if (method === 'PUT' && url.endsWith('/outcome')) {
       const id = Number(/\/candidates\/(\d+)\/outcome/.exec(url)?.[1])
+      const previousNotes = (options.details?.[id]?.notes as string | null | undefined) ?? null
+      const outcomeNote = typeof body?.note === 'string' ? body.note : null
       return Promise.resolve(
         jsonResponse(
           candidateDetails(id, {
             ...options.details?.[id],
             hireOutcome: body?.outcome,
+            notes: outcomeNote
+              ? previousNotes
+                ? `${previousNotes}\n${outcomeNote}`
+                : outcomeNote
+              : previousNotes,
           }),
         ),
       )
@@ -280,6 +289,29 @@ describe('ReviewView', () => {
     expect(wrapper.find('button[aria-label="Previous page"] kbd').text()).toBe('Shift+←')
     expect(wrapper.find('button[aria-label="Next page"] kbd').text()).toBe('Shift+→')
     wrapper.unmount()
+  })
+
+  it('Promote: the review details show promotion history only when provenance exists', async () => {
+    stubApi({
+      details: {
+        1: candidateDetails(1, {
+          promotedFromRoundNumber: 1,
+          promotedAt: '2026-09-10T14:30:00Z',
+        }),
+      },
+    })
+    const promotedView = await mountReview()
+    await flushPromises()
+
+    expect(promotedView.wrapper.text()).toContain('Promoted from Round 1 on 2026-09-10.')
+    promotedView.wrapper.unmount()
+
+    stubApi()
+    const originalView = await mountReview()
+    await flushPromises()
+
+    expect(originalView.wrapper.text()).not.toContain('Promoted from Round')
+    originalView.wrapper.unmount()
   })
 
   it('US-15: Shift+Arrow keys focus and paginate the CV without changing candidates', async () => {
@@ -709,11 +741,11 @@ describe('ReviewView', () => {
     closedVacancyView.wrapper.unmount()
   })
 
-  it('domain: H, U, and D shortcuts follow the hire outcome transitions', async () => {
+  it('domain: H stays direct while U and D require consequential outcome confirmation', async () => {
     const { requests } = stubApi({
       details: { 1: candidateDetails(1, { reviewStatus: 'shortlisted' }) },
     })
-    const { wrapper } = await mountReview()
+    const { wrapper, router } = await mountReview()
     await flushPromises()
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'h' }))
@@ -723,15 +755,52 @@ describe('ReviewView', () => {
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'u' }))
     await flushPromises()
-    expect(requests.filter((request) => request.url.endsWith('/outcome'))).toHaveLength(2)
-    expect(requests.at(-1)?.body).toEqual({ outcome: 'runaway' })
-
-    await findButton(wrapper, 'Clear outcome').trigger('click')
+    expect(requests.filter((request) => request.url.endsWith('/outcome'))).toHaveLength(1)
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain(
+      'Reopens 1 needed-hire slot',
+    )
+    const outcomeNote = document.body.querySelector('textarea[aria-label="Outcome note"]')
+    expect(document.activeElement).toBe(outcomeNote)
+    await new DOMWrapper(outcomeNote as HTMLTextAreaElement).setValue('Left after starting.')
+    await new DOMWrapper(outcomeNote as HTMLTextAreaElement).trigger('keydown', { key: 'Enter' })
     await flushPromises()
+    const outcomeRequests = requests.filter((request) => request.url.endsWith('/outcome'))
+    expect(outcomeRequests).toHaveLength(2)
+    expect(outcomeRequests.at(-1)?.body).toEqual({ outcome: 'runaway', note: 'Left after starting.' })
+    expect(router.currentRoute.value.params.candidateId).toBe('2')
+    await flushPromises()
+    wrapper.unmount()
+  })
+
+  it('domain: D opens a cancellable confirmation and empty note confirms', async () => {
+    const declined = stubApi({
+      candidateCount: 1,
+      details: { 1: candidateDetails(1, { reviewStatus: 'shortlisted' }) },
+    })
+    const declinedView = await mountReview()
+    await flushPromises()
+
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd' }))
     await flushPromises()
-    expect(requests.at(-1)?.body).toEqual({ outcome: 'declined' })
-    wrapper.unmount()
+    expect(declined.requests.filter((request) => request.url.endsWith('/outcome'))).toHaveLength(0)
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain(
+      'Does not reopen a slot',
+    )
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+    expect(declined.requests.filter((request) => request.url.endsWith('/outcome'))).toHaveLength(0)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd' }))
+    await flushPromises()
+    const declinedNote = document.body.querySelector('textarea[aria-label="Outcome note"]')
+    expect(declinedNote).toBeDefined()
+    declinedNote?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    await flushPromises()
+    expect(declined.requests.filter((request) => request.url.endsWith('/outcome')).at(-1)?.body).toEqual({
+      outcome: 'declined',
+    })
+    declinedView.wrapper.unmount()
   })
 
   it('US-18: HR explicitly saves notes and sees a Saving… to Saved whisper', async () => {

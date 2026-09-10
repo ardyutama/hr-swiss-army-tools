@@ -57,6 +57,10 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
         entity.Property(candidate => candidate.IntakeRoundId)
             .HasColumnName("intake_round_id")
             .IsRequired();
+        entity.Property(candidate => candidate.PromotedFromRoundNumber)
+            .HasColumnName("promoted_from_round_number");
+        entity.Property(candidate => candidate.PromotedAt)
+            .HasColumnName("promoted_at");
         entity.Property(candidate => candidate.ReviewStatus)
             .HasColumnName("review_status")
             .HasColumnType("text")

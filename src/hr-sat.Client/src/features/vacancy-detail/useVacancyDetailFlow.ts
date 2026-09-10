@@ -5,6 +5,7 @@ import { useCandidateFilter } from '@/features/candidates/useCandidateFilter'
 import { useCandidateImport } from '@/features/candidates/useCandidateImport'
 import { useCandidates } from '@/features/candidates/useCandidates'
 import { useIntakeRounds } from '@/features/intake-rounds/useIntakeRounds'
+import { usePromoteCandidates } from '@/features/promote-candidates/usePromoteCandidates'
 import type { VacancyRound } from '@/features/vacancies/api'
 import { progressPercent } from '@/features/vacancies/format'
 import { hiringShortage } from '@/features/vacancies/hiring'
@@ -29,6 +30,15 @@ export function useVacancyDetailFlow(
   const { vacancy, loadError, viewState, load } = useVacancyDetail(vacancyId)
 
   const rounds = computed<VacancyRound[]>(() => vacancy.value?.rounds ?? [])
+  const closedRounds = computed(() =>
+    rounds.value
+      .filter((round) => round.status === 'closed')
+      .sort((left, right) => {
+        const leftClosedAt = left.closedAt ? Date.parse(left.closedAt) : Number.NEGATIVE_INFINITY
+        const rightClosedAt = right.closedAt ? Date.parse(right.closedAt) : Number.NEGATIVE_INFINITY
+        return rightClosedAt - leftClosedAt || right.roundNumber - left.roundNumber
+      }),
+  )
 
   const {
     creating: creatingRound,
@@ -96,9 +106,11 @@ export function useVacancyDetailFlow(
   } = useCandidates(vacancyId, selectedRoundParam)
   const {
     status: statusFilter,
+    outcome: outcomeFilter,
     query: searchQuery,
     receivedSort,
     statusCounts,
+    outcomeCounts,
     filteredCandidates,
     listState,
     toggleReceivedSort,
@@ -128,6 +140,14 @@ export function useVacancyDetailFlow(
   })
   const vacancyRequirements = computed(
     () => vacancy.value?.requirements.map((requirement) => requirement.phrase) ?? [],
+  )
+
+  const canPromote = computed(
+    () =>
+      !isClosed.value &&
+      selectedRound.value?.status === 'open' &&
+      activeRound.value?.id === selectedRound.value?.id &&
+      closedRounds.value.length > 0,
   )
 
   async function importFiles(files: File[]): Promise<boolean> {
@@ -173,6 +193,18 @@ export function useVacancyDetailFlow(
     }
   }
 
+  async function refreshAfterPromotion() {
+    await Promise.all([load(), loadCandidates()])
+  }
+
+  const promotion = usePromoteCandidates(
+    vacancyId,
+    activeRound,
+    closedRounds,
+    canPromote,
+    refreshAfterPromotion,
+  )
+
   return {
     vacancy: {
       vacancy,
@@ -184,6 +216,7 @@ export function useVacancyDetailFlow(
     },
     rounds: {
       rounds,
+      closedRounds,
       activeRound,
       creatingRound,
       closingRound,
@@ -205,15 +238,31 @@ export function useVacancyDetailFlow(
       removing,
       loadCandidates,
       statusFilter,
+      outcomeFilter,
       searchQuery,
       receivedSort,
       statusCounts,
+      outcomeCounts,
       filteredCandidates,
       listState,
       toggleReceivedSort,
       clearFilters,
       candidatesReadonly,
       deleteCandidate,
+    },
+    promote: {
+      canPromote,
+      open: promotion.open,
+      sourceRoundId: promotion.sourceRoundId,
+      promotableCandidates: promotion.promotableCandidates,
+      sourceLoading: promotion.sourceLoading,
+      sourceError: promotion.sourceError,
+      selectedCandidateIds: promotion.selectedCandidateIds,
+      submitting: promotion.submitting,
+      submitError: promotion.submitError,
+      canSubmit: promotion.canSubmit,
+      openDialog: promotion.openDialog,
+      submit: promotion.submit,
     },
     import: {
       importing,

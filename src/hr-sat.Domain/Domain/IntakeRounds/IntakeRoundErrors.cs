@@ -20,6 +20,10 @@ public static class IntakeRoundErrors
         "IntakeRounds.Closed",
         $"Intake round with id '{id}' is closed and read-only.");
 
+    public static Error NotClosed(long id) => Error.Conflict(
+        "IntakeRounds.NotClosed",
+        $"Intake round with id '{id}' must be closed before candidates can be promoted from it.");
+
     public static ValidationError Invalid(IReadOnlyDictionary<string, string[]> errors) =>
         new("IntakeRounds.Invalid", "The intake round is invalid.", errors);
 }

@@ -25,6 +25,8 @@ internal static class CandidateDetailsReader
                 candidate.Id,
                 candidate.ReviewStatus.ToString().ToLowerInvariant(),
                 candidate.HireOutcome.ToString().ToLowerInvariant(),
+                candidate.PromotedFromRoundNumber,
+                candidate.PromotedAt,
                 candidate.FullName,
                 candidate.ContactEmail,
                 candidate.Notes,

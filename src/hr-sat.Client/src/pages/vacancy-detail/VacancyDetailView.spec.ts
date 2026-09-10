@@ -150,6 +150,38 @@ function mountView(id = '1') {
   return { router, wrapper }
 }
 
+/**
+ * Mount with initial route query params. Unlike mountView, the query must be
+ * resolved before the view's setup runs — the view reads route.query once — so
+ * the router pushes the location and awaits isReady before mounting.
+ */
+async function mountViewWithQuery(id: string, query: Record<string, string>) {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', name: 'vacancy-list', component: { template: '<div />' } },
+      { path: '/vacancies/:id', name: 'vacancy-detail', component: { template: '<div />' } },
+      {
+        path: '/vacancies/:id/rounds/:roundId/review/:candidateId',
+        name: 'candidate-review',
+        component: { template: '<div />' },
+      },
+    ],
+  })
+  void router.push({ path: `/vacancies/${id}`, query })
+  await router.isReady()
+  const wrapper = mount(VacancyDetailView, {
+    props: { id },
+    global: {
+      plugins: [router],
+      stubs: {
+        RouterLink: { template: '<a><slot /></a>' },
+      },
+    },
+  })
+  return { router, wrapper }
+}
+
 function bodyElement(selector: string): Element {
   const element = document.body.querySelector(selector)
   if (!element) {
@@ -674,6 +706,73 @@ describe('VacancyDetailView', () => {
     wrapper.unmount()
   })
 
+  it('US-14: outcome chips nest under Shortlisted and hide for other statuses', async () => {
+    stubFetch(
+      () => vacancyDetails(),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(1), bobSummary()]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const outcomeGroup = () => wrapper.find('[aria-label="Filter by hire outcome"]')
+    const statusChips = () => wrapper.findAll('[aria-label="Filter by review status"] button')
+
+    // All: outcome chips visible (shortlisted candidates are part of the list).
+    expect(outcomeGroup().exists()).toBe(true)
+
+    // Shortlisted: outcome chips stay visible.
+    await statusChips()[3]!.trigger('click')
+    expect(outcomeGroup().exists()).toBe(true)
+
+    // New: outcome chips hide — the facet does not exist outside Shortlisted.
+    await statusChips()[1]!.trigger('click')
+    expect(outcomeGroup().exists()).toBe(false)
+
+    // Back to All: outcome chips return.
+    await statusChips()[0]!.trigger('click')
+    expect(outcomeGroup().exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('US-14: a status that excludes shortlisted sanitizes a stale outcome from the URL', async () => {
+    stubFetch(
+      () => vacancyDetails(),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(
+            jsonResponse([
+              candidateSummary(1),
+              candidateSummary(2, {
+                sourceSenderName: 'Carol Welder',
+                sourceSenderEmail: 'carol@example.com',
+                reviewStatus: 'shortlisted',
+                hireOutcome: 'hired',
+              }),
+            ]),
+          )
+        }
+        return undefined
+      },
+    )
+
+    // Stale link: status=new with outcome=hired is a dead combination.
+    const { wrapper } = await mountViewWithQuery('1', { status: 'new', outcome: 'hired' })
+    await flushPromises()
+
+    // The outcome filter falls back to 'any', so the New candidate still shows.
+    expect(wrapper.findAll('.crow')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Alice Applicant')
+    // Outcome chips stay hidden under New.
+    expect(wrapper.find('[aria-label="Filter by hire outcome"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('US-14: HR searches candidates by sender email and email subject', async () => {
     stubFetch(
       () => vacancyDetails(),
@@ -710,6 +809,57 @@ describe('VacancyDetailView', () => {
     expect(wrapper.text()).toContain('CV submission via web form')
 
     await search.setValue('')
+    expect(wrapper.findAll('.crow')).toHaveLength(3)
+    wrapper.unmount()
+  })
+
+  it('domain: the Bench outcome facet scopes to shortlisted candidates and composes with search', async () => {
+    stubFetch(
+      () => vacancyDetails(),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(
+            jsonResponse([
+              candidateSummary(1),
+              bobSummary(),
+              candidateSummary(3, {
+                sourceSenderName: 'Carol Hired',
+                reviewStatus: 'shortlisted',
+                hireOutcome: 'hired',
+              }),
+            ]),
+          )
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const outcomeChips = () => wrapper.findAll('[aria-label="Filter by hire outcome"] button')
+    expect(outcomeChips().map((chip) => chip.text().replace(/\s+/g, ' ').trim())).toEqual([
+      'Any outcome 3',
+      'Bench 1',
+      'Hired 1',
+      'Runaway 0',
+      'Declined 0',
+    ])
+
+    await outcomeChips()[1]!.trigger('click')
+    expect(wrapper.findAll('.crow')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Bob Builder')
+    expect(wrapper.text()).not.toContain('Carol Hired')
+
+    await wrapper.find('input[aria-label="Search candidates"]').setValue('alice')
+    expect(wrapper.findAll('.crow')).toHaveLength(0)
+    expect(wrapper.text()).toContain('No candidates match these filters')
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Clear filters'))
+      ?.trigger('click')
+    expect(outcomeChips()[0]!.attributes('aria-pressed')).toBe('true')
     expect(wrapper.findAll('.crow')).toHaveLength(3)
     wrapper.unmount()
   })
@@ -828,6 +978,7 @@ describe('VacancyDetailView', () => {
               candidateSummary(2, {
                 sourceSenderName: 'Bob Builder',
                 reviewStatus: 'shortlisted',
+                hireOutcome: 'hired',
                 sourceSentAt: '2026-08-20T09:00:00Z',
               }),
               candidateSummary(3, {
@@ -848,13 +999,17 @@ describe('VacancyDetailView', () => {
       .findAll('[aria-label="Filter by review status"] button')
       .find((button) => button.text().includes('Shortlisted'))
     await shortlistChip!.trigger('click')
+    await wrapper
+      .findAll('[aria-label="Filter by hire outcome"] button')
+      .find((button) => button.text().includes('Hired'))
+      ?.trigger('click')
     await wrapper.find('th[aria-sort] button').trigger('click')
 
     await wrapper.findAll('.crow')[0]!.trigger('click')
     await flushPromises()
 
     expect(router.currentRoute.value.fullPath).toBe(
-      '/vacancies/1/rounds/1/review/2?status=shortlisted&sort=oldest',
+      '/vacancies/1/rounds/1/review/2?status=shortlisted&outcome=hired&sort=oldest',
     )
     wrapper.unmount()
   })
@@ -904,11 +1059,130 @@ describe('VacancyDetailView', () => {
     expect(
       wrapper.findAll('button').some((button) => button.text().includes('Manage rounds')),
     ).toBe(true)
+    expect(
+      wrapper.findAll('button').some((button) => button.text().includes('Promote from')),
+    ).toBe(false)
     // The V1 flow is otherwise untouched: import affordance and the round's candidates.
     expect(wrapper.findAll('button').some((button) => button.text().includes('Import .eml'))).toBe(
       true,
     )
     expect(wrapper.text()).toContain('Alice Applicant')
+    wrapper.unmount()
+  })
+
+  it('Promote: HR moves eligible candidates from a closed round into the active round', async () => {
+    let promoted = false
+    let activeListRequests = 0
+    let promotionBody: unknown
+    const activeCandidate = candidateSummary(3, { sourceSenderName: 'Current Applicant' })
+    const latestRoundCandidates = [
+      candidateSummary(1, { sourceSenderName: 'Alice Applicant', reviewStatus: 'new' }),
+      candidateSummary(2, { sourceSenderName: 'Bob Flagged', reviewStatus: 'flagged' }),
+      candidateSummary(4, { sourceSenderName: 'Rejected Applicant', reviewStatus: 'rejected' }),
+      candidateSummary(5, {
+        sourceSenderName: 'Hired Applicant',
+        reviewStatus: 'shortlisted',
+        hireOutcome: 'hired',
+      }),
+      candidateSummary(6, {
+        sourceSenderName: 'Declined Applicant',
+        reviewStatus: 'shortlisted',
+        hireOutcome: 'declined',
+      }),
+    ]
+    stubFetch(
+      () =>
+        vacancyDetails({
+          rounds: [
+            closedRound({
+              id: 1,
+              roundNumber: 1,
+              name: 'First wave',
+              closedAt: '2026-09-10T10:00:00Z',
+              candidateCount: 1,
+            }),
+            closedRound({
+              id: 2,
+              roundNumber: 2,
+              name: 'Second wave',
+              closedAt: '2026-09-08T10:00:00Z',
+              candidateCount: promoted ? 0 : 5,
+            }),
+            openRound({ id: 3, roundNumber: 3, candidateCount: promoted ? 2 : 1 }),
+          ],
+          progress: {
+            processedCandidates: promoted ? 1 : 0,
+            totalCandidates: promoted ? 2 : 1,
+          },
+        }),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/rounds/3/promotions')) {
+          promoted = true
+          promotionBody = JSON.parse(String(init.body))
+          return Promise.resolve(jsonResponse([candidateSummary(7, { sourceSenderName: 'Earlier Applicant' })]))
+        }
+        if (url.includes('/rounds/3/candidates')) {
+          activeListRequests += 1
+          return Promise.resolve(
+            jsonResponse(promoted ? [activeCandidate, candidateSummary(7, { sourceSenderName: 'Earlier Applicant' })] : [activeCandidate]),
+          )
+        }
+        if (url.includes('/rounds/2/candidates')) {
+          return Promise.resolve(jsonResponse(latestRoundCandidates))
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(8, { sourceSenderName: 'Oldest Applicant' })]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const promoteButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Promote from'))
+    expect(promoteButton, 'a Promote from action for the active round').toBeDefined()
+    await promoteButton!.trigger('click')
+    await flushPromises()
+
+    const dialog = document.body.querySelector('[role="dialog"]')
+    expect(dialog?.textContent).toContain('Round 1 — First wave')
+    expect(dialog?.textContent).toContain('Oldest Applicant')
+    expect(dialog?.textContent).not.toContain('Alice Applicant')
+
+    const sourceRound = new DOMWrapper(
+      document.body.querySelector('select[aria-label="Source round"]') as HTMLSelectElement,
+    )
+    await sourceRound.setValue('2')
+    await flushPromises()
+    expect(document.body.textContent).toContain('Alice Applicant')
+    expect(document.body.textContent).toContain('Bob Flagged')
+    expect(document.body.textContent).not.toContain('Rejected Applicant')
+    expect(document.body.textContent).not.toContain('Hired Applicant')
+    expect(document.body.textContent).not.toContain('Declined Applicant')
+
+    const candidateCheckbox = new DOMWrapper(
+      document.body.querySelector('input[aria-label="Promote Alice Applicant"]') as HTMLInputElement,
+    )
+    await candidateCheckbox.setValue(true)
+    await flushPromises()
+
+    const submitButton = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Promote selected'),
+    )
+    expect(submitButton).toBeDefined()
+    await new DOMWrapper(submitButton as HTMLButtonElement).trigger('click')
+    await flushPromises()
+
+    expect(promotionBody).toEqual({ sourceRoundId: 2, candidateIds: [1] })
+    expect(activeListRequests).toBeGreaterThan(1)
+    expect(wrapper.text()).toContain('Earlier Applicant')
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ title: '1 candidate promoted successfully', color: 'success' }),
+    )
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
     wrapper.unmount()
   })
 

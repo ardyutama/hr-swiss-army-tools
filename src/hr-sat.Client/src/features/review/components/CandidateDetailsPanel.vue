@@ -3,6 +3,7 @@ import { computed, nextTick, shallowRef, useTemplateRef, watch } from 'vue'
 import { candidateDisplayName } from '@/features/candidates/format'
 import type { CandidateHireOutcome } from '@/features/candidates/api'
 import type { CandidateDetails, CandidateDetailsPayload } from '../api'
+import { formatPromotionHistory } from '../format'
 import { candidateDetailsValidationErrors } from '../validation'
 
 const props = withDefaults(
@@ -60,6 +61,9 @@ watch(
 
 const validationErrors = computed(() =>
   candidateDetailsValidationErrors(draftFullName.value, draftContactEmail.value),
+)
+const promotionHistory = computed(() =>
+  formatPromotionHistory(props.candidate.promotedFromRoundNumber, props.candidate.promotedAt),
 )
 
 function startEditing() {
@@ -176,6 +180,10 @@ defineExpose({ focusEditing })
     <template v-else>
       <p class="text-xl font-bold tracking-tight text-highlighted">
         {{ candidateDisplayName(candidate) }}
+      </p>
+      <p v-if="promotionHistory" class="mt-1 text-sm text-muted">
+        <UIcon name="i-lucide-arrow-up-right" class="mr-1 inline size-3.5" aria-hidden="true" />
+        {{ promotionHistory }}
       </p>
       <dl class="mt-2 flex flex-col gap-1.5">
         <div class="flex items-center gap-2 text-sm text-muted">

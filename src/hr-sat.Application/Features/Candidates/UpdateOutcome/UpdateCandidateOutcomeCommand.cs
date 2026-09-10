@@ -7,4 +7,5 @@ public sealed record UpdateCandidateOutcomeCommand(
     long VacancyId,
     long RoundId,
     long CandidateId,
-    string? Outcome) : ICommand<CandidateDetailsResponse>;
+    string? Outcome,
+    string? Note) : ICommand<CandidateDetailsResponse>;

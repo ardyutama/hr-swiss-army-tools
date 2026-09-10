@@ -153,6 +153,14 @@ namespace hr_sat.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("source_subject");
 
+                    b.Property<DateTimeOffset?>("PromotedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("promoted_at");
+
+                    b.Property<int?>("PromotedFromRoundNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("promoted_from_round_number");
+
                     b.HasKey("Id");
 
                     b.HasIndex("SourceStorageKey")

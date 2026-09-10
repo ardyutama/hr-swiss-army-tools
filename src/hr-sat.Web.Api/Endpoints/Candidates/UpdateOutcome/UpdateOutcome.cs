@@ -23,7 +23,8 @@ internal sealed class UpdateOutcome : IEndpoint
                             vacancyId,
                             roundId,
                             candidateId,
-                            request.Outcome),
+                            request.Outcome,
+                            request.Note),
                         cancellationToken);
                     return result.Match<IResult>(
                         TypedResults.Ok,

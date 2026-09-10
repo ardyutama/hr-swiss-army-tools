@@ -17,5 +17,8 @@ public sealed class UpdateCandidateOutcomeCommandValidator
                 Enum.TryParse<CandidateHireOutcome>(outcome, true, out var parsed) &&
                 Enum.IsDefined(parsed))
             .WithMessage("Hire outcome must be none, hired, runaway, or declined.");
+        RuleFor(command => command.Note)
+            .MaximumLength(4000)
+            .WithMessage("Notes must be 4000 characters or fewer.");
     }
 }

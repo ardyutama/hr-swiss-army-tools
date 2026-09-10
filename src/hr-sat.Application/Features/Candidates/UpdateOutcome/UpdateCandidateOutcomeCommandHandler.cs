@@ -41,7 +41,7 @@ internal sealed class UpdateCandidateOutcomeCommandHandler(IApplicationDbContext
                     return Result<Candidate>.Failure(CandidateErrors.NotFound(command.CandidateId));
                 }
 
-                var mutationResult = candidate.SetHireOutcome(outcome);
+                var mutationResult = candidate.SetHireOutcome(outcome, command.Note);
                 return mutationResult.IsFailure
                     ? Result<Candidate>.Failure(mutationResult.Error)
                     : Result<Candidate>.Success(candidate);

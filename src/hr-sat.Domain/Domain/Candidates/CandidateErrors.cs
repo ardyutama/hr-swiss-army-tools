@@ -10,4 +10,8 @@ public static class CandidateErrors
 
     public static ValidationError Invalid(IReadOnlyDictionary<string, string[]> errors) =>
         new("Candidates.Invalid", "The candidate is invalid.", errors);
+
+    public static Error SourceEmailAlreadyInRound(IEnumerable<long> candidateIds) => Error.Conflict(
+        "Candidates.SourceEmailAlreadyInRound",
+        $"The source email for candidate id(s) '{string.Join(", ", candidateIds)}' already exists in the target round.");
 }

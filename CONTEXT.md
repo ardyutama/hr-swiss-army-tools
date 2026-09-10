@@ -52,6 +52,10 @@ _Avoid_: Batch close, round archive
 HR's administration of a vacancy's intake rounds: opening the next round and closing the active one. It changes round lifecycle only, never candidate review data.
 _Avoid_: Round settings, batch management
 
+**Settled**:
+The moment a record becomes read-only through its lifecycle: a round's review data settles at round closure; hire-outcome bookkeeping settles at vacancy closure. Attempts to change settled data are refused and must be re-expressed through the lifecycle's own powers (promotion, reopening).
+_Avoid_: Locked, frozen
+
 **Promote**:
 Moving a new, flagged, or shortlisted-without-outcome candidate from a closed round into the active round, preserving review status, requirement reviews, and notes.
 _Avoid_: Copy candidate, re-import

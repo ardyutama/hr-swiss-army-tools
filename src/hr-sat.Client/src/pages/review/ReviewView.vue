@@ -10,6 +10,7 @@ import SourceEmailPanel from '@/features/review/components/SourceEmailPanel.vue'
 import NotesEditor from '@/features/review/components/NotesEditor.vue'
 import CvViewer from '@/features/review/components/CvViewer.vue'
 import ReviewActionBar from '@/features/review/components/ReviewActionBar.vue'
+import OutcomeConfirmDialog from '@/features/review/components/OutcomeConfirmDialog.vue'
 import ShortcutsHelpModal from '@/features/review/components/ShortcutsHelpModal.vue'
 import { useReview } from '@/features/review/useReview'
 import {
@@ -76,6 +77,9 @@ const notesEditor = useTemplateRef<NotesFocusHandle>('notesEditor')
 const candidateDetailsPanel = useTemplateRef<{ focusEditing: () => void }>('candidateDetailsPanel')
 const sourceEmailPanel = useTemplateRef<SourceEmailHandle>('sourceEmailPanel')
 const shortcutsHelpOpen = shallowRef(false)
+const outcomeDialogOpen = shallowRef(false)
+type ConsequentialOutcome = Extract<CandidateHireOutcome, 'runaway' | 'declined'>
+const pendingOutcome = shallowRef<ConsequentialOutcome | null>(null)
 const announcement = shallowRef('')
 const canPrev = computed(() => previousCandidateId.value !== null)
 const canNext = computed(() => nextCandidateId.value !== null)
@@ -152,7 +156,30 @@ function onDetailsSave(payload: CandidateDetailsPayload) {
 }
 
 function onSetOutcome(outcome: CandidateHireOutcome) {
+  if (outcome === 'runaway' || outcome === 'declined') {
+    pendingOutcome.value = outcome
+    outcomeDialogOpen.value = true
+    return
+  }
   void setOutcome(outcome)
+}
+
+async function onConfirmOutcome(note: string) {
+  const outcome = pendingOutcome.value
+  if (outcome === null) {
+    return
+  }
+
+  const nextCandidateAfterOutcome = nextCandidateId.value
+  if (!(await setOutcome(outcome, note))) {
+    return
+  }
+
+  outcomeDialogOpen.value = false
+  goToCandidate(
+    nextCandidateAfterOutcome,
+    nextCandidateAfterOutcome === null ? null : { kind: 'navigation' },
+  )
 }
 
 function onRequirementToggle(requirementId: number, confirmed: boolean) {
@@ -185,6 +212,7 @@ useReviewShortcuts({
   sourceEmailPanel,
   shortcutsHelpOpen,
   requirementCount,
+  outcomeDialogOpen,
   onEditDetails: () => candidateDetailsPanel.value?.focusEditing(),
   onPrev,
   onNext,
@@ -196,6 +224,12 @@ useReviewShortcuts({
     void toggleRequirementAt(index)
   },
   saveNotes,
+})
+
+watch(outcomeDialogOpen, (open) => {
+  if (!open) {
+    pendingOutcome.value = null
+  }
 })
 </script>
 
@@ -317,6 +351,14 @@ useReviewShortcuts({
         @decide="onDecide"
         @set-outcome="onSetOutcome"
         @help="shortcutsHelpOpen = true"
+      />
+
+      <OutcomeConfirmDialog
+        v-model:open="outcomeDialogOpen"
+        :outcome="pendingOutcome"
+        :busy="settingOutcome"
+        :error="outcomeError"
+        @confirm="onConfirmOutcome"
       />
     </template>
 

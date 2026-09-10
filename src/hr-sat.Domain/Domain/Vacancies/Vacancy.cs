@@ -1,4 +1,5 @@
 using hr_sat.Domain;
+using hr_sat.Domain.Candidates;
 using hr_sat.Domain.IntakeRounds;
 
 namespace hr_sat.Domain.Vacancies;
@@ -178,6 +179,106 @@ public sealed class Vacancy : Entity
         return round is null
             ? Result<IntakeRound>.Failure(IntakeRoundErrors.NotFound(roundId))
             : round;
+    }
+
+    public Result<IReadOnlyList<Candidate>> PromoteCandidates(
+        long sourceRoundId,
+        IEnumerable<long>? candidateIds,
+        DateTimeOffset promotedAt)
+    {
+        if (Status == VacancyStatus.Closed)
+        {
+            return Result<IReadOnlyList<Candidate>>.Failure(VacancyErrors.Closed(Id));
+        }
+
+        var sourceRound = _rounds.SingleOrDefault(round => round.Id == sourceRoundId);
+        if (sourceRound is null)
+        {
+            return Result<IReadOnlyList<Candidate>>.Failure(
+                IntakeRoundErrors.NotFound(sourceRoundId));
+        }
+
+        if (sourceRound.IsOpen)
+        {
+            return Result<IReadOnlyList<Candidate>>.Failure(
+                IntakeRoundErrors.NotClosed(sourceRoundId));
+        }
+
+        var activeRound = ActiveRound;
+        if (activeRound is null)
+        {
+            return Result<IReadOnlyList<Candidate>>.Failure(IntakeRoundErrors.NoActiveRound(Id));
+        }
+
+        var distinctCandidateIds = candidateIds?.Distinct().ToArray() ?? [];
+        if (distinctCandidateIds.Length == 0)
+        {
+            return Result<IReadOnlyList<Candidate>>.Failure(CandidateErrors.Invalid(
+                new Dictionary<string, string[]>
+                {
+                    ["candidateIds"] = ["At least one candidate is required."]
+                }));
+        }
+
+        var candidatesById = _rounds
+            .SelectMany(round => round.Candidates)
+            .ToDictionary(candidate => candidate.Id);
+        var candidates = new List<Candidate>(distinctCandidateIds.Length);
+        var invalidCandidateIds = new List<string>();
+
+        foreach (var candidateId in distinctCandidateIds)
+        {
+            if (!candidatesById.TryGetValue(candidateId, out var candidate) ||
+                candidate.IntakeRoundId != sourceRound.Id)
+            {
+                invalidCandidateIds.Add(
+                    $"Candidate with id '{candidateId}' is not in the source round.");
+                continue;
+            }
+
+            if (!candidate.CanBePromoted)
+            {
+                invalidCandidateIds.Add(
+                    $"Candidate with id '{candidateId}' is not promotable from its current state.");
+                continue;
+            }
+
+            candidates.Add(candidate);
+        }
+
+        if (invalidCandidateIds.Count > 0)
+        {
+            return Result<IReadOnlyList<Candidate>>.Failure(CandidateErrors.Invalid(
+                new Dictionary<string, string[]>
+                {
+                    ["candidateIds"] = invalidCandidateIds.ToArray()
+                }));
+        }
+
+        var duplicateSourceCandidateIds = candidates
+            .Where(candidate => activeRound.Candidates.Any(existing =>
+                existing.SourceSha256.SequenceEqual(candidate.SourceSha256)))
+            .Select(candidate => candidate.Id)
+            .ToArray();
+        if (duplicateSourceCandidateIds.Length > 0)
+        {
+            return Result<IReadOnlyList<Candidate>>.Failure(
+                CandidateErrors.SourceEmailAlreadyInRound(duplicateSourceCandidateIds));
+        }
+
+        foreach (var candidate in candidates)
+        {
+            var promoteResult = candidate.PromoteTo(
+                activeRound.Id,
+                sourceRound.RoundNumber,
+                promotedAt);
+            if (promoteResult.IsFailure)
+            {
+                return Result<IReadOnlyList<Candidate>>.Failure(promoteResult.Error);
+            }
+        }
+
+        return candidates;
     }
 
     private Result EnsureOpen(string message)
