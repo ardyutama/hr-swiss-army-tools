@@ -7,8 +7,13 @@ import {
   type ImportFileResult,
   type ImportFileStatus,
 } from '@/features/candidates/api'
+import { problemMessage, problemMessageText } from '@/shared/problem-details'
 
-export function useCandidateImport(vacancyId: Ref<string>, roundId: Ref<string>) {
+export function useCandidateImport(
+  vacancyId: Ref<string>,
+  roundId: Ref<string>,
+  onChanged?: () => Promise<void>,
+) {
   const toast = useToast()
   const importing = shallowRef(false)
   const importError = shallowRef<string | null>(null)
@@ -26,7 +31,16 @@ export function useCandidateImport(vacancyId: Ref<string>, roundId: Ref<string>)
       announceResults(response.results)
       return response
     } catch (error) {
-      importError.value = describeError(error)
+      const fieldErrors = fieldErrorsOf(error)
+      if (fieldErrors) {
+        importError.value = firstNonFieldError(fieldErrors, new Set()) ?? 'Something went wrong'
+        return null
+      }
+      const message = problemMessage(error, 'Something went wrong')
+      if (message.kind !== 'failure') {
+        await onChanged?.()
+      }
+      importError.value = problemMessageText(message)
       return null
     } finally {
       importing.value = false
@@ -64,15 +78,4 @@ export function useCandidateImport(vacancyId: Ref<string>, roundId: Ref<string>)
   }
 
   return { importing, importError, results, importFiles, clearError }
-}
-
-function describeError(error: unknown): string {
-  const fieldErrors = fieldErrorsOf(error)
-  const validationMessage = fieldErrors
-    ? firstNonFieldError(fieldErrors, new Set())
-    : undefined
-  return (
-    validationMessage ??
-    (error instanceof Error ? error.message : 'Failed to import files')
-  )
 }

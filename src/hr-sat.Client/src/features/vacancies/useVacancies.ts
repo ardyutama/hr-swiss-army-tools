@@ -1,6 +1,7 @@
 import { computed, onMounted, shallowRef } from 'vue'
 import { useToast } from '@nuxt/ui/composables/useToast'
 import { fieldErrorsOf, firstNonFieldError } from '@/shared/validation'
+import { problemMessage, problemMessageText } from '@/shared/problem-details'
 import {
   createVacancy,
   deleteVacancy,
@@ -52,7 +53,7 @@ export function useVacancies() {
     try {
       vacancies.value = await listVacancies()
     } catch (error) {
-      loadError.value = error instanceof Error ? error.message : 'Failed to load vacancies'
+      loadError.value = problemMessageText(problemMessage(error, 'Something went wrong'))
     }
   }
 
@@ -95,7 +96,28 @@ export function useVacancies() {
       }
       await load()
     } catch (error) {
-      toast.add({ title: saveErrorMessage(error, editingId !== null), color: 'error' })
+      const serverErrors = fieldErrorsOf(error)
+      if (serverErrors) {
+        toast.add({
+          title:
+            firstNonFieldError(serverErrors, vacancyFormFieldKeys) ??
+            (editingId !== null ? 'Failed to update vacancy.' : 'Failed to create vacancy.'),
+          color: 'error',
+        })
+        throw error
+      }
+      const message = problemMessage(
+        error,
+        editingId !== null ? "Couldn't save vacancy" : "Couldn't create vacancy",
+      )
+      toast.add({
+        title: message.title,
+        description: message.description,
+        color: message.color,
+      })
+      if (message.kind !== 'failure') {
+        await load()
+      }
       throw error
     } finally {
       saving.value = false
@@ -112,6 +134,12 @@ export function useVacancies() {
       await deleteVacancy(vacancy.id)
       toast.add({ title: `Vacancy "${vacancy.title}" deleted successfully`, color: 'success' })
       await load()
+    } catch (error) {
+      const message = problemMessage(error, 'Something went wrong')
+      if (message.kind !== 'failure') {
+        await load()
+      }
+      throw error
     } finally {
       removing.value = false
     }
@@ -134,15 +162,4 @@ export function useVacancies() {
     save,
     remove,
   }
-}
-
-function saveErrorMessage(error: unknown, isEdit: boolean): string {
-  const serverErrors = fieldErrorsOf(error)
-  if (serverErrors) {
-    return (
-      firstNonFieldError(serverErrors, vacancyFormFieldKeys) ??
-      (isEdit ? 'Failed to update vacancy.' : 'Failed to create vacancy.')
-    )
-  }
-  return error instanceof Error ? error.message : 'Something went wrong.'
 }

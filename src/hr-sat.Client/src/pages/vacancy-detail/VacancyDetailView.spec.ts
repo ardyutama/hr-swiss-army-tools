@@ -216,6 +216,25 @@ afterEach(() => {
 })
 
 describe('VacancyDetailView', () => {
+  it('domain: a vacancy-detail load failure uses friendly retry copy', async () => {
+    stubFetch(
+      () => vacancyDetails(),
+      (url) => {
+        if (url.endsWith('/vacancies/1')) {
+          return Promise.resolve(jsonResponse({ title: 'Server error' }, 500))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('[role="alert"]').text()).toContain('Something went wrong')
+    expect(wrapper.find('[role="alert"]').text()).toContain('Please try again.')
+    wrapper.unmount()
+  })
+
   it('US-12: HR drops .eml files into a vacancy and sees each file’s outcome', async () => {
     let imported = false
     let sentFileNames: string[] | undefined
@@ -541,7 +560,8 @@ describe('VacancyDetailView', () => {
     await flushPromises()
 
     // Dialog stays open with the error; the loaded list is untouched.
-    expect(document.body.textContent).toContain('API request failed with status 500')
+    expect(document.body.textContent).toContain('Something went wrong')
+    expect(document.body.textContent).toContain('Please try again.')
     expect(document.body.textContent).toContain("can't be undone")
     expect(wrapper.text()).toContain('Bob Builder')
     expect(toastAdd).not.toHaveBeenCalled()
@@ -1721,15 +1741,178 @@ describe('VacancyDetailView', () => {
       .find((button) => button.text().includes('Open a round'))
     await openRoundButton!.trigger('click')
     await flushPromises()
+    const requestCountBeforeConflict = vi.mocked(fetch).mock.calls.length
     dialogButton('Open round')?.click()
     await flushPromises()
 
     // The 409 surfaces as a toast, the dialog stays open, and nothing changed.
     expect(toastAdd).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Couldn't open the round", color: 'error' }),
+      expect.objectContaining({
+        title: "Couldn't save that change",
+        description: "The data changed on the server. We've refreshed -- try again.",
+        color: 'error',
+      }),
+    )
+    expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThan(
+      requestCountBeforeConflict,
     )
     expect(document.body.textContent).toContain('Open a new round')
     expect(wrapper.text()).toContain('No active round')
+    wrapper.unmount()
+  })
+
+  it('domain: an active-round conflict warns and refreshes the round manager', async () => {
+    let conflictObserved = false
+    stubFetch(
+      () =>
+        vacancyDetails({
+          rounds: [
+            conflictObserved
+              ? openRound({ id: 1, roundNumber: 1, candidateCount: 0 })
+              : closedRound({ id: 1, roundNumber: 1, candidateCount: 0 }),
+          ],
+        }),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/vacancies/1/rounds')) {
+          conflictObserved = true
+          return Promise.resolve(
+            jsonResponse({ title: 'IntakeRounds.ActiveRoundExists' }, 409),
+          )
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Open a round'))
+      ?.trigger('click')
+    await flushPromises()
+    const requestCountBeforeConflict = vi.mocked(fetch).mock.calls.length
+    dialogButton('Open round')?.click()
+    await flushPromises()
+
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'A round is already active',
+        description: 'Close the active round before opening a new one.',
+        color: 'warning',
+      }),
+    )
+    expect(document.body.textContent).toContain('Open a new round')
+    expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThan(requestCountBeforeConflict)
+    wrapper.unmount()
+  })
+
+  it('domain: promotion from a round that is not closed keeps the dialog open with its name', async () => {
+    let vacancyRequests = 0
+    stubFetch(
+      () => {
+        vacancyRequests += 1
+        return vacancyDetails({
+          rounds: [
+            closedRound({ id: 1, roundNumber: 1, name: 'First wave', candidateCount: 1 }),
+            openRound({ id: 2, roundNumber: 2, candidateCount: 1 }),
+          ],
+        })
+      },
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/rounds/2/promotions')) {
+          return Promise.resolve(jsonResponse({ title: 'IntakeRounds.NotClosed' }, 409))
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+        }
+        if (url.includes('/rounds/2/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(2)]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Promote from'))
+      ?.trigger('click')
+    await flushPromises()
+    const candidateCheckbox = new DOMWrapper(
+      document.body.querySelector('input[aria-label="Promote Alice Applicant"]') as HTMLInputElement,
+    )
+    await candidateCheckbox.setValue(true)
+    await new DOMWrapper(
+      Array.from(document.body.querySelectorAll('button')).find((button) =>
+        button.textContent?.includes('Promote selected'),
+      ) as HTMLButtonElement,
+    ).trigger('click')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain("Round 1 — First wave isn't closed yet")
+    expect(document.body.textContent).toContain('You can only promote from closed rounds.')
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(vacancyRequests).toBeGreaterThan(1)
+    wrapper.unmount()
+  })
+
+  it('domain: promotion without an active round shows the lifecycle guidance and refreshes', async () => {
+    let vacancyRequests = 0
+    stubFetch(
+      () => {
+        vacancyRequests += 1
+        return vacancyDetails({
+          rounds:
+            vacancyRequests > 1
+              ? [closedRound({ id: 1, roundNumber: 1, name: 'First wave', candidateCount: 1 })]
+              : [
+                  closedRound({ id: 1, roundNumber: 1, name: 'First wave', candidateCount: 1 }),
+                  openRound({ id: 2, roundNumber: 2, candidateCount: 1 }),
+                ],
+        })
+      },
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/rounds/2/promotions')) {
+          return Promise.resolve(jsonResponse({ title: 'IntakeRounds.NoActiveRound' }, 409))
+        }
+        if (url.includes('/rounds/1/candidates') || url.includes('/rounds/2/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Promote from'))
+      ?.trigger('click')
+    await flushPromises()
+    const candidateCheckbox = new DOMWrapper(
+      document.body.querySelector('input[aria-label="Promote Alice Applicant"]') as HTMLInputElement,
+    )
+    await candidateCheckbox.setValue(true)
+    await new DOMWrapper(
+      Array.from(document.body.querySelectorAll('button')).find((button) =>
+        button.textContent?.includes('Promote selected'),
+      ) as HTMLButtonElement,
+    ).trigger('click')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('No active round')
+    expect(document.body.textContent).toContain(
+      'Open a round first, then promote these candidates into it.',
+    )
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(vacancyRequests).toBeGreaterThan(1)
     wrapper.unmount()
   })
 })

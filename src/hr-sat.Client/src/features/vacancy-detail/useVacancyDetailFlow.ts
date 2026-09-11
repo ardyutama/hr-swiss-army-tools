@@ -9,6 +9,7 @@ import { usePromoteCandidates } from '@/features/promote-candidates/usePromoteCa
 import type { VacancyRound } from '@/features/vacancies/api'
 import { progressPercent } from '@/features/vacancies/format'
 import { hiringShortage } from '@/features/vacancies/hiring'
+import { problemMessage, problemMessageText } from '@/shared/problem-details'
 import { useVacancyDetail } from './useVacancyDetail'
 
 /**
@@ -87,16 +88,6 @@ export function useVacancyDetailFlow(
   const canOpenRound = computed(() => !isClosed.value && canCreateRound.value)
 
   const {
-    importing,
-    importError,
-    results,
-    importFiles: importCandidateFiles,
-    clearError,
-  } = useCandidateImport(
-    vacancyId,
-    selectedRoundParam,
-  )
-  const {
     candidates,
     loadError: candidatesError,
     viewState: candidatesViewState,
@@ -104,6 +95,16 @@ export function useVacancyDetailFlow(
     load: loadCandidates,
     remove,
   } = useCandidates(vacancyId, selectedRoundParam)
+  const refreshAfterImport = async () => {
+    await Promise.all([load(), loadCandidates()])
+  }
+  const {
+    importing,
+    importError,
+    results,
+    importFiles: importCandidateFiles,
+    clearError,
+  } = useCandidateImport(vacancyId, selectedRoundParam, refreshAfterImport)
   const {
     status: statusFilter,
     outcome: outcomeFilter,
@@ -189,7 +190,11 @@ export function useVacancyDetailFlow(
       await load()
       return null
     } catch (error) {
-      return error instanceof Error ? error.message : 'Failed to delete candidate'
+      const message = problemMessage(error, 'Something went wrong')
+      if (message.kind !== 'failure') {
+        await Promise.all([load(), loadCandidates()])
+      }
+      return problemMessageText(message)
     }
   }
 

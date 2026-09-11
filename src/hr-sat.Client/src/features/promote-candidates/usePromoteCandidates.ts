@@ -4,7 +4,10 @@ import {
   listCandidates,
   type CandidateSummary,
 } from '@/features/candidates/api'
+import { fieldErrorsOf, firstNonFieldError } from '@/shared/validation'
 import type { VacancyRound } from '@/features/vacancies/api'
+import { roundDisplayName } from '@/features/intake-rounds/useIntakeRounds'
+import { problemMessage, problemMessageText } from '@/shared/problem-details'
 import { promoteCandidates } from './api'
 
 export function usePromoteCandidates(
@@ -70,7 +73,14 @@ export function usePromoteCandidates(
       if (token !== sourceRequestToken) {
         return
       }
-      sourceError.value = error instanceof Error ? error.message : 'Failed to load candidates'
+      const sourceRound = closedRounds.value.find((round) => round.id === roundId)
+      const message = problemMessage(error, 'Something went wrong', {
+        round: sourceRound ? roundDisplayName(sourceRound) : undefined,
+      })
+      if (message.kind !== 'failure') {
+        await onChanged()
+      }
+      sourceError.value = problemMessageText(message)
     } finally {
       if (token === sourceRequestToken) {
         sourceLoading.value = false
@@ -121,7 +131,19 @@ export function usePromoteCandidates(
       open.value = false
       return true
     } catch (error) {
-      submitError.value = error instanceof Error ? error.message : 'Failed to promote candidates'
+      const fieldErrors = fieldErrorsOf(error)
+      if (fieldErrors) {
+        submitError.value = firstNonFieldError(fieldErrors, new Set()) ?? 'Something went wrong'
+        return false
+      }
+      const sourceRound = closedRounds.value.find((round) => round.id === sourceId)
+      const message = problemMessage(error, 'Something went wrong', {
+        round: sourceRound ? roundDisplayName(sourceRound) : undefined,
+      })
+      if (message.kind !== 'failure') {
+        await onChanged()
+      }
+      submitError.value = problemMessageText(message)
       return false
     } finally {
       submitting.value = false

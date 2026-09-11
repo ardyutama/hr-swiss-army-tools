@@ -129,6 +129,7 @@ function stubApi(
     candidates?: ReturnType<typeof candidateSummary>[]
     details?: Record<number, Record<string, unknown>>
     vacancy?: Record<string, unknown>
+    mutationError?: { path: string; problem: unknown; status: number }
   } = {},
 ) {
   const count = options.candidateCount ?? 2
@@ -138,6 +139,12 @@ function stubApi(
     const method = init?.method ?? 'GET'
     const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined
     requests.push({ url, method, body })
+
+    if (options.mutationError && method === 'PUT' && url.endsWith(options.mutationError.path)) {
+      return Promise.resolve(
+        jsonResponse(options.mutationError.problem, options.mutationError.status),
+      )
+    }
 
     if (method === 'PUT' && url.endsWith('/details')) {
       const id = Number(/\/candidates\/(\d+)\/details/.exec(url)?.[1])
@@ -980,36 +987,187 @@ describe('ReviewView', () => {
     wrapper.unmount()
   })
 
-  it('domain: when the round closes mid-review, a refused decision surfaces the conflict', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
-      const method = init?.method ?? 'GET'
-      if (method === 'PUT' && url.endsWith('/candidates/1/review')) {
-        return Promise.resolve(
-          jsonResponse({ title: 'Conflict', detail: 'The round is closed.' }, 409),
-        )
-      }
-      if (method === 'GET' && /\/candidates\/\d+$/.test(url)) {
-        return Promise.resolve(jsonResponse(candidateDetails(1)))
-      }
-      if (method === 'GET' && url.endsWith('/candidates')) {
-        return Promise.resolve(jsonResponse([candidateSummary(1), candidateSummary(2)]))
-      }
-      if (method === 'GET' && url.endsWith('/vacancies/1')) {
-        return Promise.resolve(jsonResponse(vacancyDetails()))
-      }
-      throw new Error(`Unstubbed fetch: ${method} ${url}`)
-    })
-    vi.stubGlobal('fetch', fetchMock)
+  it.each([
+    { action: 'Shortlist', status: 'shortlisted' },
+    { action: 'Flag', status: 'flagged' },
+    { action: 'Reject', status: 'rejected' },
+  ] as const)(
+    'domain: when the round closes mid-review, a refused $status decision surfaces the conflict',
+    async ({ action }) => {
+      stubApi({
+        mutationError: {
+          path: '/review',
+          problem: { title: 'IntakeRounds.Closed', detail: 'The round is closed.' },
+          status: 409,
+        },
+      })
 
+      const { wrapper, router } = await mountReview()
+      await flushPromises()
+
+      await findButton(wrapper, action).trigger('click')
+      await flushPromises()
+
+      // The server enforces the freeze: HR stays on the candidate and gets an amber warning.
+      expect(toastAdd).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'This round is closed',
+          description:
+            'Closed rounds are read-only. To keep working with its candidates, promote them into the active round.',
+          color: 'warning',
+        }),
+      )
+      expect(router.currentRoute.value.params.candidateId).toBe('1')
+      expect(wrapper.find('p[role="alert"]').exists()).toBe(false)
+      wrapper.unmount()
+    },
+  )
+
+  it('domain: a closed vacancy refuses a hire outcome with an amber warning', async () => {
+    stubApi({
+      details: { 1: candidateDetails(1, { reviewStatus: 'shortlisted' }) },
+      mutationError: {
+        path: '/outcome',
+        problem: { title: 'Vacancies.Closed', detail: 'The vacancy is closed.' },
+        status: 409,
+      },
+    })
+    const { wrapper, router } = await mountReview()
+    await flushPromises()
+
+    await findButton(wrapper, 'Mark Hired').trigger('click')
+    await flushPromises()
+
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'This vacancy is closed',
+        description: 'Reopen the vacancy to record hire outcomes.',
+        color: 'warning',
+      }),
+    )
+    expect(wrapper.find('p[role="alert"]').exists()).toBe(false)
+    expect(router.currentRoute.value.params.candidateId).toBe('1')
+    wrapper.unmount()
+  })
+
+  it.each([
+    { action: 'Shortlist', status: 'shortlisted' },
+    { action: 'Reject', status: 'rejected' },
+  ] as const)(
+    'domain: a $status decision against a final hire outcome toasts the server rule',
+    async ({ action }) => {
+      stubApi({
+        mutationError: {
+          path: '/review',
+          problem: {
+            type: 'https://tools.ietf.org/html/rfc9110#section-15.5.1',
+            title: 'One or more validation errors occurred.',
+            status: 400,
+            errors: {
+              reviewStatus: [
+                'Review status cannot change while the hire outcome is hired or runaway.',
+              ],
+            },
+            traceId: '00-a2de65ca9fb16c00d2070d62c0f7cd9d-bb2c5cd40d4cf8f2-00',
+          },
+          status: 400,
+        },
+      })
+
+      const { wrapper, router } = await mountReview()
+      await flushPromises()
+
+      await findButton(wrapper, action).trigger('click')
+      await flushPromises()
+
+      // The server's rule arrives verbatim as an amber toast; HR stays on the candidate.
+      expect(toastAdd).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "That change isn't allowed",
+          description:
+            'Review status cannot change while the hire outcome is hired or runaway.',
+          color: 'warning',
+        }),
+      )
+      expect(router.currentRoute.value.params.candidateId).toBe('1')
+      expect(wrapper.find('p[role="alert"]').exists()).toBe(false)
+      wrapper.unmount()
+    },
+  )
+
+  it('domain: a refused hire-outcome transition toasts the server rule', async () => {
+    stubApi({
+      details: {
+        1: candidateDetails(1, { reviewStatus: 'shortlisted', hireOutcome: 'hired' }),
+      },
+      mutationError: {
+        path: '/outcome',
+        problem: {
+          title: 'One or more validation errors occurred.',
+          errors: { hireOutcome: ['The requested hire outcome transition is not allowed.'] },
+        },
+        status: 400,
+      },
+    })
+    const { wrapper, router } = await mountReview()
+    await flushPromises()
+
+    await findButton(wrapper, 'Clear outcome').trigger('click')
+    await flushPromises()
+
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "That change isn't allowed",
+        description: 'The requested hire outcome transition is not allowed.',
+        color: 'warning',
+      }),
+    )
+    expect(wrapper.find('p[role="alert"]').exists()).toBe(false)
+    expect(router.currentRoute.value.params.candidateId).toBe('1')
+    wrapper.unmount()
+  })
+
+  it('domain: a technical review-save failure stays inline with retry guidance', async () => {
+    stubApi({
+      mutationError: {
+        path: '/review',
+        problem: { title: 'Server error' },
+        status: 500,
+      },
+    })
     const { wrapper, router } = await mountReview()
     await flushPromises()
 
     await findButton(wrapper, 'Reject').trigger('click')
     await flushPromises()
 
-    // The server enforces the freeze: HR stays on the candidate and sees why.
-    expect(wrapper.find('p[role="alert"]').text()).toContain('API request failed with status 409')
+    const alert = wrapper.find('p[role="alert"]')
+    expect(alert.text()).toContain('Something went wrong')
+    expect(alert.text()).toContain('Please try again.')
+    expect(router.currentRoute.value.params.candidateId).toBe('1')
+    expect(toastAdd).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('domain: an unknown review conflict explains how to refresh the round', async () => {
+    stubApi({
+      mutationError: {
+        path: '/review',
+        problem: { title: 'Conflict' },
+        status: 409,
+      },
+    })
+    const { wrapper, router } = await mountReview()
+    await flushPromises()
+
+    await findButton(wrapper, 'Reject').trigger('click')
+    await flushPromises()
+
+    const alert = wrapper.find('p[role="alert"]')
+    expect(alert.text()).toContain("Couldn't save that change")
+    expect(alert.text()).toContain(
+      'Go back and reopen this round to see the latest, then try again.',
+    )
     expect(router.currentRoute.value.params.candidateId).toBe('1')
     expect(toastAdd).not.toHaveBeenCalled()
     wrapper.unmount()

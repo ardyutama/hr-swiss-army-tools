@@ -80,6 +80,17 @@ describe('VacancyListView', () => {
     expect(wrapper.text()).toContain('30/30')
   })
 
+  it('domain: a vacancy-list load failure uses friendly retry copy', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ title: 'Server error' }, 500)))
+
+    const wrapper = mount(VacancyListView)
+    await flushPromises()
+
+    expect(wrapper.find('[role="alert"]').text()).toContain('Something went wrong')
+    expect(wrapper.find('[role="alert"]').text()).toContain('Please try again.')
+    wrapper.unmount()
+  })
+
   it('US-10: hiring progress and the filled state are separate from candidate progress', async () => {
     vi.stubGlobal(
       'fetch',
@@ -206,7 +217,8 @@ describe('VacancyListView', () => {
     await flushPromises()
 
     // Dialog stays open with the error; the loaded list is untouched.
-    expect(document.body.textContent).toContain('API request failed with status 500')
+    expect(document.body.textContent).toContain('Something went wrong')
+    expect(document.body.textContent).toContain('Please try again.')
     expect(document.body.textContent).toContain("can't be undone")
     expect(wrapper.text()).toContain('Welder')
     expect(wrapper.text()).not.toContain("Couldn't load vacancies")

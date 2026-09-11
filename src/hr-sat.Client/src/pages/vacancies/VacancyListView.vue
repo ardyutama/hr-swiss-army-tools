@@ -5,6 +5,7 @@ import VacancyFormDialog from '@/features/vacancies/components/VacancyFormDialog
 import ConfirmDeleteDialog from '@/features/vacancies/components/ConfirmDeleteDialog.vue'
 import { useVacancies } from '@/features/vacancies/useVacancies'
 import type { VacancySummary, VacancyWritePayload } from '@/features/vacancies/api'
+import { problemMessage, problemMessageText } from '@/shared/problem-details'
 
 const {
   vacancies,
@@ -79,7 +80,7 @@ async function confirmDelete() {
     deleteOpen.value = false
     deletingVacancy.value = null
   } catch (error) {
-    deleteError.value = error instanceof Error ? error.message : 'Failed to delete vacancy'
+    deleteError.value = problemMessageText(problemMessage(error, 'Something went wrong'))
   }
 }
 </script>

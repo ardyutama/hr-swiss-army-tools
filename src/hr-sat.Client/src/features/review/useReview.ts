@@ -22,6 +22,11 @@ import {
   type CandidateDetails,
 } from './api'
 import { notesValidationError } from './validation'
+import {
+  problemMessage,
+  problemMessageText,
+  type ProblemMessage,
+} from '@/shared/problem-details'
 
 export type ReviewViewState = 'loading' | 'error' | 'ready'
 export type NotesSaveState = 'idle' | 'saving' | 'saved' | 'error'
@@ -61,6 +66,7 @@ export function useReview(
   const settingOutcome = shallowRef(false)
   const outcomeError = shallowRef<string | null>(null)
   const shortlistWarningActive = shallowRef(false)
+  const conflictWarning = shallowRef<ProblemMessage | null>(null)
 
   let contextToken = 0
   let detailsToken = 0
@@ -197,7 +203,7 @@ export function useReview(
       if (token !== contextToken) {
         return
       }
-      loadError.value = error instanceof Error ? error.message : 'Failed to load the vacancy'
+      loadError.value = problemMessageText(problemMessage(error, 'Something went wrong'))
     }
   }
 
@@ -224,7 +230,7 @@ export function useReview(
       if (token !== detailsToken) {
         return
       }
-      loadError.value = error instanceof Error ? error.message : 'Failed to load the candidate'
+      loadError.value = problemMessageText(problemMessage(error, 'Something went wrong'))
     }
   }
 
@@ -236,6 +242,7 @@ export function useReview(
 
     savingDetails.value = true
     detailsError.value = null
+    conflictWarning.value = null
     try {
       const updated = await updateCandidateDetails(vacancyId.value, roundId.value, current.id, payload)
       if (candidate.value?.id !== updated.id) {
@@ -245,7 +252,12 @@ export function useReview(
       patchSummary(updated)
       return true
     } catch (error) {
-      detailsError.value = error instanceof Error ? error.message : 'Failed to save candidate details'
+      const message = reviewProblemMessage(error)
+      if (message.kind === 'lifecycle') {
+        conflictWarning.value = message
+      } else {
+        detailsError.value = problemMessageText(message)
+      }
       return false
     } finally {
       savingDetails.value = false
@@ -263,6 +275,7 @@ export function useReview(
 
     savingRequirementId.value = requirementId
     requirementError.value = null
+    conflictWarning.value = null
     try {
       const updated = await updateCandidateRequirementReview(
         vacancyId.value,
@@ -277,8 +290,12 @@ export function useReview(
       candidate.value = updated
       return true
     } catch (error) {
-      requirementError.value =
-        error instanceof Error ? error.message : 'Failed to save the requirement review'
+      const message = reviewProblemMessage(error)
+      if (message.kind === 'lifecycle') {
+        conflictWarning.value = message
+      } else {
+        requirementError.value = problemMessageText(message)
+      }
       return false
     } finally {
       savingRequirementId.value = null
@@ -296,6 +313,7 @@ export function useReview(
 
     settingOutcome.value = true
     outcomeError.value = null
+    conflictWarning.value = null
     try {
       const updated = await updateCandidateOutcome(
         vacancyId.value,
@@ -311,7 +329,12 @@ export function useReview(
       patchSummary(updated)
       return true
     } catch (error) {
-      outcomeError.value = error instanceof Error ? error.message : 'Failed to save the hire outcome'
+      const message = reviewProblemMessage(error)
+      if (message.kind === 'lifecycle') {
+        conflictWarning.value = message
+      } else {
+        outcomeError.value = problemMessageText(message)
+      }
       return false
     } finally {
       settingOutcome.value = false
@@ -354,7 +377,11 @@ export function useReview(
       notesSavedAt.value = new Date()
       patchSummary(updated)
       return true
-    } catch {
+    } catch (error) {
+      const message = reviewProblemMessage(error)
+      if (message.kind === 'lifecycle') {
+        conflictWarning.value = message
+      }
       notesSaveState.value = 'error'
       return false
     }
@@ -388,6 +415,7 @@ export function useReview(
     }
     deciding.value = true
     decisionError.value = null
+    conflictWarning.value = null
     try {
       const updated = await updateCandidateReview(vacancyId.value, roundId.value, current.id, {
         reviewStatus: status,
@@ -407,8 +435,12 @@ export function useReview(
       }
       return { applied: true, nextCandidateId: nextCandidateAfterDecision }
     } catch (error) {
-      decisionError.value =
-        error instanceof Error ? error.message : 'Failed to save the review decision'
+      const message = reviewProblemMessage(error)
+      if (message.kind === 'lifecycle') {
+        conflictWarning.value = message
+      } else {
+        decisionError.value = problemMessageText(message)
+      }
       return { applied: false, nextCandidateId: null }
     } finally {
       deciding.value = false
@@ -429,6 +461,7 @@ export function useReview(
       summaries.value = null
       candidate.value = null
       loadError.value = null
+      conflictWarning.value = null
       void loadContext()
     },
     { immediate: true },
@@ -441,6 +474,7 @@ export function useReview(
       candidate.value = null
       notes.value = ''
       shortlistWarningActive.value = false
+      conflictWarning.value = null
       savingDetails.value = false
       detailsError.value = null
       savingRequirementId.value = null
@@ -461,6 +495,7 @@ export function useReview(
     viewState,
     isRoundClosed,
     candidateDetailsWarning,
+    conflictWarning,
     position,
     total,
     previousCandidateId,
@@ -490,4 +525,11 @@ export function useReview(
     setOutcome,
     decide,
   }
+}
+
+function reviewProblemMessage(error: unknown): ProblemMessage {
+  return problemMessage(error, 'Something went wrong', {
+    conflictDescription:
+      'The data changed on the server. Go back and reopen this round to see the latest, then try again.',
+  })
 }

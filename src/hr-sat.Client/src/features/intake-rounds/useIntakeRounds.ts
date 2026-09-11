@@ -1,6 +1,7 @@
 import { computed, shallowRef, type Ref } from 'vue'
 import { useToast } from '@nuxt/ui/composables/useToast'
 import type { VacancyRound } from '@/features/vacancies/api'
+import { problemMessage } from '@/shared/problem-details'
 import { closeRound, createRound } from './api'
 
 /** Round label used across the round chrome: "Round N" plus the optional name. */
@@ -45,11 +46,15 @@ export function useIntakeRounds(
       await onChanged()
       return created
     } catch (error) {
+      const message = problemMessage(error, "Couldn't open the round")
       toast.add({
-        title: "Couldn't open the round",
-        description: error instanceof Error ? error.message : 'Failed to create the round',
-        color: 'error',
+        title: message.title,
+        description: message.description,
+        color: message.color,
       })
+      if (message.kind !== 'failure') {
+        await onChanged()
+      }
       return null
     } finally {
       creating.value = false
@@ -67,11 +72,17 @@ export function useIntakeRounds(
       await onChanged()
       return true
     } catch (error) {
-      toast.add({
-        title: "Couldn't close the round",
-        description: error instanceof Error ? error.message : 'Failed to close the round',
-        color: 'error',
+      const message = problemMessage(error, "Couldn't close the round", {
+        round: roundDisplayName(round),
       })
+      toast.add({
+        title: message.title,
+        description: message.description,
+        color: message.color,
+      })
+      if (message.kind !== 'failure') {
+        await onChanged()
+      }
       return false
     } finally {
       closing.value = false

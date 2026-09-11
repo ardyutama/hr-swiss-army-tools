@@ -56,6 +56,10 @@ _Avoid_: Round settings, batch management
 The moment a record becomes read-only through its lifecycle: a round's review data settles at round closure; hire-outcome bookkeeping settles at vacancy closure. Attempts to change settled data are refused and must be re-expressed through the lifecycle's own powers (promotion, reopening).
 _Avoid_: Locked, frozen
 
+**Lifecycle Conflict**:
+A refusal of an operation because the record's lifecycle state forbids it: either an attempt to change settled data (closed round, closed vacancy) or a failed lifecycle precondition (round already active, no active round, source round not yet closed). Lifecycle conflicts are expected and actionable: they surface as amber warnings whose copy tells HR how to re-express the intent through the lifecycle's own powers. Unknown conflicts and technical failures surface as red errors.
+_Avoid_: settled-state error, validation failure
+
 **Promote**:
 Moving a new, flagged, or shortlisted-without-outcome candidate from a closed round into the active round, preserving review status, requirement reviews, and notes.
 _Avoid_: Copy candidate, re-import

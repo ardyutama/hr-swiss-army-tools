@@ -29,6 +29,9 @@ internal static class RoundWrite
                     .Where(candidate => candidate.Id == candidateId &&
                         candidate.IntakeRoundId == roundId)
                     .LoadAsync(cancellationToken);
+                await dbContext.CandidateRequirementReviews
+                    .Where(review => review.CandidateId == candidateId)
+                    .LoadAsync(cancellationToken);
 
                 return mutation(vacancy, candidateId);
             },

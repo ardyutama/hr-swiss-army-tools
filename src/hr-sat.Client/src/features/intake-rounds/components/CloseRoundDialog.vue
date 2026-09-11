@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { VacancyRound } from '@/features/vacancies/api'
 import { roundDisplayName } from '../useIntakeRounds'
 
@@ -17,12 +18,21 @@ const emit = defineEmits<{
   confirm: [round: VacancyRound]
 }>()
 
+const candidateCountLabel = computed(() => {
+  const count = props.round?.candidateCount ?? 0
+  return `${count} ${count === 1 ? 'candidate' : 'candidates'}`
+})
+
+const shortageLabel = computed(() => {
+  const shortage = props.shortage ?? 0
+  return `${shortage} ${shortage === 1 ? 'slot' : 'slots'} still open`
+})
+
 function confirm() {
   if (props.round) {
     emit('confirm', props.round)
   }
 }
-
 </script>
 
 <template>
@@ -32,13 +42,35 @@ function confirm() {
     :dismissible="!props.closing"
   >
     <template #body>
-      <p class="text-base leading-relaxed">
-        Close <strong class="font-semibold">{{ props.round ? roundDisplayName(props.round) : '' }}</strong
-        >? Closing is permanent — the round can't be reopened and becomes read-only.
-      </p>
-      <p v-if="props.shortage !== null && props.shortage > 0" class="text-base leading-relaxed">
-        {{ props.shortage }} slots still open &mdash; close this round?
-      </p>
+      <div class="flex flex-col gap-4">
+        <!-- What is being closed -->
+        <div
+          class="flex items-center justify-between gap-3 rounded-xl border border-default bg-muted/30 px-4 py-3"
+        >
+          <div class="min-w-0">
+            <p class="truncate text-sm font-semibold text-highlighted">
+              {{ props.round ? roundDisplayName(props.round) : '' }}
+            </p>
+            <p class="text-sm tabular-nums text-muted">{{ candidateCountLabel }} in this round</p>
+          </div>
+          <UBadge v-if="props.round" color="success" variant="subtle" class="shrink-0">Open</UBadge>
+        </div>
+
+        <!-- What closing means -->
+        <p class="text-sm leading-relaxed text-muted">
+          Closing is permanent &mdash; the round becomes read-only and can't be reopened.
+        </p>
+
+        <!-- Why you might hold off -->
+        <UAlert
+          v-if="props.shortage !== null && props.shortage > 0"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-circle-alert"
+          :title="shortageLabel"
+          description="To keep hiring, open a new round after closing this one."
+        />
+      </div>
     </template>
 
     <template #footer>
@@ -46,7 +78,7 @@ function confirm() {
         <UButton color="neutral" variant="outline" :disabled="props.closing" @click="open = false">
           Cancel
         </UButton>
-        <UButton color="error" :loading="props.closing" @click="confirm">
+        <UButton color="error" icon="i-lucide-lock" :loading="props.closing" @click="confirm">
           Close round
         </UButton>
       </div>

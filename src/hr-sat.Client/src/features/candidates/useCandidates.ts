@@ -2,6 +2,7 @@ import { computed, shallowRef, watch, type Ref } from 'vue'
 import { useToast } from '@nuxt/ui/composables/useToast'
 import { deleteCandidate, listCandidates, type CandidateSummary } from '@/features/candidates/api'
 import { candidateDisplayName } from '@/features/candidates/format'
+import { problemMessage, problemMessageText } from '@/shared/problem-details'
 
 export type CandidatesViewState = 'loading' | 'error' | 'empty' | 'ready'
 
@@ -47,7 +48,7 @@ export function useCandidates(vacancyId: Ref<string>, roundId: Ref<string>) {
       if (token !== requestToken) {
         return
       }
-      loadError.value = error instanceof Error ? error.message : 'Failed to load candidates'
+      loadError.value = problemMessageText(problemMessage(error, 'Something went wrong'))
     }
   }
 

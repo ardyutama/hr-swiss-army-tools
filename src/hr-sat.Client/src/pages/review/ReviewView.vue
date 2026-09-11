@@ -41,6 +41,7 @@ const {
   viewState,
   isRoundClosed,
   candidateDetailsWarning,
+  conflictWarning,
   position,
   total,
   previousCandidateId,
@@ -104,6 +105,17 @@ watch(candidateDetailsWarning, (warning) => {
     toast.add({
       title: warning,
       color: 'warning',
+      class: 'review-details-warning-toast',
+    })
+  }
+})
+
+watch(conflictWarning, (warning) => {
+  if (warning) {
+    toast.add({
+      title: warning.title,
+      description: warning.description,
+      color: warning.color,
       class: 'review-details-warning-toast',
     })
   }
