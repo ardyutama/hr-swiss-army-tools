@@ -181,6 +181,60 @@ public sealed class Vacancy : Entity
             : round;
     }
 
+    public Result<Candidate> UpdateCandidateDetails(
+        long roundId,
+        long candidateId,
+        string? fullName,
+        string? contactEmail) =>
+        MutateCandidate(
+            roundId,
+            candidateId,
+            EnsureCanReviewCandidate,
+            candidate => candidate.UpdateDetails(fullName, contactEmail));
+
+    public Result<Candidate> UpdateCandidateNotes(
+        long roundId,
+        long candidateId,
+        string? notes) =>
+        MutateCandidate(
+            roundId,
+            candidateId,
+            EnsureCanReviewCandidate,
+            candidate => candidate.UpdateNotes(notes));
+
+    public Result<Candidate> ReviewCandidate(
+        long roundId,
+        long candidateId,
+        CandidateReviewStatus status,
+        string? notes) =>
+        MutateCandidate(
+            roundId,
+            candidateId,
+            EnsureCanReviewCandidate,
+            candidate => candidate.ApplyReview(status, notes));
+
+    public Result<Candidate> ReviewCandidateRequirement(
+        long roundId,
+        long candidateId,
+        long vacancyRequirementId,
+        bool confirmed) =>
+        MutateCandidate(
+            roundId,
+            candidateId,
+            EnsureCanReviewCandidate,
+            candidate => candidate.SetRequirementReview(vacancyRequirementId, confirmed));
+
+    public Result<Candidate> SetCandidateHireOutcome(
+        long roundId,
+        long candidateId,
+        CandidateHireOutcome outcome,
+        string? note) =>
+        MutateCandidate(
+            roundId,
+            candidateId,
+            EnsureCanRecordHireOutcome,
+            candidate => candidate.SetHireOutcome(outcome, note));
+
     public Result<IReadOnlyList<Candidate>> PromoteCandidates(
         long sourceRoundId,
         IEnumerable<long>? candidateIds,
@@ -279,6 +333,31 @@ public sealed class Vacancy : Entity
         }
 
         return candidates;
+    }
+
+    private Result<Candidate> MutateCandidate(
+        long roundId,
+        long candidateId,
+        Func<long, Result<IntakeRound>> ensureCanMutate,
+        Func<Candidate, Result> mutation)
+    {
+        var roundResult = ensureCanMutate(roundId);
+        if (roundResult.IsFailure)
+        {
+            return Result<Candidate>.Failure(roundResult.Error);
+        }
+
+        var candidate = roundResult.Value.Candidates
+            .SingleOrDefault(item => item.Id == candidateId);
+        if (candidate is null)
+        {
+            return Result<Candidate>.Failure(CandidateErrors.NotFound(candidateId));
+        }
+
+        var mutationResult = mutation(candidate);
+        return mutationResult.IsFailure
+            ? Result<Candidate>.Failure(mutationResult.Error)
+            : Result<Candidate>.Success(candidate);
     }
 
     private Result EnsureOpen(string message)

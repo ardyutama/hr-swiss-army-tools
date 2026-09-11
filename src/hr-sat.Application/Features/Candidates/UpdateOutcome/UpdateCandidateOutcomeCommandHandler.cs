@@ -4,7 +4,7 @@ using hr_sat.Application.Features.Candidates.GetDetails;
 using hr_sat.Application.Features.Shared;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
-using Microsoft.EntityFrameworkCore;
+using hr_sat.Domain.Vacancies;
 
 namespace hr_sat.Application.Features.Candidates.UpdateOutcome;
 
@@ -25,27 +25,16 @@ internal sealed class UpdateCandidateOutcomeCommandHandler(IApplicationDbContext
                 }));
         }
 
-        var updateResult = await RoundWrite.ExecuteAsync(
+        var updateResult = await RoundWrite.ExecuteCandidateAsync(
             command.VacancyId,
             command.RoundId,
+            command.CandidateId,
             dbContext,
-            (vacancy, targetRoundId) => vacancy.EnsureCanRecordHireOutcome(targetRoundId),
-            async (_, round) =>
-            {
-                var candidate = await dbContext.Candidates
-                    .SingleOrDefaultAsync(
-                        item => item.Id == command.CandidateId && item.IntakeRoundId == round.Id,
-                        cancellationToken);
-                if (candidate is null)
-                {
-                    return Result<Candidate>.Failure(CandidateErrors.NotFound(command.CandidateId));
-                }
-
-                var mutationResult = candidate.SetHireOutcome(outcome, command.Note);
-                return mutationResult.IsFailure
-                    ? Result<Candidate>.Failure(mutationResult.Error)
-                    : Result<Candidate>.Success(candidate);
-            },
+            (vacancy, candidateId) => vacancy.SetCandidateHireOutcome(
+                command.RoundId,
+                candidateId,
+                outcome,
+                command.Note),
             cancellationToken);
         if (updateResult.IsFailure)
         {
