@@ -306,6 +306,10 @@ watch(outcomeDialogOpen, (open) => {
         :total="total"
         :processed="vacancy.progress.processedCandidates"
         :progress-total="vacancy.progress.totalCandidates"
+        :review-status="candidate.reviewStatus"
+        :hire-outcome="candidate.hireOutcome"
+        :is-round-closed="isRoundClosed"
+        :vacancy-closed="vacancy.status === 'closed'"
       />
 
       <div class="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
@@ -352,6 +356,8 @@ watch(outcomeDialogOpen, (open) => {
         :review-status="candidate.reviewStatus"
         :hire-outcome="candidate.hireOutcome"
         :can-set-outcome="canSetHireOutcome"
+        :is-round-closed="isRoundClosed"
+        :vacancy-closed="vacancy.status === 'closed'"
         :can-prev="previousCandidateId !== null"
         :can-next="nextCandidateId !== null"
         :busy="deciding"

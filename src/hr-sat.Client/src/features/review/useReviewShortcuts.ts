@@ -144,21 +144,21 @@ export function useReviewShortcuts(options: UseReviewShortcutsOptions) {
           void options.onDecide('rejected')
         }
       },
-        H: (event) => {
-          if (isArmed(event) && options.canSetOutcome.value && options.hireOutcome.value !== 'hired' && !busy.value) {
-            void options.onSetOutcome('hired')
-          }
-        },
-        U: (event) => {
-          if (isArmed(event) && options.canSetOutcome.value && options.hireOutcome.value === 'hired' && !busy.value) {
-            void options.onSetOutcome('runaway')
-          }
-        },
-        D: (event) => {
-          if (isArmed(event) && options.canSetOutcome.value && options.hireOutcome.value === 'none' && !busy.value) {
-            void options.onSetOutcome('declined')
-          }
-        },
+      shift_h: (event) => {
+        if (isArmed(event) && options.canSetOutcome.value && options.hireOutcome.value !== 'hired' && !busy.value) {
+          void options.onSetOutcome('hired')
+        }
+      },
+      shift_u: (event) => {
+        if (isArmed(event) && options.canSetOutcome.value && options.hireOutcome.value === 'hired' && !busy.value) {
+          void options.onSetOutcome('runaway')
+        }
+      },
+      shift_d: (event) => {
+        if (isArmed(event) && options.canSetOutcome.value && options.hireOutcome.value === 'none' && !busy.value) {
+          void options.onSetOutcome('declined')
+        }
+      },
       N: {
         handler: () => {
           void toggleNotes()

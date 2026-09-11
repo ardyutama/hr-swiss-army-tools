@@ -267,6 +267,25 @@ function findButton(wrapper: VueWrapper, label: string): DOMWrapper<HTMLButtonEl
   return button as unknown as DOMWrapper<HTMLButtonElement>
 }
 
+function hasButton(wrapper: VueWrapper, label: string): boolean {
+  return wrapper.findAll('button').some((button) => button.text().includes(label))
+}
+
+function findMenuItem(label: string): DOMWrapper<HTMLElement> {
+  const item = Array.from(document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')).find((candidate) =>
+    candidate.textContent?.includes(label),
+  )
+  expect(item, `a "${label}" menu item`).toBeDefined()
+  return new DOMWrapper(item as HTMLElement)
+}
+
+async function openOutcomeMenu(wrapper: VueWrapper) {
+  const trigger = wrapper.find('button[aria-label="Set hire outcome"], button[aria-label^="Hire outcome:"]')
+  expect(trigger.exists(), 'the hire outcome menu trigger').toBe(true)
+  await trigger.trigger('click')
+  await flushPromises()
+}
+
 afterEach(() => {
   vi.clearAllMocks()
   vi.unstubAllGlobals()
@@ -684,12 +703,14 @@ describe('ReviewView', () => {
     expect(findButton(wrapper, 'Shortlist').attributes('aria-keyshortcuts')).toBe('S')
     expect(findButton(wrapper, 'Flag').attributes('aria-keyshortcuts')).toBe('F')
     expect(findButton(wrapper, 'Reject').attributes('aria-keyshortcuts')).toBe('R')
+    expect(wrapper.find('[aria-label="Hire outcomes"]').exists()).toBe(false)
 
     const shortcutButton = wrapper.find('button[aria-label="Keyboard shortcuts"]')
     expect(shortcutButton.exists()).toBe(true)
     expect(shortcutButton.attributes('aria-keyshortcuts')).toBe('?')
     expect(shortcutButton.text()).toContain('Shortcuts')
     expect(shortcutButton.text()).toContain('?')
+    expect(findButton(wrapper, 'Next').classes().some((className) => className.includes('bg-primary'))).toBe(true)
 
     await shortcutButton.trigger('click')
     await flushPromises()
@@ -709,20 +730,35 @@ describe('ReviewView', () => {
 
     const outcomes = wrapper.find('[aria-label="Hire outcomes"]')
     expect(outcomes.exists()).toBe(true)
-    expect(findButton(wrapper, 'Mark Hired').attributes('aria-keyshortcuts')).toBe('H')
-    expect(findButton(wrapper, 'Mark Runaway').attributes('disabled')).toBeDefined()
-    expect(findButton(wrapper, 'Mark Declined').attributes('disabled')).toBeUndefined()
+    expect(wrapper.find('button[aria-label="Set hire outcome"]').text()).toContain('Set outcome')
 
-    await findButton(wrapper, 'Mark Hired').trigger('click')
+    await openOutcomeMenu(wrapper)
+    expect(findMenuItem('Mark Hired').text()).toContain('⇧H')
+    expect(findMenuItem('Mark Hired').attributes('aria-disabled')).toBeUndefined()
+    expect(findMenuItem('Mark Runaway').attributes('aria-disabled')).toBe('true')
+    expect(findMenuItem('Mark Declined').attributes('aria-disabled')).toBeUndefined()
+
+    await findMenuItem('Mark Hired').trigger('click')
     await flushPromises()
 
     expect(requests.find((request) => request.url.endsWith('/outcome'))?.body).toEqual({
       outcome: 'hired',
     })
     expect(wrapper.text()).toContain('Hired')
-    expect(findButton(wrapper, 'Clear outcome').exists()).toBe(true)
-    expect(findButton(wrapper, 'Mark Runaway').attributes('disabled')).toBeUndefined()
-    expect(findButton(wrapper, 'Mark Declined').attributes('disabled')).toBeDefined()
+
+    await openOutcomeMenu(wrapper)
+    expect(findMenuItem('Mark Runaway').attributes('aria-disabled')).toBeUndefined()
+    expect(findMenuItem('Mark Declined').attributes('aria-disabled')).toBe('true')
+    await findMenuItem('Mark Runaway').trigger('click')
+    await flushPromises()
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain('Reopens 1 needed-hire slot')
+    await new DOMWrapper(document.body.querySelector('[role="dialog"]') as HTMLElement).find('button').trigger('click')
+    await flushPromises()
+
+    await openOutcomeMenu(wrapper)
+    await findMenuItem('Clear outcome').trigger('click')
+    await flushPromises()
+    expect(requests.filter((request) => request.url.endsWith('/outcome')).at(-1)?.body).toEqual({ outcome: 'none' })
     wrapper.unmount()
   })
 
@@ -735,20 +771,26 @@ describe('ReviewView', () => {
     })
     const closedRoundView = await mountReview()
     await flushPromises()
-    expect(findButton(closedRoundView.wrapper, 'Mark Hired').attributes('disabled')).toBeUndefined()
+    expect(hasButton(closedRoundView.wrapper, 'Shortlist')).toBe(false)
+    expect(closedRoundView.wrapper.find('[aria-label="Review status: Shortlisted"]').exists()).toBe(true)
+    await openOutcomeMenu(closedRoundView.wrapper)
+    expect(findMenuItem('Mark Hired').attributes('aria-disabled')).toBeUndefined()
     closedRoundView.wrapper.unmount()
 
     stubApi({
       vacancy: vacancyDetails({ status: 'closed', closedAt: '2026-09-06T00:00:00Z' }),
-      details: { 1: candidateDetails(1, { reviewStatus: 'shortlisted' }) },
+      details: { 1: candidateDetails(1, { reviewStatus: 'shortlisted', hireOutcome: 'hired' }) },
     })
     const closedVacancyView = await mountReview()
     await flushPromises()
-    expect(findButton(closedVacancyView.wrapper, 'Mark Hired').attributes('disabled')).toBeDefined()
+    expect(hasButton(closedVacancyView.wrapper, 'Shortlist')).toBe(false)
+    expect(closedVacancyView.wrapper.find('[aria-label="Review status: Shortlisted"]').exists()).toBe(true)
+    expect(closedVacancyView.wrapper.find('[aria-label="Hire outcome: Hired"]').exists()).toBe(true)
+    expect(closedVacancyView.wrapper.find('[aria-label="Hire outcomes"]').exists()).toBe(false)
     closedVacancyView.wrapper.unmount()
   })
 
-  it('domain: H stays direct while U and D require consequential outcome confirmation', async () => {
+  it('domain: plain outcome keys are inert while Shift+H stays direct and Shift+U confirms', async () => {
     const { requests } = stubApi({
       details: { 1: candidateDetails(1, { reviewStatus: 'shortlisted' }) },
     })
@@ -757,12 +799,20 @@ describe('ReviewView', () => {
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'h' }))
     await flushPromises()
+    expect(requests.filter((request) => request.url.endsWith('/outcome'))).toHaveLength(0)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'h', shiftKey: true }))
+    await flushPromises()
     expect(requests.filter((request) => request.url.endsWith('/outcome'))).toHaveLength(1)
     expect(requests.find((request) => request.url.endsWith('/outcome'))?.body).toEqual({ outcome: 'hired' })
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'u' }))
     await flushPromises()
     expect(requests.filter((request) => request.url.endsWith('/outcome'))).toHaveLength(1)
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'u', shiftKey: true }))
+    await flushPromises()
     expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain(
       'Reopens 1 needed-hire slot',
     )
@@ -787,7 +837,7 @@ describe('ReviewView', () => {
     const declinedView = await mountReview()
     await flushPromises()
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd' }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', shiftKey: true }))
     await flushPromises()
     expect(declined.requests.filter((request) => request.url.endsWith('/outcome'))).toHaveLength(0)
     expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain(
@@ -799,6 +849,10 @@ describe('ReviewView', () => {
     expect(declined.requests.filter((request) => request.url.endsWith('/outcome'))).toHaveLength(0)
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd' }))
+    await flushPromises()
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', shiftKey: true }))
     await flushPromises()
     const declinedNote = document.body.querySelector('textarea[aria-label="Outcome note"]')
     expect(declinedNote).toBeDefined()
@@ -1023,30 +1077,17 @@ describe('ReviewView', () => {
     },
   )
 
-  it('domain: a closed vacancy refuses a hire outcome with an amber warning', async () => {
+  it('domain: a closed vacancy settles the outcome in the header and hides outcome actions', async () => {
     stubApi({
+      vacancy: vacancyDetails({ status: 'closed', closedAt: '2026-09-06T00:00:00Z' }),
       details: { 1: candidateDetails(1, { reviewStatus: 'shortlisted' }) },
-      mutationError: {
-        path: '/outcome',
-        problem: { title: 'Vacancies.Closed', detail: 'The vacancy is closed.' },
-        status: 409,
-      },
     })
-    const { wrapper, router } = await mountReview()
+    const { wrapper } = await mountReview()
     await flushPromises()
 
-    await findButton(wrapper, 'Mark Hired').trigger('click')
-    await flushPromises()
-
-    expect(toastAdd).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'This vacancy is closed',
-        description: 'Reopen the vacancy to record hire outcomes.',
-        color: 'warning',
-      }),
-    )
-    expect(wrapper.find('p[role="alert"]').exists()).toBe(false)
-    expect(router.currentRoute.value.params.candidateId).toBe('1')
+    expect(wrapper.find('[aria-label="Review status: Shortlisted"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="Hire outcomes"]').exists()).toBe(false)
+    expect(hasButton(wrapper, 'Shortlist')).toBe(false)
     wrapper.unmount()
   })
 
@@ -1112,7 +1153,8 @@ describe('ReviewView', () => {
     const { wrapper, router } = await mountReview()
     await flushPromises()
 
-    await findButton(wrapper, 'Clear outcome').trigger('click')
+    await openOutcomeMenu(wrapper)
+    await findMenuItem('Clear outcome').trigger('click')
     await flushPromises()
 
     expect(toastAdd).toHaveBeenCalledWith(
