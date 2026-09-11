@@ -36,7 +36,7 @@ internal static class CandidateTestData
     {
         var sourceHash = new byte[32];
         sourceHash[0] = (byte)sourceNumber;
-        var candidateResult = Candidate.Import(
+        var candidateResult = Candidate.Import(new CandidateImportData(
             intakeRoundId,
             $"Candidate {sourceNumber}",
             $"candidate{sourceNumber}@example.com",
@@ -54,7 +54,7 @@ internal static class CandidateTestData
                 1,
                 true,
                 20,
-                sourceHash)]);
+                sourceHash)]));
         if (candidateResult.IsFailure)
         {
             throw new InvalidOperationException(candidateResult.Error.Message);

@@ -130,7 +130,7 @@ internal sealed class ImportFilePreparer(
                     storedDocument.Sha256));
             }
 
-            var candidateResult = Candidate.Import(
+            var candidateResult = Candidate.Import(new CandidateImportData(
                 roundId,
                 parsedEmail.SenderName,
                 parsedEmail.SenderEmail,
@@ -142,7 +142,7 @@ internal sealed class ImportFilePreparer(
                 storedSource.SizeBytes,
                 sourceHash,
                 timeProvider.GetUtcNow(),
-                storedDocuments);
+                storedDocuments));
             if (candidateResult.IsFailure)
             {
                 await DeleteStoredFilesAsync(fileStorageKeys);
