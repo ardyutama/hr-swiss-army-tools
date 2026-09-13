@@ -1915,4 +1915,320 @@ describe('VacancyDetailView', () => {
     expect(vacancyRequests).toBeGreaterThan(1)
     wrapper.unmount()
   })
+
+  describe('US-19: email templates', () => {
+    function emailTemplate(kind: 'shortlisted' | 'rejected') {
+      return {
+        kind,
+        subject: 'Good news, {{candidate_name}}',
+        body: 'Hi {{candidate_name}}, we would like to invite you to an interview.',
+      }
+    }
+
+    function plumberSource() {
+      return {
+        vacancyId: '9',
+        vacancyTitle: 'Plumber',
+        openedOn: '2026-01-15',
+        subject: 'Copied subject',
+        body: 'Copied body',
+      }
+    }
+
+    /** Serves the candidates list plus the email-templates endpoints; anything else still throws via stubFetch. */
+    function emailTemplatesFetch(
+      options: {
+        templates?: () => unknown
+        sources?: Record<string, unknown[]>
+        candidates?: () => unknown[]
+        onUpsert?: (kind: string, body: unknown) => unknown
+        onDelete?: (kind: string) => void
+        onRender?: (body: unknown) => unknown
+      } = {},
+    ): FetchHandler {
+      return (url, init) => {
+        if (url.endsWith('/vacancies/1/email-templates')) {
+          return Promise.resolve(
+            jsonResponse(options.templates?.() ?? { shortlisted: null, rejected: null }),
+          )
+        }
+        if (init?.method === 'PUT' && url.includes('/email-templates/')) {
+          const kind = url.slice(url.lastIndexOf('/') + 1)
+          const body = JSON.parse(String(init.body))
+          return Promise.resolve(jsonResponse(options.onUpsert?.(kind, body) ?? { kind, ...body }))
+        }
+        if (init?.method === 'DELETE' && url.includes('/email-templates/')) {
+          options.onDelete?.(url.slice(url.lastIndexOf('/') + 1))
+          return Promise.resolve(new Response(null, { status: 204 }))
+        }
+        if (url.includes('/email-templates/sources')) {
+          const kind = new URL(url, 'http://localhost').searchParams.get('kind') ?? ''
+          return Promise.resolve(jsonResponse(options.sources?.[kind] ?? []))
+        }
+        if (init?.method === 'POST' && url.endsWith('/email-templates/render')) {
+          const body = JSON.parse(String(init.body))
+          return Promise.resolve(
+            jsonResponse(
+              options.onRender?.(body) ?? {
+                subject: 'Good news, Bob Builder',
+                body: 'Hi Bob Builder, we would like to invite you to an interview.',
+              },
+            ),
+          )
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse(options.candidates?.() ?? []))
+        }
+        return undefined
+      }
+    }
+
+    function topDialog(): Element {
+      const dialogs = document.body.querySelectorAll('[role="dialog"]')
+      const top = dialogs[dialogs.length - 1]
+      if (!top) {
+        throw new Error('Expected an open dialog in document.body')
+      }
+      return top
+    }
+
+    function templateSection(heading: string): Element {
+      return bodyElement(`[aria-label="${heading}"]`)
+    }
+
+    function buttonIn(root: Element, text: string): HTMLButtonElement {
+      const button = Array.from(root.querySelectorAll('button')).find((candidate) =>
+        candidate.textContent?.includes(text),
+      )
+      if (!button) {
+        throw new Error(`Expected a "${text}" button`)
+      }
+      return button as HTMLButtonElement
+    }
+
+    async function openEmailTemplatesDialog(wrapper: VueWrapper) {
+      const button = wrapper
+        .findAll('button')
+        .find((candidate) => candidate.text().includes('Send email to all candidates'))
+      expect(button, 'a Send email to all candidates button').toBeDefined()
+      await button!.trigger('click')
+      await flushPromises()
+    }
+
+    it('opens the email templates dialog with both template sections', async () => {
+      stubFetch(() => vacancyDetails(), emailTemplatesFetch())
+
+      const { wrapper } = mountView()
+      await flushPromises()
+      await openEmailTemplatesDialog(wrapper)
+
+      const dialog = topDialog()
+      expect(dialog.textContent).toContain('Email templates')
+      expect(dialog.textContent).toContain('Welder · Opened')
+      expect(dialog.textContent).toContain('Shortlisted template')
+      expect(dialog.textContent).toContain('Rejected template')
+      expect(dialog.textContent).toContain('No shortlisted template yet.')
+      expect(dialog.textContent).toContain('No rejected template yet.')
+      wrapper.unmount()
+    })
+
+    it('creates the shortlisted template with the typed subject and body', async () => {
+      let putBody: unknown
+      stubFetch(
+        () => vacancyDetails(),
+        emailTemplatesFetch({
+          onUpsert: (_kind, body) => {
+            putBody = body
+            return { kind: 'shortlisted', ...(body as object) }
+          },
+        }),
+      )
+
+      const { wrapper } = mountView()
+      await flushPromises()
+      await openEmailTemplatesDialog(wrapper)
+
+      await new DOMWrapper(buttonIn(templateSection('Shortlisted template'), 'Create template')).trigger(
+        'click',
+      )
+      await flushPromises()
+
+      const editor = topDialog()
+      expect(editor.textContent).toContain('Create shortlisted template')
+      // The viewed round has no candidates: the draft passes through unrendered.
+      expect(editor.textContent).toContain('Import candidates to preview a prepared message.')
+
+      await new DOMWrapper(editor.querySelector('input') as HTMLElement).setValue(
+        'Welcome to the team',
+      )
+      await new DOMWrapper(editor.querySelector('textarea') as HTMLElement).setValue(
+        'Hi {{candidate_name}}, welcome!',
+      )
+      await new DOMWrapper(buttonIn(editor, 'Create template')).trigger('click')
+      await flushPromises()
+
+      expect(putBody).toEqual({
+        subject: 'Welcome to the team',
+        body: 'Hi {{candidate_name}}, welcome!',
+      })
+      expect(toastAdd).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Shortlisted template saved', color: 'success' }),
+      )
+      expect(templateSection('Shortlisted template').textContent).toContain('Welcome to the team')
+      wrapper.unmount()
+    })
+
+    it('views a template and renders the prepared message for the matching candidate', async () => {
+      let renderBody: unknown
+      stubFetch(
+        () => vacancyDetails(),
+        emailTemplatesFetch({
+          templates: () => ({ shortlisted: emailTemplate('shortlisted'), rejected: null }),
+          candidates: () => [candidateSummary(1), bobSummary()],
+          onRender: (body) => {
+            renderBody = body
+            return {
+              subject: 'Good news, Bob Builder',
+              body: 'Hi Bob Builder, we would like to invite you to an interview.',
+            }
+          },
+        }),
+      )
+
+      const { wrapper } = mountView()
+      await flushPromises()
+      await openEmailTemplatesDialog(wrapper)
+
+      await new DOMWrapper(buttonIn(templateSection('Shortlisted template'), 'View')).trigger(
+        'click',
+      )
+      await flushPromises()
+
+      // The default preview candidate is the first one matching the template kind
+      // (Bob is shortlisted; Alice is new).
+      expect(renderBody).toEqual({
+        subject: 'Good news, {{candidate_name}}',
+        body: 'Hi {{candidate_name}}, we would like to invite you to an interview.',
+        candidateId: 2,
+      })
+      const viewer = topDialog()
+      expect(viewer.textContent).toContain('Prepared message')
+      expect(viewer.textContent).toContain('Good news, Bob Builder')
+      wrapper.unmount()
+    })
+
+    it('copies a template from a previous vacancy into a pre-filled editor', async () => {
+      let putBody: unknown
+      stubFetch(
+        () => vacancyDetails(),
+        emailTemplatesFetch({
+          sources: { shortlisted: [plumberSource()] },
+          onUpsert: (_kind, body) => {
+            putBody = body
+            return { kind: 'shortlisted', ...(body as object) }
+          },
+        }),
+      )
+
+      const { wrapper } = mountView()
+      await flushPromises()
+      await openEmailTemplatesDialog(wrapper)
+
+      const section = templateSection('Shortlisted template')
+      expect(section.textContent).toContain('Copy from a previous vacancy')
+      await new DOMWrapper(section.querySelector('select') as HTMLElement).setValue('9')
+      await flushPromises()
+
+      const editor = topDialog()
+      expect(editor.textContent).toContain('Copied from Plumber')
+      expect((editor.querySelector('input') as HTMLInputElement).value).toBe('Copied subject')
+      expect((editor.querySelector('textarea') as HTMLTextAreaElement).value).toBe('Copied body')
+
+      // Nothing persisted until HR saves; the save upserts an independent copy.
+      await new DOMWrapper(buttonIn(editor, 'Create template')).trigger('click')
+      await flushPromises()
+
+      expect(putBody).toEqual({ subject: 'Copied subject', body: 'Copied body' })
+      wrapper.unmount()
+    })
+
+    it('deletes a template through the inline confirm', async () => {
+      let deletedKind: string | undefined
+      let templateGone = false
+      stubFetch(
+        () => vacancyDetails(),
+        emailTemplatesFetch({
+          templates: () =>
+            templateGone
+              ? { shortlisted: null, rejected: null }
+              : { shortlisted: emailTemplate('shortlisted'), rejected: null },
+          onDelete: (kind) => {
+            deletedKind = kind
+            templateGone = true
+          },
+        }),
+      )
+
+      const { wrapper } = mountView()
+      await flushPromises()
+      await openEmailTemplatesDialog(wrapper)
+
+      const section = templateSection('Shortlisted template')
+      await new DOMWrapper(buttonIn(section, 'Delete')).trigger('click')
+      await flushPromises()
+
+      // The section footer morphs into the inline confirm.
+      expect(section.textContent).toContain('Delete this template?')
+      await new DOMWrapper(buttonIn(section, 'Delete')).trigger('click')
+      await flushPromises()
+
+      expect(deletedKind).toBe('shortlisted')
+      expect(toastAdd).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Shortlisted template deleted', color: 'success' }),
+      )
+      expect(templateSection('Shortlisted template').textContent).toContain(
+        'No shortlisted template yet.',
+      )
+      wrapper.unmount()
+    })
+
+    it('opens read-only for a closed vacancy: mutations hidden, View and copy-from remain', async () => {
+      stubFetch(
+        () =>
+          vacancyDetails({
+            status: 'closed',
+            closedAt: '2026-09-10T00:00:00Z',
+            rounds: [closedRound({ candidateCount: 1 })],
+          }),
+        emailTemplatesFetch({
+          templates: () => ({ shortlisted: emailTemplate('shortlisted'), rejected: null }),
+          sources: { rejected: [plumberSource()] },
+          candidates: () => [bobSummary()],
+        }),
+      )
+
+      const { wrapper } = mountView()
+      await flushPromises()
+      await openEmailTemplatesDialog(wrapper)
+
+      const dialog = topDialog()
+      expect(dialog.textContent).toContain(
+        'Vacancy closed — templates are settled. Reopen the vacancy to change them.',
+      )
+
+      const shortlisted = templateSection('Shortlisted template')
+      expect(buttonIn(shortlisted, 'View')).toBeDefined()
+      expect(
+        shortlisted.querySelectorAll('button').length,
+        'no mutating buttons on the existing template',
+      ).toBe(1)
+
+      const rejected = templateSection('Rejected template')
+      expect(rejected.textContent).toContain('No rejected template yet.')
+      expect(rejected.textContent).not.toContain('Create template')
+      // Copy-from stays available on a closed vacancy.
+      expect(rejected.querySelector('select')).not.toBeNull()
+      wrapper.unmount()
+    })
+  })
 })

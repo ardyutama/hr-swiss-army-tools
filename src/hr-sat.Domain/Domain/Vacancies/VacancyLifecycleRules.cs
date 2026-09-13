@@ -1,4 +1,5 @@
 using hr_sat.Domain;
+using hr_sat.Domain.EmailTemplates;
 
 namespace hr_sat.Domain.Vacancies;
 
@@ -54,5 +55,10 @@ internal static class VacancyLifecycleRules
     public static Result EnsureCanRecordHireOutcome(VacancyStatus status, long vacancyId) =>
         status == VacancyStatus.Closed
             ? VacancyErrors.Closed(vacancyId)
+            : Result.Success();
+
+    public static Result EnsureCanMutateEmailTemplate(VacancyStatus status, long vacancyId) =>
+        status == VacancyStatus.Closed
+            ? EmailTemplateErrors.VacancyClosed(vacancyId)
             : Result.Success();
 }

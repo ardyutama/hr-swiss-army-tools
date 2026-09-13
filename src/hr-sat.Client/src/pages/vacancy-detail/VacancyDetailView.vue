@@ -12,6 +12,7 @@ import RoundList from '@/features/intake-rounds/components/RoundList.vue'
 import CreateRoundDialog from '@/features/intake-rounds/components/CreateRoundDialog.vue'
 import CloseRoundDialog from '@/features/intake-rounds/components/CloseRoundDialog.vue'
 import PromoteCandidatesDialog from '@/features/promote-candidates/components/PromoteCandidatesDialog.vue'
+import EmailTemplatesDialog from '@/features/email-templates/components/EmailTemplatesDialog.vue'
 import { candidateFilterQuery, candidateFilterStateFromQuery } from '@/features/candidates/filter'
 import { useVacancyDetailFlow } from '@/features/vacancy-detail/useVacancyDetailFlow'
 import { formatDate } from '@/features/vacancies/format'
@@ -104,6 +105,7 @@ const deleteError = shallowRef<string | null>(null)
 const createRoundOpen = shallowRef(false)
 const closeRoundOpen = shallowRef(false)
 const roundToClose = shallowRef<VacancyRound | null>(null)
+const emailTemplatesOpen = shallowRef(false)
 
 watch(importOpen, (open) => {
   if (!open) {
@@ -253,9 +255,14 @@ function openReview(candidate: CandidateSummary) {
             >
               Import .eml
             </UButton>
-            <span title="Available once email templates exist">
-              <UButton disabled>Send email to all candidates</UButton>
-            </span>
+            <UButton
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-mail"
+              @click="emailTemplatesOpen = true"
+            >
+              Send email to all candidates
+            </UButton>
           </div>
         </div>
       </header>
@@ -464,6 +471,15 @@ function openReview(candidate: CandidateSummary) {
       :submit-error="promoteSubmitError"
       :can-submit="canPromoteSubmit"
       @submit="submitPromotions"
+    />
+    <EmailTemplatesDialog
+      v-if="vacancy"
+      v-model:open="emailTemplatesOpen"
+      :vacancy-id="id"
+      :vacancy-title="vacancy.title"
+      :opened-on="vacancy.openedOn"
+      :status="vacancy.status"
+      :candidates="candidates ?? []"
     />
   </div>
 </template>

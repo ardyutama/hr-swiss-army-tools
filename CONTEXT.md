@@ -133,7 +133,7 @@ The number of shortlisted and rejected candidates compared with all candidates i
 _Avoid_: Flagged count, match score
 
 **Email Template**:
-Optional editable subject and body text owned by one vacancy for either shortlisted or rejected candidates; reuse creates an independent copy.
+Optional editable subject and body text owned by one vacancy for either shortlisted or rejected candidates; reuse creates an independent copy. The text may carry two placeholders — the candidate's name and the vacancy's title — that resolve per candidate when a Prepared Message is generated; a candidate with neither a typed name nor a source sender name reads as a neutral "there" in the resolved message.
 _Avoid_: Uploaded template file, shared template
 
 **Requirement Match** (deferred to V3):

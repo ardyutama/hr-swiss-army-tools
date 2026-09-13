@@ -2,6 +2,7 @@ using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Messaging;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.EmailTemplates;
 using hr_sat.Domain.IntakeRounds;
 using hr_sat.Domain.Vacancies;
 using Microsoft.EntityFrameworkCore;
@@ -21,6 +22,7 @@ public sealed class AppDbContext(
     public DbSet<CandidateRequirementReview> CandidateRequirementReviews => Set<CandidateRequirementReview>();
     public DbSet<CvDocument> CvDocuments => Set<CvDocument>();
     public DbSet<PendingFileDeletion> PendingFileDeletions => Set<PendingFileDeletion>();
+    public DbSet<EmailTemplate> EmailTemplates => Set<EmailTemplate>();
 
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken) =>
         Database.BeginTransactionAsync(cancellationToken);
@@ -79,5 +81,6 @@ public sealed class AppDbContext(
         modelBuilder.Entity<IntakeRound>().Ignore(item => item.DomainEvents);
         modelBuilder.Entity<CandidateRequirementReview>().Ignore(item => item.DomainEvents);
         modelBuilder.Entity<CvDocument>().Ignore(item => item.DomainEvents);
+        modelBuilder.Entity<EmailTemplate>().Ignore(item => item.DomainEvents);
     }
 }

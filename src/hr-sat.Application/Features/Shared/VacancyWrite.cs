@@ -26,6 +26,9 @@ internal static class VacancyWrite
         await dbContext.IntakeRounds
             .Where(round => round.VacancyId == id)
             .LoadAsync(cancellationToken);
+        await dbContext.EmailTemplates
+            .Where(template => template.VacancyId == id)
+            .LoadAsync(cancellationToken);
 
         var mutationResult = mutation(vacancy);
         if (mutationResult.IsFailure)

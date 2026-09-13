@@ -1,5 +1,6 @@
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.EmailTemplates;
 using hr_sat.Domain.IntakeRounds;
 using hr_sat.Domain.Vacancies;
 using Microsoft.Data.Sqlite;
@@ -26,6 +27,7 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
     public DbSet<CandidateRequirementReview> CandidateRequirementReviews => Set<CandidateRequirementReview>();
     public DbSet<CvDocument> CvDocuments => Set<CvDocument>();
     public DbSet<PendingFileDeletion> PendingFileDeletions => Set<PendingFileDeletion>();
+    public DbSet<EmailTemplate> EmailTemplates => Set<EmailTemplate>();
 
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken) =>
         Database.BeginTransactionAsync(cancellationToken);
@@ -66,6 +68,12 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
             entity.Navigation(vacancy => vacancy.Requirements)
                 .UsePropertyAccessMode(PropertyAccessMode.Field);
             entity.Navigation(vacancy => vacancy.Rounds)
+                .UsePropertyAccessMode(PropertyAccessMode.Field);
+            entity.HasMany(vacancy => vacancy.EmailTemplates)
+                .WithOne()
+                .HasForeignKey(template => template.VacancyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.Navigation(vacancy => vacancy.EmailTemplates)
                 .UsePropertyAccessMode(PropertyAccessMode.Field);
         });
 
@@ -135,6 +143,17 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
         {
             entity.HasKey(deletion => deletion.Id);
             entity.Property(deletion => deletion.Id).ValueGeneratedOnAdd();
+        });
+
+        modelBuilder.Entity<EmailTemplate>(entity =>
+        {
+            entity.HasKey(template => template.Id);
+            entity.Property(template => template.Id).ValueGeneratedOnAdd();
+            entity.Property(template => template.Kind).HasConversion<string>();
+            entity.HasOne<Vacancy>()
+                .WithMany(vacancy => vacancy.EmailTemplates)
+                .HasForeignKey(template => template.VacancyId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 
