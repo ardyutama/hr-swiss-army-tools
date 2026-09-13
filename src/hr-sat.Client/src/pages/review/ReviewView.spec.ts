@@ -90,6 +90,7 @@ function candidateDetails(id: number, overrides: Record<string, unknown> = {}) {
     hireOutcome: 'none',
     promotedFromRoundNumber: null,
     promotedAt: null,
+    priorApplications: [],
     fullName: name,
     contactEmail: `candidate${id}@mail.com`,
     notes: null,
@@ -314,6 +315,124 @@ describe('ReviewView', () => {
     expect(wrapper.text()).toContain('1 / 5')
     expect(wrapper.find('button[aria-label="Previous page"] kbd').text()).toBe('Shift+←')
     expect(wrapper.find('button[aria-label="Next page"] kbd').text()).toBe('Shift+→')
+    wrapper.unmount()
+  })
+
+  it('US-17: HR sees a single prior application with its review status', async () => {
+    stubApi({
+      details: {
+        1: candidateDetails(1, {
+          priorApplications: [
+            { roundNumber: 1, roundName: null, reviewStatus: 'rejected' },
+          ],
+        }),
+      },
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="prior-application-notice"]').text()).toContain(
+      'This sender also applied in Round 1 — rejected.',
+    )
+    expect(wrapper.find('[data-testid="prior-application-notice"][role="alert"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('US-17: HR sees all prior applications in descending round order', async () => {
+    stubApi({
+      details: {
+        1: candidateDetails(1, {
+          priorApplications: [
+            { roundNumber: 3, roundName: null, reviewStatus: 'shortlisted' },
+            { roundNumber: 1, roundName: null, reviewStatus: 'rejected' },
+          ],
+        }),
+      },
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="prior-application-notice"]').text()).toContain(
+      'This sender also applied in Round 3 — shortlisted; Round 1 — rejected.',
+    )
+    wrapper.unmount()
+  })
+
+  it('US-17: HR sees a named prior round in parentheses', async () => {
+    stubApi({
+      details: {
+        1: candidateDetails(1, {
+          priorApplications: [
+            { roundNumber: 3, roundName: 'July wave', reviewStatus: 'shortlisted' },
+          ],
+        }),
+      },
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('This sender also applied in Round 3 (July wave) — shortlisted.')
+    wrapper.unmount()
+  })
+
+  it('US-17: HR sees new prior applications as not yet reviewed', async () => {
+    stubApi({
+      details: {
+        1: candidateDetails(1, {
+          priorApplications: [
+            { roundNumber: 2, roundName: null, reviewStatus: 'new' },
+          ],
+        }),
+      },
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('This sender also applied in Round 2 — not yet reviewed.')
+    wrapper.unmount()
+  })
+
+  it('US-17: HR sees no prior application notice when the history is empty', async () => {
+    stubApi()
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="prior-application-notice"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('US-17: a details response without prior applications remains reviewable', async () => {
+    const legacyDetails = Object.fromEntries(
+      Object.entries(candidateDetails(1)).filter(([key]) => key !== 'priorApplications'),
+    )
+    stubApi({ details: { 1: legacyDetails } })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Jane Doe')
+    expect(wrapper.find('[data-testid="prior-application-notice"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('US-17: candidate navigation announces a prior application when one exists', async () => {
+    stubApi({
+      details: {
+        2: candidateDetails(2, {
+          priorApplications: [
+            { roundNumber: 1, roundName: null, reviewStatus: 'rejected' },
+          ],
+        }),
+      },
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    await findButton(wrapper, 'Next').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('p.sr-only[aria-live="polite"]').text()).toBe(
+      'Candidate 2 of 2: Bob Builder. Prior application in Round 1 — rejected.',
+    )
     wrapper.unmount()
   })
 

@@ -6,6 +6,7 @@ public sealed record CandidateDetailsResponse(
     string HireOutcome,
     int? PromotedFromRoundNumber,
     DateTimeOffset? PromotedAt,
+    IReadOnlyList<CandidatePriorApplicationResponse> PriorApplications,
     string? FullName,
     string? ContactEmail,
     string? Notes,

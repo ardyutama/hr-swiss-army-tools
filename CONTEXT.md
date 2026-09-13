@@ -65,7 +65,7 @@ Moving a new, flagged, or shortlisted-without-outcome candidate from a closed ro
 _Avoid_: Copy candidate, re-import
 
 **Prior Application Notice**:
-A display-only indicator on a candidate that the same person applied in another round of the same vacancy; it never blocks import and never affects review status.
+A display-only indicator that a candidate's source sender email also appears in another round of the same vacancy; it is person-intuition, not person-proof, and never blocks import or affects review status.
 _Avoid_: Duplicate block, global person history
 
 **Candidate**:

@@ -6,6 +6,7 @@ import { candidateDisplayName } from '@/features/candidates/format'
 import ReviewHeader from '@/features/review/components/ReviewHeader.vue'
 import RequirementsPanel from '@/features/review/components/RequirementsPanel.vue'
 import CandidateDetailsPanel from '@/features/review/components/CandidateDetailsPanel.vue'
+import PriorApplicationNotice from '@/features/review/components/PriorApplicationNotice.vue'
 import SourceEmailPanel from '@/features/review/components/SourceEmailPanel.vue'
 import NotesEditor from '@/features/review/components/NotesEditor.vue'
 import CvViewer from '@/features/review/components/CvViewer.vue'
@@ -21,6 +22,7 @@ import {
 import type { CandidateHireOutcome, CandidateReviewStatus } from '@/features/candidates/api'
 import { candidateFilterStateFromQuery } from '@/features/candidates/filter'
 import type { CandidateDetailsPayload } from '@/features/review/api'
+import { formatPriorApplicationAnnouncement } from '@/features/review/format'
 
 const props = defineProps<{
   id: string
@@ -213,7 +215,10 @@ watch(candidate, (current) => {
   const nextAnnouncement = pendingAnnouncement ?? { kind: 'navigation' as const }
   pendingAnnouncement = null
   const prefix = nextAnnouncement.kind === 'decision' ? `${nextAnnouncement.verb}. ` : ''
-  announcement.value = `${prefix}Candidate ${position.value} of ${total.value}: ${candidateDisplayName(current)}`
+  const priorAnnouncement = current.priorApplications[0]
+    ? ` ${formatPriorApplicationAnnouncement(current.priorApplications[0])}`
+    : ''
+  announcement.value = `${prefix}Candidate ${position.value} of ${total.value}: ${candidateDisplayName(current)}${priorAnnouncement ? `.${priorAnnouncement}` : ''}`
 })
 
 useReviewShortcuts({
@@ -324,6 +329,7 @@ watch(outcomeDialogOpen, (open) => {
             :error="requirementError"
             @toggle="onRequirementToggle"
           />
+          <PriorApplicationNotice :applications="candidate.priorApplications" />
           <CandidateDetailsPanel
             ref="candidateDetailsPanel"
             :candidate="candidate"

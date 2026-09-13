@@ -33,13 +33,35 @@ internal static class CandidateTestData
         long intakeRoundId,
         int sourceNumber = 1,
         DateTimeOffset? importedAt = null)
+        => CreateCandidateCore(
+            intakeRoundId,
+            sourceNumber,
+            importedAt,
+            $"candidate{sourceNumber}@example.com");
+
+    public static Candidate CreateCandidateWithSenderEmail(
+        long intakeRoundId,
+        string? sourceSenderEmail,
+        int sourceNumber = 1,
+        DateTimeOffset? importedAt = null) =>
+        CreateCandidateCore(
+            intakeRoundId,
+            sourceNumber,
+            importedAt,
+            sourceSenderEmail);
+
+    private static Candidate CreateCandidateCore(
+        long intakeRoundId,
+        int sourceNumber,
+        DateTimeOffset? importedAt,
+        string? sourceSenderEmail)
     {
         var sourceHash = new byte[32];
         sourceHash[0] = (byte)sourceNumber;
         var candidateResult = Candidate.Import(new CandidateImportData(
             intakeRoundId,
             $"Candidate {sourceNumber}",
-            $"candidate{sourceNumber}@example.com",
+            sourceSenderEmail,
             $"Candidate {sourceNumber} application",
             "Please find my CV attached.",
             new DateTimeOffset(2026, 8, 20, 10, 0, 0, TimeSpan.Zero),
