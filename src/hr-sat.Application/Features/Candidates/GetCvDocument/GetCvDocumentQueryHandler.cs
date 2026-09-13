@@ -22,7 +22,10 @@ internal sealed class GetCvDocumentQueryHandler(
                 item.Id == query.DocumentId &&
                 item.CandidateId == query.CandidateId &&
                 dbContext.Candidates.Any(candidate =>
-                    candidate.Id == query.CandidateId && candidate.VacancyId == query.VacancyId))
+                    candidate.Id == query.CandidateId &&
+                    candidate.IntakeRoundId == query.RoundId) &&
+                dbContext.IntakeRounds.Any(round =>
+                    round.Id == query.RoundId && round.VacancyId == query.VacancyId))
             .Select(item => new
             {
                 item.StorageKey,

@@ -40,9 +40,10 @@ integration test crosses the HTTP seam against a hermetic throwaway database con
 Frontend: Vitest + @vue/test-utils + jsdom — component tests at the feature-component seam.
 Both harnesses exist before feature slices land.
 
-**Client shape.** `src/features/<feature>/` (view + composables + api client),
-`src/shared/` (thin kernel: `http.ts`, layout, primitives), vue-router from the start.
-The `.esproj` stays as a Visual Studio F5 launcher; Docker (multi-stage build into
+**Client shape.** Feature-first under `src/features/<feature>/` and `src/pages/<page>/`,
+with `src/shared/` as a thin earned kernel. The living layout and its placement rules are
+owned by `.agents/skills/vue-feature-slices/SKILL.md` (ADR-0011); vue-router from the
+start. The `.esproj` stays as a Visual Studio F5 launcher; Docker (multi-stage build into
 `wwwroot`) owns the shipping client build.
 
 ## Consequences

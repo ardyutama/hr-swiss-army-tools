@@ -12,35 +12,29 @@ public sealed class Candidate : Entity
     }
 
     private Candidate(
-        long vacancyId,
-        string? sourceSenderName,
-        string? sourceSenderEmail,
-        string? sourceSubject,
-        string? sourceBodyText,
-        DateTimeOffset? sourceSentAt,
-        string sourceOriginalFilename,
-        string sourceStorageKey,
-        long sourceSizeBytes,
-        byte[] sourceSha256,
-        DateTimeOffset importedAt)
+        CandidateImportData importData)
     {
-        VacancyId = vacancyId;
+        IntakeRoundId = importData.IntakeRoundId;
         ReviewStatus = CandidateReviewStatus.New;
+        HireOutcome = CandidateHireOutcome.None;
         ExtractionStatus = CandidateExtractionStatus.Pending;
-        SourceSenderName = sourceSenderName;
-        SourceSenderEmail = sourceSenderEmail;
-        SourceSubject = sourceSubject;
-        SourceBodyText = sourceBodyText;
-        SourceSentAt = sourceSentAt;
-        SourceOriginalFilename = sourceOriginalFilename;
-        SourceStorageKey = sourceStorageKey;
-        SourceSizeBytes = sourceSizeBytes;
-        SourceSha256 = sourceSha256.ToArray();
-        ImportedAt = importedAt;
+        SourceSenderName = importData.SourceSenderName;
+        SourceSenderEmail = importData.SourceSenderEmail;
+        SourceSubject = importData.SourceSubject;
+        SourceBodyText = importData.SourceBodyText;
+        SourceSentAt = importData.SourceSentAt;
+        SourceOriginalFilename = importData.SourceOriginalFilename;
+        SourceStorageKey = importData.SourceStorageKey;
+        SourceSizeBytes = importData.SourceSizeBytes;
+        SourceSha256 = importData.SourceSha256.ToArray();
+        ImportedAt = importData.ImportedAt;
     }
 
-    public long VacancyId { get; private set; }
+    public long IntakeRoundId { get; private set; }
+    public int? PromotedFromRoundNumber { get; private set; }
+    public DateTimeOffset? PromotedAt { get; private set; }
     public CandidateReviewStatus ReviewStatus { get; private set; }
+    public CandidateHireOutcome HireOutcome { get; private set; }
     public CandidateExtractionStatus ExtractionStatus { get; private set; }
     public string? FullName { get; private set; }
     public string? ContactEmail { get; private set; }
@@ -61,69 +55,115 @@ public sealed class Candidate : Entity
 
     internal Result UpdateDetails(string? fullName, string? contactEmail)
     {
-        var errors = new Dictionary<string, string[]>();
-        if (string.IsNullOrWhiteSpace(fullName) || fullName.Trim().Length > 300)
+        var detailsResult = CandidateDetailsRules.Validate(fullName, contactEmail);
+        if (detailsResult.IsFailure)
         {
-            errors["fullName"] = ["Name must contain between 1 and 300 characters after trimming."];
+            return detailsResult;
         }
 
-        if (string.IsNullOrWhiteSpace(contactEmail) || contactEmail.Trim().Length > 320)
-        {
-            errors["contactEmail"] = ["Email must contain between 1 and 320 characters after trimming."];
-        }
-
-        if (errors.Count > 0)
-        {
-            return CandidateErrors.Invalid(errors);
-        }
-
-        FullName = fullName!.Trim();
-        ContactEmail = contactEmail!.Trim();
+        FullName = detailsResult.Value.FullName;
+        ContactEmail = detailsResult.Value.ContactEmail;
         return Result.Success();
     }
 
     internal Result UpdateNotes(string? notes)
     {
-        if (notes is not null && notes.Length > 4000)
+        var notesResult = CandidateNotesRules.Replace(notes);
+        if (notesResult.IsFailure)
         {
-            return CandidateErrors.Invalid(new Dictionary<string, string[]>
-            {
-                ["notes"] = ["Notes must be 4000 characters or fewer."]
-            });
+            return notesResult;
         }
 
-        Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        Notes = notesResult.Value;
         return Result.Success();
     }
 
     internal Result ApplyReview(CandidateReviewStatus status, string? notes)
     {
-        if (status == CandidateReviewStatus.New)
+        if (HireOutcome is CandidateHireOutcome.Hired or CandidateHireOutcome.Runaway)
         {
             return CandidateErrors.Invalid(new Dictionary<string, string[]>
             {
-                ["reviewStatus"] = ["A review decision must be shortlisted, flagged, or rejected."]
+                ["reviewStatus"] = ["Review status cannot change while the hire outcome is hired or runaway."]
             });
         }
 
-        var notesResult = UpdateNotes(notes);
+        var statusResult = CandidateReviewTransitions.Validate(status);
+        if (statusResult.IsFailure)
+        {
+            return statusResult;
+        }
+
+        var notesResult = CandidateNotesRules.Replace(notes);
         if (notesResult.IsFailure)
         {
             return notesResult;
         }
 
         ReviewStatus = status;
+        Notes = notesResult.Value;
+        return Result.Success();
+    }
+
+    internal Result SetHireOutcome(CandidateHireOutcome outcome, string? note = null)
+    {
+        if (outcome != CandidateHireOutcome.None && ReviewStatus != CandidateReviewStatus.Shortlisted)
+        {
+            return CandidateErrors.Invalid(new Dictionary<string, string[]>
+            {
+                ["reviewStatus"] = ["A hire outcome can only be set for a shortlisted candidate."]
+            });
+        }
+
+        var transitionResult = CandidateHireOutcomeTransitions.Calculate(
+            HireOutcome,
+            outcome,
+            Notes,
+            note);
+        if (transitionResult.IsFailure)
+        {
+            return transitionResult;
+        }
+
+        HireOutcome = transitionResult.Value.Outcome;
+        Notes = transitionResult.Value.Notes;
+        return Result.Success();
+    }
+
+    internal bool CanBePromoted =>
+        CandidatePromotionRules.CanBePromoted(ReviewStatus, HireOutcome);
+
+    internal Result PromoteTo(long targetRoundId, int sourceRoundNumber, DateTimeOffset promotedAt)
+    {
+        if (!CanBePromoted)
+        {
+            return CandidateErrors.Invalid(new Dictionary<string, string[]>
+            {
+                ["candidateId"] = ["Candidate is not promotable from its current round."]
+            });
+        }
+
+        var detailsResult = CandidatePromotionRules.ValidateDetails(
+            targetRoundId,
+            sourceRoundNumber,
+            promotedAt);
+        if (detailsResult.IsFailure)
+        {
+            return detailsResult;
+        }
+
+        IntakeRoundId = targetRoundId;
+        PromotedFromRoundNumber = sourceRoundNumber;
+        PromotedAt = promotedAt;
         return Result.Success();
     }
 
     internal Result SetRequirementReview(long vacancyRequirementId, bool confirmed)
     {
-        if (vacancyRequirementId <= 0)
+        var validationResult = CandidateRequirementReviewRules.Validate(vacancyRequirementId);
+        if (validationResult.IsFailure)
         {
-            return CandidateErrors.Invalid(new Dictionary<string, string[]>
-            {
-                ["requirementId"] = ["Vacancy requirement is required."]
-            });
+            return validationResult;
         }
 
         var review = _requirementReviews
@@ -143,66 +183,18 @@ public sealed class Candidate : Entity
         return Result.Success();
     }
 
-    internal static Result<Candidate> Import(
-        long vacancyId,
-        string? sourceSenderName,
-        string? sourceSenderEmail,
-        string? sourceSubject,
-        string? sourceBodyText,
-        DateTimeOffset? sourceSentAt,
-        string sourceOriginalFilename,
-        string sourceStorageKey,
-        long sourceSizeBytes,
-        byte[] sourceSha256,
-        DateTimeOffset importedAt,
-        IReadOnlyList<StoredCvDocument> cvDocuments)
+    internal static Result<Candidate> Import(CandidateImportData importData)
     {
-        var sourceResult = ValidateSource(
-            vacancyId,
-            sourceOriginalFilename,
-            sourceStorageKey,
-            sourceSizeBytes,
-            sourceSha256,
-            importedAt,
-            sourceSenderName,
-            sourceSenderEmail);
-        if (sourceResult.IsFailure)
+        var validationResult = CandidateImport.Validate(importData);
+        if (validationResult.IsFailure)
         {
-            return Result<Candidate>.Failure(sourceResult.Error);
+            return Result<Candidate>.Failure(validationResult.Error);
         }
 
-        var hasDuplicatePosition = cvDocuments
-            .GroupBy(document => document.Position)
-            .Any(group => group.Count() > 1);
-        if (hasDuplicatePosition)
+        var candidate = new Candidate(importData);
+
+        foreach (var document in CandidateImport.OrderDocuments(importData.CvDocuments))
         {
-            return Result<Candidate>.Failure(CandidateErrors.Invalid(new Dictionary<string, string[]>
-            {
-                ["documents"] = ["CV document positions must be unique."]
-            }));
-        }
-
-        var candidate = new Candidate(
-            vacancyId,
-            sourceSenderName,
-            sourceSenderEmail,
-            sourceSubject,
-            sourceBodyText,
-            sourceSentAt,
-            sourceOriginalFilename,
-            sourceStorageKey,
-            sourceSizeBytes,
-            sourceSha256,
-            importedAt);
-
-        foreach (var document in cvDocuments.OrderBy(document => document.Position))
-        {
-            var documentResult = ValidateDocument(document);
-            if (documentResult.IsFailure)
-            {
-                return Result<Candidate>.Failure(documentResult.Error);
-            }
-
             candidate._cvDocuments.Add(new CvDocument(
                 document.OriginalFilename,
                 document.StorageKey,
@@ -212,136 +204,6 @@ public sealed class Candidate : Entity
                 document.Sha256));
         }
 
-        if (cvDocuments.Count == 1 && !cvDocuments[0].IsPrimary)
-        {
-            return Result<Candidate>.Failure(CandidateErrors.Invalid(new Dictionary<string, string[]>
-            {
-                ["documents"] = ["A candidate with one CV document must have a primary document."]
-            }));
-        }
-
-        if (cvDocuments.Count(document => document.IsPrimary) > 1)
-        {
-            return Result<Candidate>.Failure(CandidateErrors.Invalid(new Dictionary<string, string[]>
-            {
-                ["documents"] = ["A candidate can have at most one primary CV document."]
-            }));
-        }
-
         return candidate;
     }
-
-    private static Result ValidateSource(
-        long vacancyId,
-        string sourceOriginalFilename,
-        string sourceStorageKey,
-        long sourceSizeBytes,
-        byte[] sourceSha256,
-        DateTimeOffset importedAt,
-        string? sourceSenderName,
-        string? sourceSenderEmail)
-    {
-        var errors = new Dictionary<string, string[]>();
-        if (vacancyId <= 0)
-        {
-            errors["vacancyId"] = ["Vacancy is required."];
-        }
-
-        if (string.IsNullOrWhiteSpace(sourceOriginalFilename))
-        {
-            errors["sourceOriginalFilename"] = ["The source filename is required."];
-        }
-
-        if (string.IsNullOrWhiteSpace(sourceStorageKey))
-        {
-            errors["sourceStorageKey"] = ["The source storage key is required."];
-        }
-
-        if (sourceSizeBytes <= 0)
-        {
-            errors["sourceSizeBytes"] = ["The source email must not be empty."];
-        }
-
-        if (sourceSha256.Length != 32)
-        {
-            errors["sourceSha256"] = ["The source hash must be a SHA-256 hash."];
-        }
-
-        if (importedAt == default)
-        {
-            errors["importedAt"] = ["The import timestamp is required."];
-        }
-
-        ValidateOptionalText(errors, "sourceSenderName", sourceSenderName, 300);
-        ValidateOptionalText(errors, "sourceSenderEmail", sourceSenderEmail, 320);
-
-        if (errors.Count > 0)
-        {
-            return CandidateErrors.Invalid(errors);
-        }
-
-        return Result.Success();
-    }
-
-    private static void ValidateOptionalText(
-        IDictionary<string, string[]> errors,
-        string field,
-        string? value,
-        int maximumLength)
-    {
-        if (value is null)
-        {
-            return;
-        }
-
-        var length = value.Trim().Length;
-        if (length < 1 || length > maximumLength)
-        {
-            errors[field] = [$"The value must contain between 1 and {maximumLength} characters after trimming."];
-        }
-    }
-
-    private static Result ValidateDocument(StoredCvDocument document)
-    {
-        var errors = new Dictionary<string, string[]>();
-        if (string.IsNullOrWhiteSpace(document.OriginalFilename))
-        {
-            errors["documents"] = ["Each CV document filename is required."];
-        }
-
-        if (string.IsNullOrWhiteSpace(document.StorageKey))
-        {
-            errors["documents"] = ["Each CV document storage key is required."];
-        }
-
-        if (document.Position <= 0)
-        {
-            errors["documents"] = ["Each CV document position must be positive."];
-        }
-
-        if (document.SizeBytes <= 0)
-        {
-            errors["documents"] = ["Each CV document must not be empty."];
-        }
-
-        if (document.Sha256.Length != 32)
-        {
-            errors["documents"] = ["Each CV document hash must be a SHA-256 hash."];
-        }
-
-        if (errors.Count > 0)
-        {
-            return CandidateErrors.Invalid(errors);
-        }
-
-        return Result.Success();
-    }
 }
-
-internal sealed record StoredCvDocument(
-    string OriginalFilename,
-    string StorageKey,
-    int Position,
-    bool IsPrimary,
-    long SizeBytes,
-    byte[] Sha256);

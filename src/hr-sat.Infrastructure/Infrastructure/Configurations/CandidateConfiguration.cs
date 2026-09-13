@@ -1,4 +1,5 @@
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.IntakeRounds;
 using hr_sat.Domain.Vacancies;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -14,6 +15,9 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
             table.HasCheckConstraint(
                 "candidate_review_status_check",
                 "review_status IN ('new', 'flagged', 'shortlisted', 'rejected')");
+            table.HasCheckConstraint(
+                "candidate_hire_outcome_check",
+                "hire_outcome IN ('none', 'hired', 'runaway', 'declined')");
             table.HasCheckConstraint(
                 "candidate_extraction_status_check",
                 "extraction_status IN ('pending', 'succeeded', 'failed')");
@@ -50,9 +54,13 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
         entity.Property(candidate => candidate.Id)
             .HasColumnName("id")
             .UseIdentityAlwaysColumn();
-        entity.Property(candidate => candidate.VacancyId)
-            .HasColumnName("vacancy_id")
+        entity.Property(candidate => candidate.IntakeRoundId)
+            .HasColumnName("intake_round_id")
             .IsRequired();
+        entity.Property(candidate => candidate.PromotedFromRoundNumber)
+            .HasColumnName("promoted_from_round_number");
+        entity.Property(candidate => candidate.PromotedAt)
+            .HasColumnName("promoted_at");
         entity.Property(candidate => candidate.ReviewStatus)
             .HasColumnName("review_status")
             .HasColumnType("text")
@@ -60,6 +68,14 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
                 status => ToDatabaseValue(status),
                 value => FromDatabaseValue<CandidateReviewStatus>(value))
             .HasDefaultValue(CandidateReviewStatus.New)
+            .IsRequired();
+        entity.Property(candidate => candidate.HireOutcome)
+            .HasColumnName("hire_outcome")
+            .HasColumnType("text")
+            .HasConversion(
+                outcome => ToDatabaseValue(outcome),
+                value => FromDatabaseValue<CandidateHireOutcome>(value))
+            .HasDefaultValue(CandidateHireOutcome.None)
             .IsRequired();
         entity.Property(candidate => candidate.ExtractionStatus)
             .HasColumnName("extraction_status")
@@ -116,9 +132,9 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
             .ValueGeneratedOnAdd()
             .IsRequired();
 
-        entity.HasOne<Vacancy>()
-            .WithMany(vacancy => vacancy.Candidates)
-            .HasForeignKey(candidate => candidate.VacancyId)
+        entity.HasOne<IntakeRound>()
+            .WithMany(round => round.Candidates)
+            .HasForeignKey(candidate => candidate.IntakeRoundId)
             .OnDelete(DeleteBehavior.Cascade);
         entity.HasMany(candidate => candidate.CvDocuments)
             .WithOne()
@@ -136,11 +152,11 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
         entity.HasIndex(candidate => candidate.SourceStorageKey)
             .IsUnique()
             .HasDatabaseName("candidate_source_storage_key_key");
-        entity.HasIndex(candidate => new { candidate.VacancyId, candidate.SourceSha256 })
+        entity.HasIndex(candidate => new { candidate.IntakeRoundId, candidate.SourceSha256 })
             .IsUnique()
-            .HasDatabaseName("candidate_vacancy_source_sha256_key");
-        entity.HasIndex(candidate => new { candidate.VacancyId, candidate.ImportedAt, candidate.Id })
-            .HasDatabaseName("candidate_vacancy_imported_idx");
+            .HasDatabaseName("candidate_round_source_sha256_key");
+        entity.HasIndex(candidate => new { candidate.IntakeRoundId, candidate.ImportedAt, candidate.Id })
+            .HasDatabaseName("candidate_round_imported_idx");
     }
 
     private static string ToDatabaseValue<TStatus>(TStatus status)

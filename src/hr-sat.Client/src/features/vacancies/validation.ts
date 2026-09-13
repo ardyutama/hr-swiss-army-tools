@@ -5,6 +5,16 @@ export interface VacancyRequirementRow {
   value: string
 }
 
+const neededHiresSchema = z.preprocess(
+  (value) => {
+    if (value === '' || value === null || value === undefined) {
+      return null
+    }
+    return typeof value === 'string' ? Number(value) : value
+  },
+  z.number().int('Needed Hires must be a whole number.').min(1).max(9999).nullable(),
+)
+
 export const vacancyFormSchema = z.object({
   title: z
     .string()
@@ -12,6 +22,7 @@ export const vacancyFormSchema = z.object({
     .min(1, 'Title is required.')
     .max(200, 'Title must be 200 characters or fewer.'),
   openedOn: z.string().min(1, 'Opening date is required.'),
+  neededHires: neededHiresSchema,
   requirements: z
     .array(z.object({ id: z.number(), value: z.string() }))
     .refine((rows) => rows.some((row) => row.value.trim().length > 0), {
@@ -25,6 +36,7 @@ export type VacancyFormOutput = z.output<typeof vacancyFormSchema>
 export const vacancyServerFieldNames: Record<string, string> = {
   title: 'title',
   openedon: 'openedOn',
+  neededhires: 'neededHires',
   requirements: 'requirements',
 }
 

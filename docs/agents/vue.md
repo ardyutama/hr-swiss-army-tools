@@ -1,11 +1,10 @@
 # Vue Client Development
 
-This guide applies to every change under `src/hr-sat.Client/`, including Vue single-file
-components, composables, API clients, shared client helpers, routing, configuration, and
-client tests. Nuxt UI v4 is the UI source of truth and Tailwind CSS v4 is the styling system;
-the migration decision is recorded in `docs/adr/0007-nuxt-ui-as-ui-source-of-truth.md`.
-It supplements the generic Vue guidance in `.agents/skills/`; repository decisions in this
-guide and `docs/agents/workflow.md` are the local source of truth when they differ.
+This guide applies to every change under `src/hr-sat.Client/`. The living client rules are
+owned by [`.agents/skills/vue-feature-slices/SKILL.md`](../../.agents/skills/vue-feature-slices/SKILL.md)
+(ADR-0011); this guide is a thin pointer carrying only the workflow below and the
+repo-specific deltas the skill does not. UI decisions are recorded in ADR-0007 (Nuxt UI)
+and ADR-0008 (design language); testing scope in ADR-0003.
 
 ## Start Here
 
@@ -14,19 +13,11 @@ guide and `docs/agents/workflow.md` are the local source of truth when they diff
    order in `docs/agents/workflow.md`: backend slice, frontend feature folder, then tests.
    This step is complete when the requested behavior and its API contract are identified.
 
-2. **Load Vue guidance.** For feature structure, slice boundaries, state ownership, or
-   client architecture review, read `.agents/skills/vue-feature-slices/SKILL.md` and its
-   referenced files. For every Vue task, read `.agents/skills/vue-best-practices/SKILL.md`
-   and keep its required references in working context:
-   `references/reactivity.md`, `references/sfc.md`, `references/component-data-flow.md`,
-   and `references/composables.md`. Read `.agents/skills/vue/SKILL.md` when using Vue 3.5
-   APIs or built-in components. Read `.agents/skills/vue-router-best-practices/SKILL.md`
-   for route changes, guards, params, or route lifecycle work. Read
-  `.agents/skills/vue-testing-best-practices/SKILL.md` for client tests. Check
-  `.agents/skills/vueuse-functions/SKILL.md` before writing bespoke browser, DOM, storage,
-  async, event, or utility plumbing; use a matching VueUse composable when its dependency
-  and invocation rules permit, and read that function's reference before use. This step
-  is complete when the references for every touched branch have been read.
+2. **Load the slice rules.** Read
+   [`.agents/skills/vue-feature-slices/SKILL.md`](../../.agents/skills/vue-feature-slices/SKILL.md)
+   — the client source of truth for slice structure, state ownership, import discipline,
+   and the placement test. This step is complete when you can name the feature folder and
+   the public surface the change touches.
 
 3. **Map the component boundary.** For a non-trivial feature, write a brief working map
    before implementation: one responsibility for each component, its typed props and emits,
@@ -36,80 +27,30 @@ guide and `docs/agents/workflow.md` are the local source of truth when they diff
 
 ## Repository Rules
 
-### Architecture
+The living rules for slice structure, state ownership, reactivity, SFC/template
+discipline, API/routing, and the placement test are owned by
+[`.agents/skills/vue-feature-slices/SKILL.md`](../../.agents/skills/vue-feature-slices/SKILL.md)
+(ADR-0011). This section carries only the repo-specific deltas the skill does not.
 
-- Put route views in `src/hr-sat.Client/src/pages/<page>/` — one thin view per route plus its
-  seam test — and feature behavior in `src/hr-sat.Client/src/features/<feature>/`:
-  composables, API client, validation, formatting, and feature components. Pages compose
-  feature modules; features never import from pages or from a sibling feature's internals
-  (cross-feature imports use the feature's root modules only).
 - Keep the project name `hr-sat.Client` with PascalCase `Client`; use kebab-case for client
   feature and page directories and PascalCase for Vue component filenames.
-- Keep `src/hr-sat.Client/src/shared/` as the thin shared kernel for reusable HTTP and validation
-  helpers. Use Nuxt UI components directly for visual UI; do not add an `App*` wrapper layer.
-  Feature state and feature-specific API behavior stay in the feature folder.
-- Use Vue 3 Composition API with `<script setup lang="ts">` for new components. Keep
-  Options API and untyped JavaScript out of new client code.
-- Keep route-level views thin: compose the feature, connect routing, and pass contracts;
-  put data loading, mutations, and side effects in composables or feature services.
-- Split a component when it owns orchestration plus substantial presentation, contains
-  three or more independent UI sections, or repeats a template block. For non-trivial
-  CRUD or list features, separate the container, form, list or item, and status or action
-  responsibilities unless the feature is demonstrably a tiny throwaway.
-
-### Reactivity and data flow
-
-- Keep source state minimal and derive display state with `computed`. Keep computed getters
-  pure; use `watch` or lifecycle hooks for side effects only.
-- Prefer `shallowRef` when deep reactivity is unnecessary or a value is replaced as a whole.
-  Use `ref` or `reactive` when nested mutation must be observed, and avoid destructuring a
-  `reactive` object in a way that disconnects its reactivity.
-- Keep composable APIs small, typed, and organized by feature concern. Keep pure formatting
-  and transformation helpers as plain utilities. Return read-only state when consumers must
-  update it through explicit actions.
-- Use props down and events up as the default. Treat props as read-only, type
-  `defineProps` and `defineEmits`, and use `defineModel` only for a genuine two-way binding.
-  Use typed symbol keys for provide/inject when a dependency must cross a deep component
-  tree; keep mutations in the provider.
-- Use `useTemplateRef()` for DOM or component refs on Vue 3.5+, and reserve imperative
-  component refs for APIs that cannot be expressed with props and events.
-
-### SFCs and templates
-
-- Keep each component in one `.vue` SFC with sections ordered as `<script>`, `<template>`,
-  then `<style>`.
-- Use PascalCase filenames and component references. Keep templates declarative; move
-  filtering, sorting, class logic, and other derivations into script-side computed values.
-- Use stable primitive keys for `v-for`, keep `v-if` and `v-for` on separate elements, and
-  use `v-if` or `v-show` according to mount cost and toggle frequency.
-- Render user or server content with interpolation. Use `v-html` only for content that has
-  an explicit trusted and sanitized source.
-- Use `<style scoped>` and class selectors for component styles. Keep resets, typography,
-  design tokens, and app-wide rules in `src/style.css`; use `:deep()` only at a deliberate
-  component boundary and preserve established shared-component patterns.
-- Compose visual UI from Nuxt UI v4 primitives (`UButton`, `UModal`, `UForm`, `UAlert`, and
-  related components) and use Iconify lucide icons through `UIcon` or component icon props.
-  Do not recreate deleted shared UI wrappers. Keep accessibility behavior, keyboard
-  interaction, loading states, and disabled states part of the component contract.
-
-### API and routing
-
-- Keep API calls in the feature's API module or composable, use the shared HTTP helpers,
-  and preserve the typed server contract. Components should consume typed state rather than
-  constructing request details inline.
-- When a route parameter changes without leaving the route component, explicitly handle the
-  new parameter and clean up any listeners or async effects. Use the router skill for guard,
-  parameter, and lifecycle decisions.
-- Oxlint is the sole client linter. Keep type checking with `vue-tsc` and use the scripts in
-  `hr-sat.Client/package.json` for linting, type checking, tests, and builds; do not add a
-  second lint stack without revisiting ADR 0001.
+- UI and styling: Nuxt UI v4 is the component source of truth and Tailwind CSS v4 the
+  styling system — import `U*` components directly, compose from Nuxt UI primitives, use
+  Iconify lucide icons via `UIcon`, and keep `UApp` at the app root. No `App*` wrapper
+  layer and no resurrected `src/shared/ui/` (ADR-0007). Design tokens and the locked
+  palette live in `@theme` in `src/style.css` (ADR-0008).
+- Form validation uses `<UForm :schema>` with Zod schemas kept in the feature's
+  `validation.ts` (ADR-0007, amended).
+- Oxlint is the sole client linter; type checking stays with `vue-tsc`. Use the scripts in
+  `hr-sat.Client/package.json` for lint, type-check, test, and build; do not add a second
+  lint stack without revisiting ADR 0001.
 
 ### Tests
 
-- Follow the project testing stance in `docs/agents/testing.md` (ADR 0003): implement the
-  slice first, then test the feature-component seam with Vitest, Vue Test Utils, and jsdom
-  as Flow Tests traced to a user story or glossary term. The rules below are the binding
-  mechanics; consult `.agents/skills/vue-testing-best-practices/` for anything beyond them.
+Follow the project testing stance in `docs/agents/testing.md` (ADR 0003): implement the
+slice first, then test the feature-component seam with Vitest, Vue Test Utils, and jsdom
+as Flow Tests traced to a user story or glossary term. The binding mechanics:
+
 - Mock only `fetch` via `vi.stubGlobal`, plus platform modules the component genuinely owns
   (e.g. `vi.mock('@nuxt/ui/composables/useToast')`). Everything else inside the seam runs
   for real.

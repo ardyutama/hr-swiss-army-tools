@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { computed, shallowRef, toRef, useTemplateRef, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useToast } from '@nuxt/ui/composables/useToast'
 import { candidateDisplayName } from '@/features/candidates/format'
 import ReviewHeader from '@/features/review/components/ReviewHeader.vue'
 import RequirementsPanel from '@/features/review/components/RequirementsPanel.vue'
 import CandidateDetailsPanel from '@/features/review/components/CandidateDetailsPanel.vue'
+import PriorApplicationNotice from '@/features/review/components/PriorApplicationNotice.vue'
 import SourceEmailPanel from '@/features/review/components/SourceEmailPanel.vue'
 import NotesEditor from '@/features/review/components/NotesEditor.vue'
 import CvViewer from '@/features/review/components/CvViewer.vue'
 import ReviewActionBar from '@/features/review/components/ReviewActionBar.vue'
+import OutcomeConfirmDialog from '@/features/review/components/OutcomeConfirmDialog.vue'
 import ShortcutsHelpModal from '@/features/review/components/ShortcutsHelpModal.vue'
 import { useReview } from '@/features/review/useReview'
 import {
@@ -17,16 +19,21 @@ import {
   type NotesFocusHandle,
   type SourceEmailHandle,
 } from '@/features/review/useReviewShortcuts'
-import type { CandidateReviewStatus } from '@/features/candidates/api'
+import type { CandidateHireOutcome, CandidateReviewStatus } from '@/features/candidates/api'
+import { candidateFilterStateFromQuery } from '@/features/candidates/filter'
 import type { CandidateDetailsPayload } from '@/features/review/api'
+import { formatPriorApplicationAnnouncement } from '@/features/review/format'
 
 const props = defineProps<{
   id: string
+  roundId: string
   candidateId: string
 }>()
 
 const router = useRouter()
+const route = useRoute()
 const toast = useToast()
+const reviewFilters = computed(() => candidateFilterStateFromQuery(route.query))
 const {
   vacancy,
   requirements,
@@ -34,7 +41,9 @@ const {
   candidate,
   loadError,
   viewState,
+  isRoundClosed,
   candidateDetailsWarning,
+  conflictWarning,
   position,
   total,
   previousCandidateId,
@@ -49,22 +58,35 @@ const {
   requirementError,
   deciding,
   decisionError,
+  settingOutcome,
+  outcomeError,
+  canSetHireOutcome,
   load,
   saveNotes,
   updateDetails,
   updateRequirementReview,
   toggleRequirementAt,
+  setOutcome,
   decide,
   advanceToNextCandidate,
-} = useReview(toRef(props, 'id'), toRef(props, 'candidateId'))
+} = useReview(
+  toRef(props, 'id'),
+  toRef(props, 'roundId'),
+  toRef(props, 'candidateId'),
+  reviewFilters,
+)
 
 const notesEditor = useTemplateRef<NotesFocusHandle>('notesEditor')
 const candidateDetailsPanel = useTemplateRef<{ focusEditing: () => void }>('candidateDetailsPanel')
 const sourceEmailPanel = useTemplateRef<SourceEmailHandle>('sourceEmailPanel')
 const shortcutsHelpOpen = shallowRef(false)
+const outcomeDialogOpen = shallowRef(false)
+type ConsequentialOutcome = Extract<CandidateHireOutcome, 'runaway' | 'declined'>
+const pendingOutcome = shallowRef<ConsequentialOutcome | null>(null)
 const announcement = shallowRef('')
 const canPrev = computed(() => previousCandidateId.value !== null)
 const canNext = computed(() => nextCandidateId.value !== null)
+const currentHireOutcome = computed<CandidateHireOutcome>(() => candidate.value?.hireOutcome ?? 'none')
 
 type PendingAnnouncement =
   | { kind: 'decision'; verb: string }
@@ -90,12 +112,27 @@ watch(candidateDetailsWarning, (warning) => {
   }
 })
 
+watch(conflictWarning, (warning) => {
+  if (warning) {
+    toast.add({
+      title: warning.title,
+      description: warning.description,
+      color: warning.color,
+      class: 'review-details-warning-toast',
+    })
+  }
+})
+
 function goToCandidate(id: string | null, nextAnnouncement: PendingAnnouncement = null) {
   if (id === null) {
     return
   }
   pendingAnnouncement = nextAnnouncement
-  void router.push({ name: 'candidate-review', params: { id: props.id, candidateId: id } })
+  void router.push({
+    name: 'candidate-review',
+    params: { id: props.id, roundId: props.roundId, candidateId: id },
+    query: route.query,
+  })
 }
 
 // ADR-0008 #9: Prev/Next navigation silently commits pending notes.
@@ -132,6 +169,33 @@ function onDetailsSave(payload: CandidateDetailsPayload) {
   void updateDetails(payload)
 }
 
+function onSetOutcome(outcome: CandidateHireOutcome) {
+  if (outcome === 'runaway' || outcome === 'declined') {
+    pendingOutcome.value = outcome
+    outcomeDialogOpen.value = true
+    return
+  }
+  void setOutcome(outcome)
+}
+
+async function onConfirmOutcome(note: string) {
+  const outcome = pendingOutcome.value
+  if (outcome === null) {
+    return
+  }
+
+  const nextCandidateAfterOutcome = nextCandidateId.value
+  if (!(await setOutcome(outcome, note))) {
+    return
+  }
+
+  outcomeDialogOpen.value = false
+  goToCandidate(
+    nextCandidateAfterOutcome,
+    nextCandidateAfterOutcome === null ? null : { kind: 'navigation' },
+  )
+}
+
 function onRequirementToggle(requirementId: number, confirmed: boolean) {
   void updateRequirementReview(requirementId, confirmed)
 }
@@ -151,7 +215,10 @@ watch(candidate, (current) => {
   const nextAnnouncement = pendingAnnouncement ?? { kind: 'navigation' as const }
   pendingAnnouncement = null
   const prefix = nextAnnouncement.kind === 'decision' ? `${nextAnnouncement.verb}. ` : ''
-  announcement.value = `${prefix}Candidate ${position.value} of ${total.value}: ${candidateDisplayName(current)}`
+  const priorAnnouncement = current.priorApplications[0]
+    ? ` ${formatPriorApplicationAnnouncement(current.priorApplications[0])}`
+    : ''
+  announcement.value = `${prefix}Candidate ${position.value} of ${total.value}: ${candidateDisplayName(current)}${priorAnnouncement ? `.${priorAnnouncement}` : ''}`
 })
 
 useReviewShortcuts({
@@ -162,14 +229,24 @@ useReviewShortcuts({
   sourceEmailPanel,
   shortcutsHelpOpen,
   requirementCount,
+  outcomeDialogOpen,
   onEditDetails: () => candidateDetailsPanel.value?.focusEditing(),
   onPrev,
   onNext,
   onDecide,
+  canSetOutcome: canSetHireOutcome,
+  hireOutcome: currentHireOutcome,
+  onSetOutcome,
   onToggleRequirement: (index) => {
     void toggleRequirementAt(index)
   },
   saveNotes,
+})
+
+watch(outcomeDialogOpen, (open) => {
+  if (!open) {
+    pendingOutcome.value = null
+  }
 })
 </script>
 
@@ -214,14 +291,30 @@ useReviewShortcuts({
     />
 
     <template v-else-if="vacancy && candidate">
+      <UAlert
+        v-if="isRoundClosed"
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-lock-keyhole"
+        title="This round is closed"
+        description="Review data is read-only. Notes, review status, and requirement reviews can no longer be changed."
+        class="mb-1"
+        data-testid="round-closed-banner"
+      />
+
       <ReviewHeader
         :vacancy-id="id"
+        :back-query="route.query"
         :title="vacancy.title"
         :opened-on="vacancy.openedOn"
         :position="position"
         :total="total"
         :processed="vacancy.progress.processedCandidates"
         :progress-total="vacancy.progress.totalCandidates"
+        :review-status="candidate.reviewStatus"
+        :hire-outcome="candidate.hireOutcome"
+        :is-round-closed="isRoundClosed"
+        :vacancy-closed="vacancy.status === 'closed'"
       />
 
       <div class="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
@@ -236,6 +329,7 @@ useReviewShortcuts({
             :error="requirementError"
             @toggle="onRequirementToggle"
           />
+          <PriorApplicationNotice :applications="candidate.priorApplications" />
           <CandidateDetailsPanel
             ref="candidateDetailsPanel"
             :candidate="candidate"
@@ -266,14 +360,29 @@ useReviewShortcuts({
 
       <ReviewActionBar
         :review-status="candidate.reviewStatus"
+        :hire-outcome="candidate.hireOutcome"
+        :can-set-outcome="canSetHireOutcome"
+        :is-round-closed="isRoundClosed"
+        :vacancy-closed="vacancy.status === 'closed'"
         :can-prev="previousCandidateId !== null"
         :can-next="nextCandidateId !== null"
         :busy="deciding"
         :error="decisionError"
+        :outcome-busy="settingOutcome"
+        :outcome-error="outcomeError"
         @prev="onPrev"
         @next="onNext"
         @decide="onDecide"
+        @set-outcome="onSetOutcome"
         @help="shortcutsHelpOpen = true"
+      />
+
+      <OutcomeConfirmDialog
+        v-model:open="outcomeDialogOpen"
+        :outcome="pendingOutcome"
+        :busy="settingOutcome"
+        :error="outcomeError"
+        @confirm="onConfirmOutcome"
       />
     </template>
 

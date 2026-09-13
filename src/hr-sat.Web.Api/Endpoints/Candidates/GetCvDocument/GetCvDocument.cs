@@ -8,16 +8,17 @@ internal sealed class GetCvDocument : IEndpoint
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
         app.MapGet(
-                "/api/vacancies/{vacancyId:long}/candidates/{candidateId:long}/cv-documents/{documentId:long}",
+                "/api/vacancies/{vacancyId:long}/rounds/{roundId:long}/candidates/{candidateId:long}/cv-documents/{documentId:long}",
                 async (
                     long vacancyId,
+                    long roundId,
                     long candidateId,
                     long documentId,
                     IQueryHandler<GetCvDocumentQuery, CvDocumentDownloadResponse> handler,
                     CancellationToken cancellationToken) =>
                 {
                     var result = await handler.Handle(
-                        new GetCvDocumentQuery(vacancyId, candidateId, documentId),
+                        new GetCvDocumentQuery(vacancyId, roundId, candidateId, documentId),
                         cancellationToken);
                     return result.Match<IResult>(
                         document => TypedResults.File(

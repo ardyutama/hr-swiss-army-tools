@@ -12,17 +12,17 @@ public sealed class DeleteCandidateTests(ApiFactory factory) : IClassFixture<Api
     public async Task US_14_HR_deletes_a_candidate_and_it_leaves_the_vacancy_pipeline()
     {
         using var client = factory.CreateClient();
-        var vacancyLocation = await CreateVacancyAsync(client);
-        var imported = await ImportAsync(client, vacancyLocation, ("alice.eml", "Alice Applicant", "alice@example.com"), ("bob.eml", "Bob Applicant", "bob@example.com"));
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client);
+        var imported = await ImportAsync(client, vacancyLocation, roundId, ("alice.eml", "Alice Applicant", "alice@example.com"), ("bob.eml", "Bob Applicant", "bob@example.com"));
         var bob = imported.Results.Single(result => result.FileName == "bob.eml").Candidate!;
         var bobDocumentUrl = bob.Documents.Single().DownloadUrl;
 
-        var deleteResponse = await client.DeleteAsync($"{vacancyLocation}/candidates/{bob.Id}");
+        var deleteResponse = await client.DeleteAsync($"{vacancyLocation}/rounds/{roundId}/candidates/{bob.Id}");
 
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
 
         // The vacancy pipeline no longer shows Bob.
-        var candidates = await (await client.GetAsync($"{vacancyLocation}/candidates"))
+        var candidates = await (await client.GetAsync($"{vacancyLocation}/rounds/{roundId}/candidates"))
             .Content.ReadFromJsonAsync<IReadOnlyList<CandidateSummary>>();
         Assert.NotNull(candidates);
         var remaining = Assert.Single(candidates);
@@ -37,12 +37,12 @@ public sealed class DeleteCandidateTests(ApiFactory factory) : IClassFixture<Api
     public async Task US_14_deleting_an_unknown_candidate_returns_not_found()
     {
         using var client = factory.CreateClient();
-        var vacancyLocation = await CreateVacancyAsync(client);
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client);
 
-        var response = await client.DeleteAsync($"{vacancyLocation}/candidates/999");
+        var response = await client.DeleteAsync($"{vacancyLocation}/rounds/{roundId}/candidates/999");
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
 
-        var missingVacancyResponse = await client.DeleteAsync("/api/vacancies/999/candidates/1");
+        var missingVacancyResponse = await client.DeleteAsync("/api/vacancies/999/rounds/1/candidates/1");
         Assert.Equal(HttpStatusCode.NotFound, missingVacancyResponse.StatusCode);
     }
 
@@ -51,13 +51,13 @@ public sealed class DeleteCandidateTests(ApiFactory factory) : IClassFixture<Api
     public async Task Closed_vacancy_rejects_candidate_removal()
     {
         using var client = factory.CreateClient();
-        var vacancyLocation = await CreateVacancyAsync(client);
-        var imported = await ImportAsync(client, vacancyLocation, ("alice.eml", "Alice Applicant", "alice@example.com"));
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client);
+        var imported = await ImportAsync(client, vacancyLocation, roundId, ("alice.eml", "Alice Applicant", "alice@example.com"));
         var aliceId = imported.Results.Single().Candidate!.Id;
         var closeResponse = await client.PostAsync($"{vacancyLocation}/close", content: null);
         closeResponse.EnsureSuccessStatusCode();
 
-        var deleteResponse = await client.DeleteAsync($"{vacancyLocation}/candidates/{aliceId}");
+        var deleteResponse = await client.DeleteAsync($"{vacancyLocation}/rounds/{roundId}/candidates/{aliceId}");
 
         Assert.Equal(HttpStatusCode.BadRequest, deleteResponse.StatusCode);
         var problem = await deleteResponse.Content.ReadFromJsonAsync<ValidationProblemResponse>();
@@ -65,13 +65,13 @@ public sealed class DeleteCandidateTests(ApiFactory factory) : IClassFixture<Api
         Assert.Contains("status", problem.Errors.Keys);
 
         // The candidate is retained for reference.
-        var candidates = await (await client.GetAsync($"{vacancyLocation}/candidates"))
+        var candidates = await (await client.GetAsync($"{vacancyLocation}/rounds/{roundId}/candidates"))
             .Content.ReadFromJsonAsync<IReadOnlyList<CandidateSummary>>();
         Assert.NotNull(candidates);
         Assert.Single(candidates);
     }
 
-    private static async Task<string> CreateVacancyAsync(HttpClient client)
+    private static async Task<(string Location, long RoundId)> CreateVacancyAsync(HttpClient client)
     {
         var response = await client.PostAsJsonAsync("/api/vacancies", new
         {
@@ -80,12 +80,16 @@ public sealed class DeleteCandidateTests(ApiFactory factory) : IClassFixture<Api
             requirements = new[] { "SQL" }
         });
         response.EnsureSuccessStatusCode();
-        return response.Headers.Location!.OriginalString;
+        var location = response.Headers.Location!.OriginalString;
+        var vacancy = await response.Content.ReadFromJsonAsync<VacancyResponse>();
+        Assert.NotNull(vacancy);
+        return (location, Assert.Single(vacancy.Rounds).Id);
     }
 
     private static async Task<ImportResponse> ImportAsync(
         HttpClient client,
         string vacancyLocation,
+        long roundId,
         params (string FileName, string SenderName, string SenderEmail)[] files)
     {
         using var form = new MultipartFormDataContent();
@@ -101,7 +105,7 @@ public sealed class DeleteCandidateTests(ApiFactory factory) : IClassFixture<Api
                 fileName);
         }
 
-        var response = await client.PostAsync($"{vacancyLocation}/candidates/import", form);
+        var response = await client.PostAsync($"{vacancyLocation}/rounds/{roundId}/candidates/import", form);
         response.EnsureSuccessStatusCode();
         var imported = await response.Content.ReadFromJsonAsync<ImportResponse>();
         Assert.NotNull(imported);
@@ -159,6 +163,10 @@ public sealed class DeleteCandidateTests(ApiFactory factory) : IClassFixture<Api
     private sealed record CvDocumentResponse(long Id, string DownloadUrl);
 
     private sealed record CandidateSummary(long Id, string? SourceSenderName);
+
+    private sealed record VacancyResponse(IReadOnlyList<VacancyRoundResponse> Rounds);
+
+    private sealed record VacancyRoundResponse(long Id);
 
     private sealed record ValidationProblemResponse(Dictionary<string, string[]> Errors);
 }

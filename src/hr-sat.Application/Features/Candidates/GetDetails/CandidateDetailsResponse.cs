@@ -3,6 +3,10 @@ namespace hr_sat.Application.Features.Candidates;
 public sealed record CandidateDetailsResponse(
     long Id,
     string ReviewStatus,
+    string HireOutcome,
+    int? PromotedFromRoundNumber,
+    DateTimeOffset? PromotedAt,
+    IReadOnlyList<CandidatePriorApplicationResponse> PriorApplications,
     string? FullName,
     string? ContactEmail,
     string? Notes,

@@ -12,9 +12,9 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
     public async Task US_14_HR_sees_an_empty_candidate_list_before_any_email_is_imported()
     {
         using var client = factory.CreateClient();
-        var vacancyLocation = await CreateVacancyAsync(client);
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client);
 
-        var response = await client.GetAsync($"{vacancyLocation}/candidates");
+        var response = await client.GetAsync($"{vacancyLocation}/rounds/{roundId}/candidates");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var candidates = await response.Content.ReadFromJsonAsync<IReadOnlyList<CandidateSummary>>();
@@ -27,7 +27,7 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
     {
         using var client = factory.CreateClient();
 
-        var response = await client.GetAsync("/api/vacancies/999/candidates");
+        var response = await client.GetAsync("/api/vacancies/999/rounds/1/candidates");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -36,7 +36,7 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
     public async Task US_14_HR_sees_imported_candidate_summaries_in_import_order()
     {
         using var client = factory.CreateClient();
-        var vacancyLocation = await CreateVacancyAsync(client);
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client);
         using var form = new MultipartFormDataContent();
         AddFile(
             form,
@@ -55,10 +55,10 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
                 ("bob.pdf", Encoding.ASCII.GetBytes("%PDF-1.7\nBob\n%%EOF"))),
             "bob.eml");
 
-        var importResponse = await client.PostAsync($"{vacancyLocation}/candidates/import", form);
+        var importResponse = await client.PostAsync($"{vacancyLocation}/rounds/{roundId}/candidates/import", form);
         importResponse.EnsureSuccessStatusCode();
 
-        var response = await client.GetAsync($"{vacancyLocation}/candidates");
+        var response = await client.GetAsync($"{vacancyLocation}/rounds/{roundId}/candidates");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var candidates = await response.Content.ReadFromJsonAsync<IReadOnlyList<CandidateSummary>>();
@@ -101,7 +101,7 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
     public async Task US_15_HR_can_open_an_imported_candidate_for_review()
     {
         using var client = factory.CreateClient();
-        var vacancyLocation = await CreateVacancyAsync(client);
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client);
         using var form = new MultipartFormDataContent();
         AddFile(
             form,
@@ -112,12 +112,12 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
                 ("alice.pdf", Encoding.ASCII.GetBytes("%PDF-1.7\nAlice\n%%EOF"))),
             "alice.eml");
 
-        var importResponse = await client.PostAsync($"{vacancyLocation}/candidates/import", form);
+        var importResponse = await client.PostAsync($"{vacancyLocation}/rounds/{roundId}/candidates/import", form);
         var imported = await importResponse.Content.ReadFromJsonAsync<ImportCandidatesResponse>();
         Assert.NotNull(imported);
         var candidateId = Assert.Single(imported.Results).Candidate!.Id;
 
-        var response = await client.GetAsync($"{vacancyLocation}/candidates/{candidateId}");
+        var response = await client.GetAsync($"{vacancyLocation}/rounds/{roundId}/candidates/{candidateId}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var candidate = await response.Content.ReadFromJsonAsync<CandidateDetails>();
@@ -129,7 +129,7 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
         Assert.Single(candidate.Documents);
     }
 
-    private static async Task<string> CreateVacancyAsync(HttpClient client)
+    private static async Task<(string Location, long RoundId)> CreateVacancyAsync(HttpClient client)
     {
         var response = await client.PostAsJsonAsync("/api/vacancies", new
         {
@@ -138,7 +138,10 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
             requirements = new[] { "SQL" }
         });
         response.EnsureSuccessStatusCode();
-        return response.Headers.Location!.OriginalString;
+        var location = response.Headers.Location!.OriginalString;
+        var vacancy = await response.Content.ReadFromJsonAsync<VacancyResponse>();
+        Assert.NotNull(vacancy);
+        return (location, Assert.Single(vacancy.Rounds).Id);
     }
 
     private static void AddFile(MultipartFormDataContent form, byte[] content, string filename)
@@ -190,6 +193,10 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
         string? SourceSubject,
         DateTimeOffset? SourceSentAt,
         int CvDocumentCount);
+
+    private sealed record VacancyResponse(IReadOnlyList<VacancyRoundResponse> Rounds);
+
+    private sealed record VacancyRoundResponse(long Id);
 
     private sealed record ImportCandidatesResponse(IReadOnlyList<ImportFileResult> Results);
 

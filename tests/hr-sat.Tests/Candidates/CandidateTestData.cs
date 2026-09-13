@@ -14,7 +14,8 @@ internal static class CandidateTestData
         var result = Vacancy.Create(
             "Data Analyst",
             new DateOnly(2026, 8, 20),
-            ["SQL"]);
+            ["SQL"],
+            null);
         if (result.IsFailure)
         {
             throw new InvalidOperationException(result.Error.Message);
@@ -29,16 +30,38 @@ internal static class CandidateTestData
     }
 
     public static Candidate CreateCandidate(
-        long vacancyId,
+        long intakeRoundId,
         int sourceNumber = 1,
         DateTimeOffset? importedAt = null)
+        => CreateCandidateCore(
+            intakeRoundId,
+            sourceNumber,
+            importedAt,
+            $"candidate{sourceNumber}@example.com");
+
+    public static Candidate CreateCandidateWithSenderEmail(
+        long intakeRoundId,
+        string? sourceSenderEmail,
+        int sourceNumber = 1,
+        DateTimeOffset? importedAt = null) =>
+        CreateCandidateCore(
+            intakeRoundId,
+            sourceNumber,
+            importedAt,
+            sourceSenderEmail);
+
+    private static Candidate CreateCandidateCore(
+        long intakeRoundId,
+        int sourceNumber,
+        DateTimeOffset? importedAt,
+        string? sourceSenderEmail)
     {
         var sourceHash = new byte[32];
         sourceHash[0] = (byte)sourceNumber;
-        var candidateResult = Candidate.Import(
-            vacancyId,
+        var candidateResult = Candidate.Import(new CandidateImportData(
+            intakeRoundId,
             $"Candidate {sourceNumber}",
-            $"candidate{sourceNumber}@example.com",
+            sourceSenderEmail,
             $"Candidate {sourceNumber} application",
             "Please find my CV attached.",
             new DateTimeOffset(2026, 8, 20, 10, 0, 0, TimeSpan.Zero),
@@ -53,7 +76,7 @@ internal static class CandidateTestData
                 1,
                 true,
                 20,
-                sourceHash)]);
+                sourceHash)]));
         if (candidateResult.IsFailure)
         {
             throw new InvalidOperationException(candidateResult.Error.Message);
@@ -70,7 +93,7 @@ internal static class CandidateTestData
         dbContext.Vacancies.Add(vacancy);
         await dbContext.SaveChangesAsync(CancellationToken.None);
 
-        var candidate = CreateCandidate(vacancy.Id);
+        var candidate = CreateCandidate(vacancy.Rounds.Single().Id);
         dbContext.Candidates.Add(candidate);
         await dbContext.SaveChangesAsync(CancellationToken.None);
 

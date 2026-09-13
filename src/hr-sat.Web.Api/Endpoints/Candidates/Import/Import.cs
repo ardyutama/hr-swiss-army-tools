@@ -8,9 +8,10 @@ internal sealed class Import : IEndpoint
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
         app.MapPost(
-                "/api/vacancies/{vacancyId:long}/candidates/import",
+                "/api/vacancies/{vacancyId:long}/rounds/{roundId:long}/candidates/import",
                 async (
                     long vacancyId,
+                    long roundId,
                     HttpRequest request,
                     ICommandHandler<ImportCandidatesCommand, ImportCandidatesResponse> handler,
                     CancellationToken cancellationToken) =>
@@ -23,7 +24,7 @@ internal sealed class Import : IEndpoint
 
                     await using var input = importRequest.Value;
                     var result = await handler.Handle(
-                        new ImportCandidatesCommand(vacancyId, input.Files),
+                        new ImportCandidatesCommand(vacancyId, roundId, input.Files),
                         cancellationToken);
                     return result.Match<IResult>(
                         TypedResults.Ok,

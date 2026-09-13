@@ -1,8 +1,9 @@
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Messaging;
-using hr_sat.Application.Features.Candidates;
 using hr_sat.Application.Features.Candidates.GetDetails;
+using hr_sat.Application.Features.Shared;
 using hr_sat.Domain;
+using hr_sat.Domain.Vacancies;
 
 namespace hr_sat.Application.Features.Candidates.UpdateNotes;
 
@@ -13,11 +14,15 @@ internal sealed class UpdateCandidateNotesCommandHandler(IApplicationDbContext d
         UpdateCandidateNotesCommand command,
         CancellationToken cancellationToken)
     {
-        var updateResult = await CandidateWrite.ExecuteAsync(
+        var updateResult = await RoundWrite.ExecuteCandidateAsync(
             command.VacancyId,
+            command.RoundId,
             command.CandidateId,
             dbContext,
-            (_, candidate) => candidate.UpdateNotes(command.Notes),
+            (vacancy, candidateId) => vacancy.UpdateCandidateNotes(
+                command.RoundId,
+                candidateId,
+                command.Notes),
             cancellationToken);
         if (updateResult.IsFailure)
         {
@@ -26,6 +31,7 @@ internal sealed class UpdateCandidateNotesCommandHandler(IApplicationDbContext d
 
         return await CandidateDetailsReader.ReadAsync(
             command.VacancyId,
+            command.RoundId,
             command.CandidateId,
             dbContext,
             cancellationToken);

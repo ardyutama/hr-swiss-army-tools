@@ -22,7 +22,8 @@ public sealed class UpdateVacancyTests(ApiFactory factory) : IClassFixture<ApiFa
         {
             title = "Senior Data Analyst",
             openedOn = "2026-08-21",
-            requirements = new[] { "Stakeholder communication", "SQL" }
+            requirements = new[] { "Stakeholder communication", "SQL" },
+            neededHires = 3
         });
 
         Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
@@ -34,6 +35,29 @@ public sealed class UpdateVacancyTests(ApiFactory factory) : IClassFixture<ApiFa
             new[] { "Stakeholder communication", "SQL" },
             persisted.Requirements.Select(requirement => requirement.Phrase));
         Assert.Equal(new[] { 1, 2 }, persisted.Requirements.Select(requirement => requirement.Position));
+        Assert.NotNull(persisted.Hiring);
+        Assert.Equal(3, persisted.Hiring.NeededHires);
+        Assert.Equal(0, persisted.Hiring.ActiveHires);
+    }
+
+    [Fact]
+    public async Task Update_vacancy_can_clear_needed_hires()
+    {
+        using var client = factory.CreateClient();
+        var location = await CreateVacancyAsync(client, neededHires: 5);
+
+        var updateResponse = await client.PutAsJsonAsync(location, new
+        {
+            title = "Data Analyst",
+            openedOn = "2026-08-20",
+            requirements = new[] { "SQL" },
+            neededHires = (int?)null
+        });
+
+        Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
+        var persisted = await client.GetFromJsonAsync<VacancyResponse>(location);
+        Assert.NotNull(persisted);
+        Assert.Null(persisted.Hiring);
     }
 
     [Fact]
@@ -48,7 +72,8 @@ public sealed class UpdateVacancyTests(ApiFactory factory) : IClassFixture<ApiFa
         {
             title = "Senior Data Analyst",
             openedOn = "2026-08-21",
-            requirements = new[] { "Stakeholder communication" }
+            requirements = new[] { "Stakeholder communication" },
+            neededHires = 2
         });
 
         Assert.Equal(HttpStatusCode.BadRequest, updateResponse.StatusCode);
@@ -75,7 +100,8 @@ public sealed class UpdateVacancyTests(ApiFactory factory) : IClassFixture<ApiFa
         {
             title = "Senior Data Analyst",
             openedOn = "2026-08-21",
-            requirements = new[] { "Stakeholder communication" }
+            requirements = new[] { "Stakeholder communication" },
+            neededHires = 4
         });
 
         Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
@@ -85,13 +111,14 @@ public sealed class UpdateVacancyTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Equal("open", persisted.Status);
     }
 
-    private static async Task<string> CreateVacancyAsync(HttpClient client)
+    private static async Task<string> CreateVacancyAsync(HttpClient client, int? neededHires = null)
     {
         var response = await client.PostAsJsonAsync("/api/vacancies", new
         {
             title = "Data Analyst",
             openedOn = "2026-08-20",
-            requirements = new[] { "SQL" }
+            requirements = new[] { "SQL" },
+            neededHires
         });
         response.EnsureSuccessStatusCode();
         return response.Headers.Location!.OriginalString;
@@ -102,9 +129,12 @@ public sealed class UpdateVacancyTests(ApiFactory factory) : IClassFixture<ApiFa
         string Title,
         DateOnly OpenedOn,
         string Status,
-        IReadOnlyList<VacancyRequirementResponse> Requirements);
+        IReadOnlyList<VacancyRequirementResponse> Requirements,
+        VacancyHiring? Hiring);
 
     private sealed record VacancyRequirementResponse(string Phrase, int Position);
+
+    private sealed record VacancyHiring(int NeededHires, int ActiveHires);
 
     private sealed record ValidationProblemResponse(Dictionary<string, string[]> Errors);
 }

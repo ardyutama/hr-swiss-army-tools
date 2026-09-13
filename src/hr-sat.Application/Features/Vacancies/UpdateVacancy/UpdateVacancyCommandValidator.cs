@@ -15,6 +15,10 @@ public sealed class UpdateVacancyCommandValidator : AbstractValidator<UpdateVaca
         RuleFor(command => command.OpenedOn)
             .NotEqual(default(DateOnly))
             .WithMessage("Opening Date is required.");
+        RuleFor(command => command.NeededHires)
+            .InclusiveBetween(1, 9999)
+            .When(command => command.NeededHires.HasValue)
+            .WithMessage("Needed Hires must be between 1 and 9999.");
         RuleFor(command => command.Requirements)
             .NotEmpty()
             .WithMessage("At least one vacancy requirement is required.");

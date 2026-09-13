@@ -17,6 +17,9 @@ internal sealed class VacancyConfiguration : IEntityTypeConfiguration<Vacancy>
                 "vacancy_status_check",
                 "status IN ('open', 'closed')");
             table.HasCheckConstraint(
+                "vacancy_needed_hires_check",
+                "needed_hires IS NULL OR needed_hires BETWEEN 1 AND 9999");
+            table.HasCheckConstraint(
                 "vacancy_closed_at_check",
                 "(status = 'open' AND closed_at IS NULL) OR " +
                 "(status = 'closed' AND closed_at IS NOT NULL)");
@@ -33,6 +36,9 @@ internal sealed class VacancyConfiguration : IEntityTypeConfiguration<Vacancy>
         entity.Property(vacancy => vacancy.OpenedOn)
             .HasColumnName("opened_on")
             .IsRequired();
+        entity.Property(vacancy => vacancy.NeededHires)
+            .HasColumnName("needed_hires")
+            .IsRequired(false);
         entity.Property(vacancy => vacancy.Status)
             .HasColumnName("status")
             .HasColumnType("text")
@@ -54,6 +60,12 @@ internal sealed class VacancyConfiguration : IEntityTypeConfiguration<Vacancy>
             .HasForeignKey(requirement => requirement.VacancyId)
             .OnDelete(DeleteBehavior.Cascade);
         entity.Navigation(vacancy => vacancy.Requirements)
+            .UsePropertyAccessMode(PropertyAccessMode.Field);
+        entity.HasMany(vacancy => vacancy.Rounds)
+            .WithOne()
+            .HasForeignKey(round => round.VacancyId)
+            .OnDelete(DeleteBehavior.Cascade);
+        entity.Navigation(vacancy => vacancy.Rounds)
             .UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }

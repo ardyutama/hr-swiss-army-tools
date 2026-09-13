@@ -31,7 +31,19 @@ function jsonResponse(body: unknown, status = 200): Response {
   })
 }
 
-function vacancyDetails() {
+function openRound(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 1,
+    roundNumber: 1,
+    name: null,
+    status: 'open',
+    closedAt: null,
+    candidateCount: 2,
+    ...overrides,
+  }
+}
+
+function vacancyDetails(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: 1,
     title: 'Accountant',
@@ -44,13 +56,15 @@ function vacancyDetails() {
       { id: 12, phrase: 'VAT reporting', position: 1 },
       { id: 13, phrase: 'SAP', position: 2 },
     ],
+    rounds: [openRound()],
     progress: { processedCandidates: 0, totalCandidates: 2 },
+    ...overrides,
   }
 }
 
 const candidateNames = ['Jane Doe', 'Bob Builder', 'Ann Lee']
 
-function candidateSummary(id: number) {
+function candidateSummary(id: number, overrides: Record<string, unknown> = {}) {
   const name = candidateNames[id - 1] ?? `Candidate ${id}`
   return {
     id,
@@ -59,10 +73,12 @@ function candidateSummary(id: number) {
     contactPhone: null,
     notes: null,
     reviewStatus: 'new',
+    hireOutcome: 'none',
     sourceSenderName: name,
     sourceSenderEmail: `candidate${id}@mail.com`,
     sourceSubject: `${name} application`,
     sourceSentAt: '2026-08-10T09:00:00Z',
+    ...overrides,
   }
 }
 
@@ -71,6 +87,10 @@ function candidateDetails(id: number, overrides: Record<string, unknown> = {}) {
   return {
     id,
     reviewStatus: 'new',
+    hireOutcome: 'none',
+    promotedFromRoundNumber: null,
+    promotedAt: null,
+    priorApplications: [],
     fullName: name,
     contactEmail: `candidate${id}@mail.com`,
     notes: null,
@@ -91,7 +111,7 @@ function candidateDetails(id: number, overrides: Record<string, unknown> = {}) {
         originalFilename: `cv-${id}.pdf`,
         sizeBytes: 2048,
         isPrimary: true,
-        downloadUrl: `/api/vacancies/1/candidates/${id}/cv-documents/${id * 10}`,
+        downloadUrl: `/api/vacancies/1/rounds/1/candidates/${id}/cv-documents/${id * 10}`,
       },
     ],
     ...overrides,
@@ -105,7 +125,13 @@ interface CapturedRequest {
 }
 
 function stubApi(
-  options: { candidateCount?: number; details?: Record<number, Record<string, unknown>> } = {},
+  options: {
+    candidateCount?: number
+    candidates?: ReturnType<typeof candidateSummary>[]
+    details?: Record<number, Record<string, unknown>>
+    vacancy?: Record<string, unknown>
+    mutationError?: { path: string; problem: unknown; status: number }
+  } = {},
 ) {
   const count = options.candidateCount ?? 2
   const requests: CapturedRequest[] = []
@@ -114,6 +140,12 @@ function stubApi(
     const method = init?.method ?? 'GET'
     const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined
     requests.push({ url, method, body })
+
+    if (options.mutationError && method === 'PUT' && url.endsWith(options.mutationError.path)) {
+      return Promise.resolve(
+        jsonResponse(options.mutationError.problem, options.mutationError.status),
+      )
+    }
 
     if (method === 'PUT' && url.endsWith('/details')) {
       const id = Number(/\/candidates\/(\d+)\/details/.exec(url)?.[1])
@@ -134,6 +166,24 @@ function stubApi(
             ...options.details?.[id],
             reviewStatus: body?.reviewStatus,
             notes: body?.notes,
+          }),
+        ),
+      )
+    }
+    if (method === 'PUT' && url.endsWith('/outcome')) {
+      const id = Number(/\/candidates\/(\d+)\/outcome/.exec(url)?.[1])
+      const previousNotes = (options.details?.[id]?.notes as string | null | undefined) ?? null
+      const outcomeNote = typeof body?.note === 'string' ? body.note : null
+      return Promise.resolve(
+        jsonResponse(
+          candidateDetails(id, {
+            ...options.details?.[id],
+            hireOutcome: body?.outcome,
+            notes: outcomeNote
+              ? previousNotes
+                ? `${previousNotes}\n${outcomeNote}`
+                : outcomeNote
+              : previousNotes,
           }),
         ),
       )
@@ -165,10 +215,16 @@ function stubApi(
     }
     if (method === 'GET' && url.endsWith('/candidates')) {
       return Promise.resolve(
-        jsonResponse(Array.from({ length: count }, (_, index) => candidateSummary(index + 1))),
+        jsonResponse(
+          options.candidates ??
+            Array.from({ length: count }, (_, index) => candidateSummary(index + 1)),
+        ),
       )
     }
-    return Promise.resolve(jsonResponse(vacancyDetails()))
+    if (method === 'GET' && url.endsWith('/vacancies/1')) {
+      return Promise.resolve(jsonResponse(options.vacancy ?? vacancyDetails()))
+    }
+    throw new Error(`Unstubbed fetch: ${method} ${url}`)
   })
   vi.stubGlobal('fetch', mock)
   return { requests }
@@ -176,7 +232,10 @@ function stubApi(
 
 const Harness = { template: '<router-view />' }
 
-async function mountReview(startCandidateId = '1'): Promise<{
+async function mountReview(
+  startCandidateId = '1',
+  query: Record<string, string> = {},
+): Promise<{
   wrapper: VueWrapper
   router: Router
 }> {
@@ -185,14 +244,18 @@ async function mountReview(startCandidateId = '1'): Promise<{
     routes: [
       { path: '/vacancies/:id', name: 'vacancy-detail', component: { template: '<div />' } },
       {
-        path: '/vacancies/:id/review/:candidateId',
+        path: '/vacancies/:id/rounds/:roundId/review/:candidateId',
         name: 'candidate-review',
         component: ReviewView,
         props: true,
       },
     ],
   })
-  await router.push(`/vacancies/1/review/${startCandidateId}`)
+  await router.push({
+    name: 'candidate-review',
+    params: { id: '1', roundId: '1', candidateId: startCandidateId },
+    query,
+  })
   const wrapper = mount(Harness, { attachTo: document.body, global: { plugins: [router] } })
   return { wrapper, router }
 }
@@ -203,6 +266,25 @@ function findButton(wrapper: VueWrapper, label: string): DOMWrapper<HTMLButtonEl
     .find((candidate) => candidate.text().includes(label))
   expect(button, `a "${label}" button`).toBeDefined()
   return button as unknown as DOMWrapper<HTMLButtonElement>
+}
+
+function hasButton(wrapper: VueWrapper, label: string): boolean {
+  return wrapper.findAll('button').some((button) => button.text().includes(label))
+}
+
+function findMenuItem(label: string): DOMWrapper<HTMLElement> {
+  const item = Array.from(document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')).find((candidate) =>
+    candidate.textContent?.includes(label),
+  )
+  expect(item, `a "${label}" menu item`).toBeDefined()
+  return new DOMWrapper(item as HTMLElement)
+}
+
+async function openOutcomeMenu(wrapper: VueWrapper) {
+  const trigger = wrapper.find('button[aria-label="Set hire outcome"], button[aria-label^="Hire outcome:"]')
+  expect(trigger.exists(), 'the hire outcome menu trigger').toBe(true)
+  await trigger.trigger('click')
+  await flushPromises()
 }
 
 afterEach(() => {
@@ -234,6 +316,147 @@ describe('ReviewView', () => {
     expect(wrapper.find('button[aria-label="Previous page"] kbd').text()).toBe('Shift+←')
     expect(wrapper.find('button[aria-label="Next page"] kbd').text()).toBe('Shift+→')
     wrapper.unmount()
+  })
+
+  it('US-17: HR sees a single prior application with its review status', async () => {
+    stubApi({
+      details: {
+        1: candidateDetails(1, {
+          priorApplications: [
+            { roundNumber: 1, roundName: null, reviewStatus: 'rejected' },
+          ],
+        }),
+      },
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="prior-application-notice"]').text()).toContain(
+      'This sender also applied in Round 1 — rejected.',
+    )
+    expect(wrapper.find('[data-testid="prior-application-notice"][role="alert"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('US-17: HR sees all prior applications in descending round order', async () => {
+    stubApi({
+      details: {
+        1: candidateDetails(1, {
+          priorApplications: [
+            { roundNumber: 3, roundName: null, reviewStatus: 'shortlisted' },
+            { roundNumber: 1, roundName: null, reviewStatus: 'rejected' },
+          ],
+        }),
+      },
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="prior-application-notice"]').text()).toContain(
+      'This sender also applied in Round 3 — shortlisted; Round 1 — rejected.',
+    )
+    wrapper.unmount()
+  })
+
+  it('US-17: HR sees a named prior round in parentheses', async () => {
+    stubApi({
+      details: {
+        1: candidateDetails(1, {
+          priorApplications: [
+            { roundNumber: 3, roundName: 'July wave', reviewStatus: 'shortlisted' },
+          ],
+        }),
+      },
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('This sender also applied in Round 3 (July wave) — shortlisted.')
+    wrapper.unmount()
+  })
+
+  it('US-17: HR sees new prior applications as not yet reviewed', async () => {
+    stubApi({
+      details: {
+        1: candidateDetails(1, {
+          priorApplications: [
+            { roundNumber: 2, roundName: null, reviewStatus: 'new' },
+          ],
+        }),
+      },
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('This sender also applied in Round 2 — not yet reviewed.')
+    wrapper.unmount()
+  })
+
+  it('US-17: HR sees no prior application notice when the history is empty', async () => {
+    stubApi()
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="prior-application-notice"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('US-17: a details response without prior applications remains reviewable', async () => {
+    const legacyDetails = Object.fromEntries(
+      Object.entries(candidateDetails(1)).filter(([key]) => key !== 'priorApplications'),
+    )
+    stubApi({ details: { 1: legacyDetails } })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Jane Doe')
+    expect(wrapper.find('[data-testid="prior-application-notice"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('US-17: candidate navigation announces a prior application when one exists', async () => {
+    stubApi({
+      details: {
+        2: candidateDetails(2, {
+          priorApplications: [
+            { roundNumber: 1, roundName: null, reviewStatus: 'rejected' },
+          ],
+        }),
+      },
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    await findButton(wrapper, 'Next').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('p.sr-only[aria-live="polite"]').text()).toBe(
+      'Candidate 2 of 2: Bob Builder. Prior application in Round 1 — rejected.',
+    )
+    wrapper.unmount()
+  })
+
+  it('Promote: the review details show promotion history only when provenance exists', async () => {
+    stubApi({
+      details: {
+        1: candidateDetails(1, {
+          promotedFromRoundNumber: 1,
+          promotedAt: '2026-09-10T14:30:00Z',
+        }),
+      },
+    })
+    const promotedView = await mountReview()
+    await flushPromises()
+
+    expect(promotedView.wrapper.text()).toContain('Promoted from Round 1 on 2026-09-10.')
+    promotedView.wrapper.unmount()
+
+    stubApi()
+    const originalView = await mountReview()
+    await flushPromises()
+
+    expect(originalView.wrapper.text()).not.toContain('Promoted from Round')
+    originalView.wrapper.unmount()
   })
 
   it('US-15: Shift+Arrow keys focus and paginate the CV without changing candidates', async () => {
@@ -272,6 +495,40 @@ describe('ReviewView', () => {
 
     await viewer.trigger('keydown', { key: 'ArrowRight', shiftKey: true })
     expect(wrapper.find('[data-testid="pdf-page"]').attributes('data-page')).toBe('5')
+    wrapper.unmount()
+  })
+
+  it('US-17: HR reviews the sorted, filtered candidate queue', async () => {
+    stubApi({
+      candidates: [
+        candidateSummary(1, {
+          reviewStatus: 'shortlisted',
+          sourceSentAt: '2026-08-30T09:00:00Z',
+        }),
+        candidateSummary(2, {
+          reviewStatus: 'shortlisted',
+          sourceSentAt: '2026-08-20T09:00:00Z',
+        }),
+        candidateSummary(3, {
+          reviewStatus: 'new',
+          sourceSentAt: '2026-08-10T09:00:00Z',
+        }),
+      ],
+    })
+    const { wrapper, router } = await mountReview('2', {
+      status: 'shortlisted',
+      sort: 'oldest',
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Bob Builder')
+    expect(wrapper.text()).toContain('1 / 2')
+
+    await findButton(wrapper, 'Next').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.params.candidateId).toBe('1')
+    expect(wrapper.text()).toContain('Jane Doe')
     wrapper.unmount()
   })
 
@@ -482,7 +739,7 @@ describe('ReviewView', () => {
     const notesRequest = requests.find(
       (request) => request.method === 'PUT' && request.url.endsWith('/candidates/1/notes'),
     )
-    expect(notesRequest?.body).toEqual({ notes: 'Follow up after the interview' })
+    expect(notesRequest?.body).toEqual({ notes: 'candidate' })
     wrapper.unmount()
   })
 
@@ -565,12 +822,14 @@ describe('ReviewView', () => {
     expect(findButton(wrapper, 'Shortlist').attributes('aria-keyshortcuts')).toBe('S')
     expect(findButton(wrapper, 'Flag').attributes('aria-keyshortcuts')).toBe('F')
     expect(findButton(wrapper, 'Reject').attributes('aria-keyshortcuts')).toBe('R')
+    expect(wrapper.find('[aria-label="Hire outcomes"]').exists()).toBe(false)
 
     const shortcutButton = wrapper.find('button[aria-label="Keyboard shortcuts"]')
     expect(shortcutButton.exists()).toBe(true)
     expect(shortcutButton.attributes('aria-keyshortcuts')).toBe('?')
     expect(shortcutButton.text()).toContain('Shortcuts')
     expect(shortcutButton.text()).toContain('?')
+    expect(findButton(wrapper, 'Next').classes().some((className) => className.includes('bg-primary'))).toBe(true)
 
     await shortcutButton.trigger('click')
     await flushPromises()
@@ -578,6 +837,150 @@ describe('ReviewView', () => {
       'Keyboard shortcuts',
     )
     wrapper.unmount()
+  })
+
+  it('domain: shortlisted candidates can record outcomes while the vacancy is open', async () => {
+    const { requests } = stubApi({
+      vacancy: vacancyDetails({ hiring: { neededHires: 2, activeHires: 0 } }),
+      details: { 1: candidateDetails(1, { reviewStatus: 'shortlisted' }) },
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    const outcomes = wrapper.find('[aria-label="Hire outcomes"]')
+    expect(outcomes.exists()).toBe(true)
+    expect(wrapper.find('button[aria-label="Set hire outcome"]').text()).toContain('Set outcome')
+
+    await openOutcomeMenu(wrapper)
+    expect(findMenuItem('Mark Hired').text()).toContain('⇧H')
+    expect(findMenuItem('Mark Hired').attributes('aria-disabled')).toBeUndefined()
+    expect(findMenuItem('Mark Runaway').attributes('aria-disabled')).toBe('true')
+    expect(findMenuItem('Mark Declined').attributes('aria-disabled')).toBeUndefined()
+
+    await findMenuItem('Mark Hired').trigger('click')
+    await flushPromises()
+
+    expect(requests.find((request) => request.url.endsWith('/outcome'))?.body).toEqual({
+      outcome: 'hired',
+    })
+    expect(wrapper.text()).toContain('Hired')
+
+    await openOutcomeMenu(wrapper)
+    expect(findMenuItem('Mark Runaway').attributes('aria-disabled')).toBeUndefined()
+    expect(findMenuItem('Mark Declined').attributes('aria-disabled')).toBe('true')
+    await findMenuItem('Mark Runaway').trigger('click')
+    await flushPromises()
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain('Reopens 1 needed-hire slot')
+    await new DOMWrapper(document.body.querySelector('[role="dialog"]') as HTMLElement).find('button').trigger('click')
+    await flushPromises()
+
+    await openOutcomeMenu(wrapper)
+    await findMenuItem('Clear outcome').trigger('click')
+    await flushPromises()
+    expect(requests.filter((request) => request.url.endsWith('/outcome')).at(-1)?.body).toEqual({ outcome: 'none' })
+    wrapper.unmount()
+  })
+
+  it('domain: hire outcome actions stay enabled in a closed round but not a closed vacancy', async () => {
+    stubApi({
+      vacancy: vacancyDetails({
+        rounds: [openRound({ status: 'closed', closedAt: '2026-09-05T00:00:00Z' })],
+      }),
+      details: { 1: candidateDetails(1, { reviewStatus: 'shortlisted' }) },
+    })
+    const closedRoundView = await mountReview()
+    await flushPromises()
+    expect(hasButton(closedRoundView.wrapper, 'Shortlist')).toBe(false)
+    expect(closedRoundView.wrapper.find('[aria-label="Review status: Shortlisted"]').exists()).toBe(true)
+    await openOutcomeMenu(closedRoundView.wrapper)
+    expect(findMenuItem('Mark Hired').attributes('aria-disabled')).toBeUndefined()
+    closedRoundView.wrapper.unmount()
+
+    stubApi({
+      vacancy: vacancyDetails({ status: 'closed', closedAt: '2026-09-06T00:00:00Z' }),
+      details: { 1: candidateDetails(1, { reviewStatus: 'shortlisted', hireOutcome: 'hired' }) },
+    })
+    const closedVacancyView = await mountReview()
+    await flushPromises()
+    expect(hasButton(closedVacancyView.wrapper, 'Shortlist')).toBe(false)
+    expect(closedVacancyView.wrapper.find('[aria-label="Review status: Shortlisted"]').exists()).toBe(true)
+    expect(closedVacancyView.wrapper.find('[aria-label="Hire outcome: Hired"]').exists()).toBe(true)
+    expect(closedVacancyView.wrapper.find('[aria-label="Hire outcomes"]').exists()).toBe(false)
+    closedVacancyView.wrapper.unmount()
+  })
+
+  it('domain: plain outcome keys are inert while Shift+H stays direct and Shift+U confirms', async () => {
+    const { requests } = stubApi({
+      details: { 1: candidateDetails(1, { reviewStatus: 'shortlisted' }) },
+    })
+    const { wrapper, router } = await mountReview()
+    await flushPromises()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'h' }))
+    await flushPromises()
+    expect(requests.filter((request) => request.url.endsWith('/outcome'))).toHaveLength(0)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'h', shiftKey: true }))
+    await flushPromises()
+    expect(requests.filter((request) => request.url.endsWith('/outcome'))).toHaveLength(1)
+    expect(requests.find((request) => request.url.endsWith('/outcome'))?.body).toEqual({ outcome: 'hired' })
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'u' }))
+    await flushPromises()
+    expect(requests.filter((request) => request.url.endsWith('/outcome'))).toHaveLength(1)
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'u', shiftKey: true }))
+    await flushPromises()
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain(
+      'Reopens 1 needed-hire slot',
+    )
+    const outcomeNote = document.body.querySelector('textarea[aria-label="Outcome note"]')
+    expect(document.activeElement).toBe(outcomeNote)
+    await new DOMWrapper(outcomeNote as HTMLTextAreaElement).setValue('Left after starting.')
+    await new DOMWrapper(outcomeNote as HTMLTextAreaElement).trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    const outcomeRequests = requests.filter((request) => request.url.endsWith('/outcome'))
+    expect(outcomeRequests).toHaveLength(2)
+    expect(outcomeRequests.at(-1)?.body).toEqual({ outcome: 'runaway', note: 'Left after starting.' })
+    expect(router.currentRoute.value.params.candidateId).toBe('2')
+    await flushPromises()
+    wrapper.unmount()
+  })
+
+  it('domain: D opens a cancellable confirmation and empty note confirms', async () => {
+    const declined = stubApi({
+      candidateCount: 1,
+      details: { 1: candidateDetails(1, { reviewStatus: 'shortlisted' }) },
+    })
+    const declinedView = await mountReview()
+    await flushPromises()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', shiftKey: true }))
+    await flushPromises()
+    expect(declined.requests.filter((request) => request.url.endsWith('/outcome'))).toHaveLength(0)
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain(
+      'Does not reopen a slot',
+    )
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+    expect(declined.requests.filter((request) => request.url.endsWith('/outcome'))).toHaveLength(0)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd' }))
+    await flushPromises()
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', shiftKey: true }))
+    await flushPromises()
+    const declinedNote = document.body.querySelector('textarea[aria-label="Outcome note"]')
+    expect(declinedNote).toBeDefined()
+    declinedNote?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    await flushPromises()
+    expect(declined.requests.filter((request) => request.url.endsWith('/outcome')).at(-1)?.body).toEqual({
+      outcome: 'declined',
+    })
+    declinedView.wrapper.unmount()
   })
 
   it('US-18: HR explicitly saves notes and sees a Saving… to Saved whisper', async () => {
@@ -596,7 +999,10 @@ describe('ReviewView', () => {
       if (url.endsWith('/candidates')) {
         return Promise.resolve(jsonResponse([candidateSummary(1), candidateSummary(2)]))
       }
-      return Promise.resolve(jsonResponse(vacancyDetails()))
+      if (url.endsWith('/vacancies/1')) {
+        return Promise.resolve(jsonResponse(vacancyDetails()))
+      }
+      throw new Error(`Unstubbed fetch: ${init?.method ?? 'GET'} ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
 
@@ -734,6 +1140,197 @@ describe('ReviewView', () => {
     const dialog = document.body.querySelector('[role="dialog"]')
     expect(dialog).not.toBeNull()
     expect(dialog?.textContent).toContain('Please find my CV attached.')
+    wrapper.unmount()
+  })
+
+  it('domain: a closed round keeps the review workspace readable but read-only', async () => {
+    stubApi({
+      vacancy: vacancyDetails({
+        rounds: [openRound({ status: 'closed', closedAt: '2026-09-05T00:00:00Z' })],
+      }),
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    // The read-only notice sits above the still-readable workspace.
+    expect(wrapper.text()).toContain('This round is closed')
+    expect(wrapper.text()).toContain('Review data is read-only')
+    expect(wrapper.text()).toContain('Jane Doe')
+    expect(wrapper.text()).toContain('1 / 3 confirmed')
+    wrapper.unmount()
+  })
+
+  it.each([
+    { action: 'Shortlist', status: 'shortlisted' },
+    { action: 'Flag', status: 'flagged' },
+    { action: 'Reject', status: 'rejected' },
+  ] as const)(
+    'domain: when the round closes mid-review, a refused $status decision surfaces the conflict',
+    async ({ action }) => {
+      stubApi({
+        mutationError: {
+          path: '/review',
+          problem: { title: 'IntakeRounds.Closed', detail: 'The round is closed.' },
+          status: 409,
+        },
+      })
+
+      const { wrapper, router } = await mountReview()
+      await flushPromises()
+
+      await findButton(wrapper, action).trigger('click')
+      await flushPromises()
+
+      // The server enforces the freeze: HR stays on the candidate and gets an amber warning.
+      expect(toastAdd).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'This round is closed',
+          description:
+            'Closed rounds are read-only. To keep working with its candidates, promote them into the active round.',
+          color: 'warning',
+        }),
+      )
+      expect(router.currentRoute.value.params.candidateId).toBe('1')
+      expect(wrapper.find('p[role="alert"]').exists()).toBe(false)
+      wrapper.unmount()
+    },
+  )
+
+  it('domain: a closed vacancy settles the outcome in the header and hides outcome actions', async () => {
+    stubApi({
+      vacancy: vacancyDetails({ status: 'closed', closedAt: '2026-09-06T00:00:00Z' }),
+      details: { 1: candidateDetails(1, { reviewStatus: 'shortlisted' }) },
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    expect(wrapper.find('[aria-label="Review status: Shortlisted"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="Hire outcomes"]').exists()).toBe(false)
+    expect(hasButton(wrapper, 'Shortlist')).toBe(false)
+    wrapper.unmount()
+  })
+
+  it.each([
+    { action: 'Shortlist', status: 'shortlisted' },
+    { action: 'Reject', status: 'rejected' },
+  ] as const)(
+    'domain: a $status decision against a final hire outcome toasts the server rule',
+    async ({ action }) => {
+      stubApi({
+        mutationError: {
+          path: '/review',
+          problem: {
+            type: 'https://tools.ietf.org/html/rfc9110#section-15.5.1',
+            title: 'One or more validation errors occurred.',
+            status: 400,
+            errors: {
+              reviewStatus: [
+                'Review status cannot change while the hire outcome is hired or runaway.',
+              ],
+            },
+            traceId: '00-a2de65ca9fb16c00d2070d62c0f7cd9d-bb2c5cd40d4cf8f2-00',
+          },
+          status: 400,
+        },
+      })
+
+      const { wrapper, router } = await mountReview()
+      await flushPromises()
+
+      await findButton(wrapper, action).trigger('click')
+      await flushPromises()
+
+      // The server's rule arrives verbatim as an amber toast; HR stays on the candidate.
+      expect(toastAdd).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "That change isn't allowed",
+          description:
+            'Review status cannot change while the hire outcome is hired or runaway.',
+          color: 'warning',
+        }),
+      )
+      expect(router.currentRoute.value.params.candidateId).toBe('1')
+      expect(wrapper.find('p[role="alert"]').exists()).toBe(false)
+      wrapper.unmount()
+    },
+  )
+
+  it('domain: a refused hire-outcome transition toasts the server rule', async () => {
+    stubApi({
+      details: {
+        1: candidateDetails(1, { reviewStatus: 'shortlisted', hireOutcome: 'hired' }),
+      },
+      mutationError: {
+        path: '/outcome',
+        problem: {
+          title: 'One or more validation errors occurred.',
+          errors: { hireOutcome: ['The requested hire outcome transition is not allowed.'] },
+        },
+        status: 400,
+      },
+    })
+    const { wrapper, router } = await mountReview()
+    await flushPromises()
+
+    await openOutcomeMenu(wrapper)
+    await findMenuItem('Clear outcome').trigger('click')
+    await flushPromises()
+
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "That change isn't allowed",
+        description: 'The requested hire outcome transition is not allowed.',
+        color: 'warning',
+      }),
+    )
+    expect(wrapper.find('p[role="alert"]').exists()).toBe(false)
+    expect(router.currentRoute.value.params.candidateId).toBe('1')
+    wrapper.unmount()
+  })
+
+  it('domain: a technical review-save failure stays inline with retry guidance', async () => {
+    stubApi({
+      mutationError: {
+        path: '/review',
+        problem: { title: 'Server error' },
+        status: 500,
+      },
+    })
+    const { wrapper, router } = await mountReview()
+    await flushPromises()
+
+    await findButton(wrapper, 'Reject').trigger('click')
+    await flushPromises()
+
+    const alert = wrapper.find('p[role="alert"]')
+    expect(alert.text()).toContain('Something went wrong')
+    expect(alert.text()).toContain('Please try again.')
+    expect(router.currentRoute.value.params.candidateId).toBe('1')
+    expect(toastAdd).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('domain: an unknown review conflict explains how to refresh the round', async () => {
+    stubApi({
+      mutationError: {
+        path: '/review',
+        problem: { title: 'Conflict' },
+        status: 409,
+      },
+    })
+    const { wrapper, router } = await mountReview()
+    await flushPromises()
+
+    await findButton(wrapper, 'Reject').trigger('click')
+    await flushPromises()
+
+    const alert = wrapper.find('p[role="alert"]')
+    expect(alert.text()).toContain("Couldn't save that change")
+    expect(alert.text()).toContain(
+      'Go back and reopen this round to see the latest, then try again.',
+    )
+    expect(router.currentRoute.value.params.candidateId).toBe('1')
+    expect(toastAdd).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 })

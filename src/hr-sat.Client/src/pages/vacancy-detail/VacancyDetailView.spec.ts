@@ -17,6 +17,46 @@ function jsonResponse(body: unknown, status = 200): Response {
   })
 }
 
+type FetchHandler = (url: string, init?: RequestInit) => Promise<Response> | undefined
+
+/**
+ * Stubs the fetch seam: the handler serves the flow's endpoints and the vacancy
+ * rollup answers only its exact URL. Anything else throws, so contract drift
+ * fails loudly with the offending URL instead of a downstream type error.
+ */
+function stubFetch(vacancy: () => unknown, handler: FetchHandler): void {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const matched = handler(url, init)
+      if (matched !== undefined) {
+        return matched
+      }
+      if (url.endsWith('/vacancies/1')) {
+        return Promise.resolve(jsonResponse(vacancy()))
+      }
+      throw new Error(`Unstubbed fetch: ${init?.method ?? 'GET'} ${url}`)
+    }),
+  )
+}
+
+function openRound(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 1,
+    roundNumber: 1,
+    name: null,
+    status: 'open',
+    closedAt: null,
+    candidateCount: 0,
+    ...overrides,
+  }
+}
+
+function closedRound(overrides: Partial<Record<string, unknown>> = {}) {
+  return openRound({ status: 'closed', closedAt: '2026-09-01T00:00:00Z', ...overrides })
+}
+
 function vacancyDetails(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: 1,
@@ -26,6 +66,7 @@ function vacancyDetails(overrides: Partial<Record<string, unknown>> = {}) {
     closedAt: null,
     createdAt: '2026-08-27T00:00:00Z',
     requirements: [{ id: 11, phrase: 'MIG welding', position: 0 }],
+    rounds: [openRound()],
     progress: { processedCandidates: 0, totalCandidates: 0 },
     ...overrides,
   }
@@ -35,6 +76,7 @@ function importedCandidate(id: number, filename: string) {
   return {
     id,
     reviewStatus: 'new',
+    hireOutcome: 'none',
     extractionStatus: 'pending',
     sourceSenderName: 'Alice Applicant',
     sourceSenderEmail: 'alice@example.com',
@@ -48,7 +90,7 @@ function importedCandidate(id: number, filename: string) {
         originalFilename: 'alice-cv.pdf',
         sizeBytes: 1024,
         isPrimary: true,
-        downloadUrl: `/api/vacancies/1/candidates/${id}/cv-documents/${id * 10}`,
+        downloadUrl: `/api/vacancies/1/rounds/1/candidates/${id}/cv-documents/${id * 10}`,
       },
     ],
   }
@@ -61,6 +103,7 @@ function candidateSummary(id: number, overrides: Partial<Record<string, unknown>
     contactEmail: null,
     notes: null,
     reviewStatus: 'new',
+    hireOutcome: 'none',
     sourceSenderName: 'Alice Applicant',
     sourceSenderEmail: 'alice@example.com',
     sourceSubject: 'Application for Welder',
@@ -89,12 +132,44 @@ function mountView(id = '1') {
       { path: '/', name: 'vacancy-list', component: { template: '<div />' } },
       { path: '/vacancies/:id', name: 'vacancy-detail', component: { template: '<div />' } },
       {
-        path: '/vacancies/:id/review/:candidateId',
+        path: '/vacancies/:id/rounds/:roundId/review/:candidateId',
         name: 'candidate-review',
         component: { template: '<div />' },
       },
     ],
   })
+  const wrapper = mount(VacancyDetailView, {
+    props: { id },
+    global: {
+      plugins: [router],
+      stubs: {
+        RouterLink: { template: '<a><slot /></a>' },
+      },
+    },
+  })
+  return { router, wrapper }
+}
+
+/**
+ * Mount with initial route query params. Unlike mountView, the query must be
+ * resolved before the view's setup runs — the view reads route.query once — so
+ * the router pushes the location and awaits isReady before mounting.
+ */
+async function mountViewWithQuery(id: string, query: Record<string, string>) {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', name: 'vacancy-list', component: { template: '<div />' } },
+      { path: '/vacancies/:id', name: 'vacancy-detail', component: { template: '<div />' } },
+      {
+        path: '/vacancies/:id/rounds/:roundId/review/:candidateId',
+        name: 'candidate-review',
+        component: { template: '<div />' },
+      },
+    ],
+  })
+  void router.push({ path: `/vacancies/${id}`, query })
+  await router.isReady()
   const wrapper = mount(VacancyDetailView, {
     props: { id },
     global: {
@@ -141,48 +216,65 @@ afterEach(() => {
 })
 
 describe('VacancyDetailView', () => {
+  it('domain: a vacancy-detail load failure uses friendly retry copy', async () => {
+    stubFetch(
+      () => vacancyDetails(),
+      (url) => {
+        if (url.endsWith('/vacancies/1')) {
+          return Promise.resolve(jsonResponse({ title: 'Server error' }, 500))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('[role="alert"]').text()).toContain('Something went wrong')
+    expect(wrapper.find('[role="alert"]').text()).toContain('Please try again.')
+    wrapper.unmount()
+  })
+
   it('US-12: HR drops .eml files into a vacancy and sees each file’s outcome', async () => {
     let imported = false
     let sentFileNames: string[] | undefined
-    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
-      if (init?.method === 'POST' && url.endsWith('/candidates/import')) {
-        imported = true
-        const form = init.body as FormData
-        sentFileNames = form.getAll('files').map((entry) => (entry as File).name)
-        return Promise.resolve(
-          jsonResponse({
-            results: [
-              {
-                fileName: 'alice.eml',
-                status: 'imported',
-                error: null,
-                candidate: importedCandidate(1, 'alice.eml'),
-              },
-              {
-                fileName: 'broken.eml',
-                status: 'failed',
-                error: 'The .eml file must contain at least one valid PDF attachment.',
-                candidate: null,
-              },
-            ],
-          }),
-        )
-      }
-      if (url.endsWith('/candidates')) {
-        return Promise.resolve(jsonResponse(imported ? [candidateSummary(1)] : []))
-      }
-      return Promise.resolve(
-        jsonResponse(
-          vacancyDetails({
-            progress: imported
-              ? { processedCandidates: 0, totalCandidates: 1 }
-              : { processedCandidates: 0, totalCandidates: 0 },
-          }),
-        ),
-      )
-    })
-    vi.stubGlobal('fetch', fetchMock)
+    stubFetch(
+      () =>
+        vacancyDetails({
+          progress: imported
+            ? { processedCandidates: 0, totalCandidates: 1 }
+            : { processedCandidates: 0, totalCandidates: 0 },
+        }),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/candidates/import')) {
+          imported = true
+          const form = init.body as FormData
+          sentFileNames = form.getAll('files').map((entry) => (entry as File).name)
+          return Promise.resolve(
+            jsonResponse({
+              results: [
+                {
+                  fileName: 'alice.eml',
+                  status: 'imported',
+                  error: null,
+                  candidate: importedCandidate(1, 'alice.eml'),
+                },
+                {
+                  fileName: 'broken.eml',
+                  status: 'failed',
+                  error: 'The .eml file must contain at least one valid PDF attachment.',
+                  candidate: null,
+                },
+              ],
+            }),
+          )
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse(imported ? [candidateSummary(1)] : []))
+        }
+        return undefined
+      },
+    )
 
     const { wrapper } = mountView()
     await flushPromises()
@@ -215,37 +307,35 @@ describe('VacancyDetailView', () => {
 
   it('US-13: the vacancy progress reflects the imported candidates', async () => {
     let imported = false
-    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
-      if (init?.method === 'POST' && url.endsWith('/candidates/import')) {
-        imported = true
-        return Promise.resolve(
-          jsonResponse({
-            results: [
-              {
-                fileName: 'alice.eml',
-                status: 'imported',
-                error: null,
-                candidate: importedCandidate(1, 'alice.eml'),
-              },
-            ],
-          }),
-        )
-      }
-      if (url.endsWith('/candidates')) {
-        return Promise.resolve(jsonResponse(imported ? [candidateSummary(1)] : []))
-      }
-      return Promise.resolve(
-        jsonResponse(
-          vacancyDetails({
-            progress: imported
-              ? { processedCandidates: 0, totalCandidates: 1 }
-              : { processedCandidates: 0, totalCandidates: 0 },
-          }),
-        ),
-      )
-    })
-    vi.stubGlobal('fetch', fetchMock)
+    stubFetch(
+      () =>
+        vacancyDetails({
+          progress: imported
+            ? { processedCandidates: 0, totalCandidates: 1 }
+            : { processedCandidates: 0, totalCandidates: 0 },
+        }),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/candidates/import')) {
+          imported = true
+          return Promise.resolve(
+            jsonResponse({
+              results: [
+                {
+                  fileName: 'alice.eml',
+                  status: 'imported',
+                  error: null,
+                  candidate: importedCandidate(1, 'alice.eml'),
+                },
+              ],
+            }),
+          )
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse(imported ? [candidateSummary(1)] : []))
+        }
+        return undefined
+      },
+    )
 
     const { wrapper } = mountView()
     await flushPromises()
@@ -262,22 +352,23 @@ describe('VacancyDetailView', () => {
   })
 
   it('US-12: HR is told when the import request fails', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
-      if (init?.method === 'POST' && url.endsWith('/candidates/import')) {
-        return Promise.resolve(
-          jsonResponse(
-            { errors: { files: ['At least one .eml file is required.'] } },
-            400,
-          ),
-        )
-      }
-      if (url.endsWith('/candidates')) {
-        return Promise.resolve(jsonResponse([]))
-      }
-      return Promise.resolve(jsonResponse(vacancyDetails()))
-    })
-    vi.stubGlobal('fetch', fetchMock)
+    stubFetch(
+      () => vacancyDetails(),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/candidates/import')) {
+          return Promise.resolve(
+            jsonResponse(
+              { errors: { files: ['At least one .eml file is required.'] } },
+              400,
+            ),
+          )
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
 
     const { wrapper } = mountView()
     await flushPromises()
@@ -294,34 +385,32 @@ describe('VacancyDetailView', () => {
   })
 
   it('US-14: HR sees the whole pipeline at a glance — name, notes, and status per candidate', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.endsWith('/candidates')) {
-        return Promise.resolve(
-          jsonResponse([
-            candidateSummary(1),
-            bobSummary(),
-            candidateSummary(3, {
-              sourceSenderName: null,
-              sourceSenderEmail: null,
-              sourceSubject: 'CV submission via web form',
-            }),
-          ]),
-        )
-      }
-      return Promise.resolve(
-        jsonResponse(
-          vacancyDetails({
-            requirements: [
-              { id: 11, phrase: 'MIG welding', position: 0 },
-              { id: 12, phrase: 'TIG welding', position: 1 },
-            ],
-            progress: { processedCandidates: 1, totalCandidates: 3 },
-          }),
-        ),
-      )
-    })
-    vi.stubGlobal('fetch', fetchMock)
+    stubFetch(
+      () =>
+        vacancyDetails({
+          requirements: [
+            { id: 11, phrase: 'MIG welding', position: 0 },
+            { id: 12, phrase: 'TIG welding', position: 1 },
+          ],
+          progress: { processedCandidates: 1, totalCandidates: 3 },
+        }),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(
+            jsonResponse([
+              candidateSummary(1),
+              bobSummary(),
+              candidateSummary(3, {
+                sourceSenderName: null,
+                sourceSenderEmail: null,
+                sourceSubject: 'CV submission via web form',
+              }),
+            ]),
+          )
+        }
+        return undefined
+      },
+    )
 
     const { wrapper } = mountView()
     await flushPromises()
@@ -372,22 +461,52 @@ describe('VacancyDetailView', () => {
     wrapper.unmount()
   })
 
+  it('domain: Needed Hires stay visible in the vacancy rollup and candidate workspace', async () => {
+    stubFetch(
+      () => vacancyDetails({ hiring: { neededHires: 4, activeHires: 1 } }),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const hiringPlan = wrapper.find('[aria-label="Hiring plan"]')
+    expect(hiringPlan.text()).toContain('Needed hires')
+    expect(hiringPlan.text()).toContain('Active hires')
+    expect(hiringPlan.text()).toContain('Still needed')
+    expect(hiringPlan.text()).toContain('4')
+    expect(hiringPlan.text()).toContain('1')
+    expect(hiringPlan.text()).toContain('3')
+
+    const workspaceHiringPlan = wrapper.find('[aria-label="Candidate workspace hiring plan"]')
+    expect(workspaceHiringPlan.text()).toContain('1/4')
+    expect(workspaceHiringPlan.text()).toContain('3 to go')
+    expect(workspaceHiringPlan.text()).not.toContain('Filled')
+    wrapper.unmount()
+  })
+
   it('US-14: HR deletes a candidate after confirming', async () => {
     let deleted = false
-    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
-      if (init?.method === 'DELETE' && url.endsWith('/candidates/2')) {
-        deleted = true
-        return Promise.resolve(new Response(null, { status: 204 }))
-      }
-      if (url.endsWith('/candidates')) {
-        return Promise.resolve(
-          jsonResponse(deleted ? [candidateSummary(1)] : [candidateSummary(1), bobSummary()]),
-        )
-      }
-      return Promise.resolve(jsonResponse(vacancyDetails()))
-    })
-    vi.stubGlobal('fetch', fetchMock)
+    stubFetch(
+      () => vacancyDetails(),
+      (url, init) => {
+        if (init?.method === 'DELETE' && url.includes('/rounds/1/candidates/2')) {
+          deleted = true
+          return Promise.resolve(new Response(null, { status: 204 }))
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(
+            jsonResponse(deleted ? [candidateSummary(1)] : [candidateSummary(1), bobSummary()]),
+          )
+        }
+        return undefined
+      },
+    )
 
     const { wrapper } = mountView()
     await flushPromises()
@@ -417,17 +536,18 @@ describe('VacancyDetailView', () => {
   })
 
   it('US-14: HR is told when deleting a candidate fails and the list stays intact', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
-      if (init?.method === 'DELETE' && url.endsWith('/candidates/2')) {
-        return Promise.resolve(jsonResponse({ title: 'Server error' }, 500))
-      }
-      if (url.endsWith('/candidates')) {
-        return Promise.resolve(jsonResponse([candidateSummary(1), bobSummary()]))
-      }
-      return Promise.resolve(jsonResponse(vacancyDetails()))
-    })
-    vi.stubGlobal('fetch', fetchMock)
+    stubFetch(
+      () => vacancyDetails(),
+      (url, init) => {
+        if (init?.method === 'DELETE' && url.includes('/rounds/1/candidates/2')) {
+          return Promise.resolve(jsonResponse({ title: 'Server error' }, 500))
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(1), bobSummary()]))
+        }
+        return undefined
+      },
+    )
 
     const { wrapper } = mountView()
     await flushPromises()
@@ -440,7 +560,8 @@ describe('VacancyDetailView', () => {
     await flushPromises()
 
     // Dialog stays open with the error; the loaded list is untouched.
-    expect(document.body.textContent).toContain('API request failed with status 500')
+    expect(document.body.textContent).toContain('Something went wrong')
+    expect(document.body.textContent).toContain('Please try again.')
     expect(document.body.textContent).toContain("can't be undone")
     expect(wrapper.text()).toContain('Bob Builder')
     expect(toastAdd).not.toHaveBeenCalled()
@@ -449,29 +570,30 @@ describe('VacancyDetailView', () => {
 
   it('US-12/US-14: a successful import replaces the empty state with the candidate list', async () => {
     let imported = false
-    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
-      if (init?.method === 'POST' && url.endsWith('/candidates/import')) {
-        imported = true
-        return Promise.resolve(
-          jsonResponse({
-            results: [
-              {
-                fileName: 'alice.eml',
-                status: 'imported',
-                error: null,
-                candidate: importedCandidate(1, 'alice.eml'),
-              },
-            ],
-          }),
-        )
-      }
-      if (url.endsWith('/candidates')) {
-        return Promise.resolve(jsonResponse(imported ? [candidateSummary(1)] : []))
-      }
-      return Promise.resolve(jsonResponse(vacancyDetails()))
-    })
-    vi.stubGlobal('fetch', fetchMock)
+    stubFetch(
+      () => vacancyDetails(),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/candidates/import')) {
+          imported = true
+          return Promise.resolve(
+            jsonResponse({
+              results: [
+                {
+                  fileName: 'alice.eml',
+                  status: 'imported',
+                  error: null,
+                  candidate: importedCandidate(1, 'alice.eml'),
+                },
+              ],
+            }),
+          )
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse(imported ? [candidateSummary(1)] : []))
+        }
+        return undefined
+      },
+    )
 
     const { wrapper } = mountView()
     await flushPromises()
@@ -488,19 +610,14 @@ describe('VacancyDetailView', () => {
   })
 
   it('domain: closed vacancy is read-only — no import is offered', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((input: RequestInfo | URL) => {
-        const url = String(input)
-        if (url.endsWith('/candidates')) {
+    stubFetch(
+      () => vacancyDetails({ status: 'closed', closedAt: '2026-08-29T00:00:00Z' }),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
           return Promise.resolve(jsonResponse([]))
         }
-        return Promise.resolve(
-          jsonResponse(
-            vacancyDetails({ status: 'closed', closedAt: '2026-08-29T00:00:00Z' }),
-          ),
-        )
-      }),
+        return undefined
+      },
     )
 
     const { wrapper } = mountView()
@@ -517,23 +634,19 @@ describe('VacancyDetailView', () => {
   })
 
   it('domain: closed vacancy is read-only — candidate rows have no actions', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((input: RequestInfo | URL) => {
-        const url = String(input)
-        if (url.endsWith('/candidates')) {
+    stubFetch(
+      () =>
+        vacancyDetails({
+          status: 'closed',
+          closedAt: '2026-08-29T00:00:00Z',
+          progress: { processedCandidates: 0, totalCandidates: 1 },
+        }),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
           return Promise.resolve(jsonResponse([candidateSummary(1)]))
         }
-        return Promise.resolve(
-          jsonResponse(
-            vacancyDetails({
-              status: 'closed',
-              closedAt: '2026-08-29T00:00:00Z',
-              progress: { processedCandidates: 0, totalCandidates: 1 },
-            }),
-          ),
-        )
-      }),
+        return undefined
+      },
     )
 
     const { wrapper } = mountView()
@@ -546,24 +659,25 @@ describe('VacancyDetailView', () => {
   })
 
   it('US-14: HR filters by review-status chips with live counts, combined AND with search', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.endsWith('/candidates')) {
-        return Promise.resolve(
-          jsonResponse([
-            candidateSummary(1),
-            bobSummary(),
-            candidateSummary(3, {
-              sourceSenderName: 'Carol Welder',
-              sourceSenderEmail: 'carol@example.com',
-              reviewStatus: 'shortlisted',
-            }),
-          ]),
-        )
-      }
-      return Promise.resolve(jsonResponse(vacancyDetails()))
-    })
-    vi.stubGlobal('fetch', fetchMock)
+    stubFetch(
+      () => vacancyDetails(),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(
+            jsonResponse([
+              candidateSummary(1),
+              bobSummary(),
+              candidateSummary(3, {
+                sourceSenderName: 'Carol Welder',
+                sourceSenderEmail: 'carol@example.com',
+                reviewStatus: 'shortlisted',
+              }),
+            ]),
+          )
+        }
+        return undefined
+      },
+    )
 
     const { wrapper } = mountView()
     await flushPromises()
@@ -612,25 +726,93 @@ describe('VacancyDetailView', () => {
     wrapper.unmount()
   })
 
+  it('US-14: outcome chips nest under Shortlisted and hide for other statuses', async () => {
+    stubFetch(
+      () => vacancyDetails(),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(1), bobSummary()]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const outcomeGroup = () => wrapper.find('[aria-label="Filter by hire outcome"]')
+    const statusChips = () => wrapper.findAll('[aria-label="Filter by review status"] button')
+
+    // All: outcome chips visible (shortlisted candidates are part of the list).
+    expect(outcomeGroup().exists()).toBe(true)
+
+    // Shortlisted: outcome chips stay visible.
+    await statusChips()[3]!.trigger('click')
+    expect(outcomeGroup().exists()).toBe(true)
+
+    // New: outcome chips hide — the facet does not exist outside Shortlisted.
+    await statusChips()[1]!.trigger('click')
+    expect(outcomeGroup().exists()).toBe(false)
+
+    // Back to All: outcome chips return.
+    await statusChips()[0]!.trigger('click')
+    expect(outcomeGroup().exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('US-14: a status that excludes shortlisted sanitizes a stale outcome from the URL', async () => {
+    stubFetch(
+      () => vacancyDetails(),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(
+            jsonResponse([
+              candidateSummary(1),
+              candidateSummary(2, {
+                sourceSenderName: 'Carol Welder',
+                sourceSenderEmail: 'carol@example.com',
+                reviewStatus: 'shortlisted',
+                hireOutcome: 'hired',
+              }),
+            ]),
+          )
+        }
+        return undefined
+      },
+    )
+
+    // Stale link: status=new with outcome=hired is a dead combination.
+    const { wrapper } = await mountViewWithQuery('1', { status: 'new', outcome: 'hired' })
+    await flushPromises()
+
+    // The outcome filter falls back to 'any', so the New candidate still shows.
+    expect(wrapper.findAll('.crow')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Alice Applicant')
+    // Outcome chips stay hidden under New.
+    expect(wrapper.find('[aria-label="Filter by hire outcome"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('US-14: HR searches candidates by sender email and email subject', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.endsWith('/candidates')) {
-        return Promise.resolve(
-          jsonResponse([
-            candidateSummary(1),
-            bobSummary(),
-            candidateSummary(3, {
-              sourceSenderName: null,
-              sourceSenderEmail: null,
-              sourceSubject: 'CV submission via web form',
-            }),
-          ]),
-        )
-      }
-      return Promise.resolve(jsonResponse(vacancyDetails()))
-    })
-    vi.stubGlobal('fetch', fetchMock)
+    stubFetch(
+      () => vacancyDetails(),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(
+            jsonResponse([
+              candidateSummary(1),
+              bobSummary(),
+              candidateSummary(3, {
+                sourceSenderName: null,
+                sourceSenderEmail: null,
+                sourceSubject: 'CV submission via web form',
+              }),
+            ]),
+          )
+        }
+        return undefined
+      },
+    )
 
     const { wrapper } = mountView()
     await flushPromises()
@@ -651,31 +833,83 @@ describe('VacancyDetailView', () => {
     wrapper.unmount()
   })
 
-  it('US-14: HR sorts by received date, oldest first by default, toggling to newest', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.endsWith('/candidates')) {
-        return Promise.resolve(
-          jsonResponse([
-            candidateSummary(1), // 2026-08-28
-            candidateSummary(2, {
-              sourceSenderName: 'Bob Builder',
-              sourceSentAt: '2026-08-30T15:30:00Z',
-            }),
-            candidateSummary(3, {
-              sourceSenderName: 'Carol Welder',
-              sourceSentAt: '2026-08-25T08:00:00Z',
-            }),
-            candidateSummary(4, {
-              sourceSenderName: 'Dave NoDate',
-              sourceSentAt: null,
-            }),
-          ]),
-        )
-      }
-      return Promise.resolve(jsonResponse(vacancyDetails()))
-    })
-    vi.stubGlobal('fetch', fetchMock)
+  it('domain: the Bench outcome facet scopes to shortlisted candidates and composes with search', async () => {
+    stubFetch(
+      () => vacancyDetails(),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(
+            jsonResponse([
+              candidateSummary(1),
+              bobSummary(),
+              candidateSummary(3, {
+                sourceSenderName: 'Carol Hired',
+                reviewStatus: 'shortlisted',
+                hireOutcome: 'hired',
+              }),
+            ]),
+          )
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const outcomeChips = () => wrapper.findAll('[aria-label="Filter by hire outcome"] button')
+    expect(outcomeChips().map((chip) => chip.text().replace(/\s+/g, ' ').trim())).toEqual([
+      'Any outcome 3',
+      'Bench 1',
+      'Hired 1',
+      'Runaway 0',
+      'Declined 0',
+    ])
+
+    await outcomeChips()[1]!.trigger('click')
+    expect(wrapper.findAll('.crow')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Bob Builder')
+    expect(wrapper.text()).not.toContain('Carol Hired')
+
+    await wrapper.find('input[aria-label="Search candidates"]').setValue('alice')
+    expect(wrapper.findAll('.crow')).toHaveLength(0)
+    expect(wrapper.text()).toContain('No candidates match these filters')
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Clear filters'))
+      ?.trigger('click')
+    expect(outcomeChips()[0]!.attributes('aria-pressed')).toBe('true')
+    expect(wrapper.findAll('.crow')).toHaveLength(3)
+    wrapper.unmount()
+  })
+
+  it('US-14: HR sorts by received date, newest first by default, toggling to oldest', async () => {
+    stubFetch(
+      () => vacancyDetails(),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(
+            jsonResponse([
+              candidateSummary(1), // 2026-08-28
+              candidateSummary(2, {
+                sourceSenderName: 'Bob Builder',
+                sourceSentAt: '2026-08-30T15:30:00Z',
+              }),
+              candidateSummary(3, {
+                sourceSenderName: 'Carol Welder',
+                sourceSentAt: '2026-08-25T08:00:00Z',
+              }),
+              candidateSummary(4, {
+                sourceSenderName: 'Dave NoDate',
+                sourceSentAt: null,
+              }),
+            ]),
+          )
+        }
+        return undefined
+      },
+    )
 
     const { wrapper } = mountView()
     await flushPromises()
@@ -683,35 +917,36 @@ describe('VacancyDetailView', () => {
     const names = () => wrapper.findAll('.crow__name-text').map((cell) => cell.text())
     const sortHeader = () => wrapper.find('th[aria-sort]')
 
-    // Oldest first by default; a missing sent-at sinks to the bottom.
-    expect(sortHeader().attributes('aria-sort')).toBe('ascending')
-    expect(names()).toEqual(['Carol Welder', 'Alice Applicant', 'Bob Builder', 'Dave NoDate'])
-
-    await sortHeader().find('button').trigger('click')
+    // Newest first by default; a missing sent-at sinks to the bottom.
     expect(sortHeader().attributes('aria-sort')).toBe('descending')
     expect(names()).toEqual(['Bob Builder', 'Alice Applicant', 'Carol Welder', 'Dave NoDate'])
 
     await sortHeader().find('button').trigger('click')
     expect(sortHeader().attributes('aria-sort')).toBe('ascending')
     expect(names()).toEqual(['Carol Welder', 'Alice Applicant', 'Bob Builder', 'Dave NoDate'])
+
+    await sortHeader().find('button').trigger('click')
+    expect(sortHeader().attributes('aria-sort')).toBe('descending')
+    expect(names()).toEqual(['Bob Builder', 'Alice Applicant', 'Carol Welder', 'Dave NoDate'])
     wrapper.unmount()
   })
 
   it('US-14: the CV column shows a paperclip when documents exist and a No CV badge otherwise', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.endsWith('/candidates')) {
-        return Promise.resolve(
-          jsonResponse([
-            candidateSummary(1),
-            candidateSummary(2, { sourceSenderName: 'Bob Builder', cvDocumentCount: 2 }),
-            candidateSummary(3, { sourceSenderName: 'Carol NoCv', cvDocumentCount: 0 }),
-          ]),
-        )
-      }
-      return Promise.resolve(jsonResponse(vacancyDetails()))
-    })
-    vi.stubGlobal('fetch', fetchMock)
+    stubFetch(
+      () => vacancyDetails(),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(
+            jsonResponse([
+              candidateSummary(1),
+              candidateSummary(2, { sourceSenderName: 'Bob Builder', cvDocumentCount: 2 }),
+              candidateSummary(3, { sourceSenderName: 'Carol NoCv', cvDocumentCount: 0 }),
+            ]),
+          )
+        }
+        return undefined
+      },
+    )
 
     const { wrapper } = mountView()
     await flushPromises()
@@ -726,14 +961,15 @@ describe('VacancyDetailView', () => {
   })
 
   it('US-14: HR opens the review workspace by clicking a candidate row', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.endsWith('/candidates')) {
-        return Promise.resolve(jsonResponse([candidateSummary(1), bobSummary()]))
-      }
-      return Promise.resolve(jsonResponse(vacancyDetails()))
-    })
-    vi.stubGlobal('fetch', fetchMock)
+    stubFetch(
+      () => vacancyDetails(),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(1), bobSummary()]))
+        }
+        return undefined
+      },
+    )
 
     const { wrapper, router } = mountView()
     await flushPromises()
@@ -743,19 +979,71 @@ describe('VacancyDetailView', () => {
     await flushPromises()
 
     expect(router.currentRoute.value.name).toBe('candidate-review')
-    expect(router.currentRoute.value.fullPath).toBe('/vacancies/1/review/2')
+    expect(router.currentRoute.value.fullPath).toBe('/vacancies/1/rounds/1/review/2')
+    wrapper.unmount()
+  })
+
+  it('US-17: HR opens review with the active candidate filters and sort', async () => {
+    stubFetch(
+      () => vacancyDetails(),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(
+            jsonResponse([
+              candidateSummary(1, {
+                sourceSenderName: 'Alice Applicant',
+                reviewStatus: 'shortlisted',
+                sourceSentAt: '2026-08-30T09:00:00Z',
+              }),
+              candidateSummary(2, {
+                sourceSenderName: 'Bob Builder',
+                reviewStatus: 'shortlisted',
+                hireOutcome: 'hired',
+                sourceSentAt: '2026-08-20T09:00:00Z',
+              }),
+              candidateSummary(3, {
+                sourceSenderName: 'Carol Welder',
+                sourceSentAt: '2026-08-10T09:00:00Z',
+              }),
+            ]),
+          )
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper, router } = mountView()
+    await flushPromises()
+
+    const shortlistChip = wrapper
+      .findAll('[aria-label="Filter by review status"] button')
+      .find((button) => button.text().includes('Shortlisted'))
+    await shortlistChip!.trigger('click')
+    await wrapper
+      .findAll('[aria-label="Filter by hire outcome"] button')
+      .find((button) => button.text().includes('Hired'))
+      ?.trigger('click')
+    await wrapper.find('th[aria-sort] button').trigger('click')
+
+    await wrapper.findAll('.crow')[0]!.trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.fullPath).toBe(
+      '/vacancies/1/rounds/1/review/2?status=shortlisted&outcome=hired&sort=oldest',
+    )
     wrapper.unmount()
   })
 
   it('US-14: row action buttons do not navigate away from the list', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.endsWith('/candidates')) {
-        return Promise.resolve(jsonResponse([candidateSummary(1), bobSummary()]))
-      }
-      return Promise.resolve(jsonResponse(vacancyDetails()))
-    })
-    vi.stubGlobal('fetch', fetchMock)
+    stubFetch(
+      () => vacancyDetails(),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(1), bobSummary()]))
+        }
+        return undefined
+      },
+    )
 
     const { wrapper, router } = mountView()
     await flushPromises()
@@ -767,6 +1055,864 @@ describe('VacancyDetailView', () => {
     // The delete dialog opened instead of a navigation.
     expect(document.body.textContent).toContain("can't be undone")
     expect(router.currentRoute.value.fullPath).toBe('/')
+    wrapper.unmount()
+  })
+
+  it('domain: a single open round shows no round chrome — the V1 look stays', async () => {
+    stubFetch(
+      () => vacancyDetails(),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    // No round list or round labels: a lone active round keeps the V1 layout.
+    expect(wrapper.find('[aria-label="Intake rounds"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Round 1')
+    // The lifecycle has a compact entry point without exposing round chrome by default.
+    expect(
+      wrapper.findAll('button').some((button) => button.text().includes('Manage rounds')),
+    ).toBe(true)
+    expect(
+      wrapper.findAll('button').some((button) => button.text().includes('Promote from')),
+    ).toBe(false)
+    // The V1 flow is otherwise untouched: import affordance and the round's candidates.
+    expect(wrapper.findAll('button').some((button) => button.text().includes('Import .eml'))).toBe(
+      true,
+    )
+    expect(wrapper.text()).toContain('Alice Applicant')
+    wrapper.unmount()
+  })
+
+  it('Promote: HR moves eligible candidates from a closed round into the active round', async () => {
+    let promoted = false
+    let activeListRequests = 0
+    let promotionBody: unknown
+    const activeCandidate = candidateSummary(3, { sourceSenderName: 'Current Applicant' })
+    const latestRoundCandidates = [
+      candidateSummary(1, { sourceSenderName: 'Alice Applicant', reviewStatus: 'new' }),
+      candidateSummary(2, { sourceSenderName: 'Bob Flagged', reviewStatus: 'flagged' }),
+      candidateSummary(4, { sourceSenderName: 'Rejected Applicant', reviewStatus: 'rejected' }),
+      candidateSummary(5, {
+        sourceSenderName: 'Hired Applicant',
+        reviewStatus: 'shortlisted',
+        hireOutcome: 'hired',
+      }),
+      candidateSummary(6, {
+        sourceSenderName: 'Declined Applicant',
+        reviewStatus: 'shortlisted',
+        hireOutcome: 'declined',
+      }),
+    ]
+    stubFetch(
+      () =>
+        vacancyDetails({
+          rounds: [
+            closedRound({
+              id: 1,
+              roundNumber: 1,
+              name: 'First wave',
+              closedAt: '2026-09-10T10:00:00Z',
+              candidateCount: 1,
+            }),
+            closedRound({
+              id: 2,
+              roundNumber: 2,
+              name: 'Second wave',
+              closedAt: '2026-09-08T10:00:00Z',
+              candidateCount: promoted ? 0 : 5,
+            }),
+            openRound({ id: 3, roundNumber: 3, candidateCount: promoted ? 2 : 1 }),
+          ],
+          progress: {
+            processedCandidates: promoted ? 1 : 0,
+            totalCandidates: promoted ? 2 : 1,
+          },
+        }),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/rounds/3/promotions')) {
+          promoted = true
+          promotionBody = JSON.parse(String(init.body))
+          return Promise.resolve(jsonResponse([candidateSummary(7, { sourceSenderName: 'Earlier Applicant' })]))
+        }
+        if (url.includes('/rounds/3/candidates')) {
+          activeListRequests += 1
+          return Promise.resolve(
+            jsonResponse(promoted ? [activeCandidate, candidateSummary(7, { sourceSenderName: 'Earlier Applicant' })] : [activeCandidate]),
+          )
+        }
+        if (url.includes('/rounds/2/candidates')) {
+          return Promise.resolve(jsonResponse(latestRoundCandidates))
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(8, { sourceSenderName: 'Oldest Applicant' })]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const promoteButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Promote from'))
+    expect(promoteButton, 'a Promote from action for the active round').toBeDefined()
+    await promoteButton!.trigger('click')
+    await flushPromises()
+
+    const dialog = document.body.querySelector('[role="dialog"]')
+    expect(dialog?.textContent).toContain('Round 1 — First wave')
+    expect(dialog?.textContent).toContain('Oldest Applicant')
+    expect(dialog?.textContent).not.toContain('Alice Applicant')
+
+    const sourceRound = new DOMWrapper(
+      document.body.querySelector('select[aria-label="Source round"]') as HTMLSelectElement,
+    )
+    await sourceRound.setValue('2')
+    await flushPromises()
+    expect(document.body.textContent).toContain('Alice Applicant')
+    expect(document.body.textContent).toContain('Bob Flagged')
+    expect(document.body.textContent).not.toContain('Rejected Applicant')
+    expect(document.body.textContent).not.toContain('Hired Applicant')
+    expect(document.body.textContent).not.toContain('Declined Applicant')
+
+    const candidateCheckbox = new DOMWrapper(
+      document.body.querySelector('input[aria-label="Promote Alice Applicant"]') as HTMLInputElement,
+    )
+    await candidateCheckbox.setValue(true)
+    await flushPromises()
+
+    const submitButton = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Promote selected'),
+    )
+    expect(submitButton).toBeDefined()
+    await new DOMWrapper(submitButton as HTMLButtonElement).trigger('click')
+    await flushPromises()
+
+    expect(promotionBody).toEqual({ sourceRoundId: 2, candidateIds: [1] })
+    expect(activeListRequests).toBeGreaterThan(1)
+    expect(wrapper.text()).toContain('Earlier Applicant')
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ title: '1 candidate promoted successfully', color: 'success' }),
+    )
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('domain: HR can close the sole round and open the next round', async () => {
+    let closed = false
+    let opened = false
+    let sentBody: unknown
+    stubFetch(
+      () =>
+        vacancyDetails({
+          hiring: { neededHires: 3, activeHires: 0 },
+          rounds: opened
+            ? [
+                closedRound({ id: 1, roundNumber: 1, candidateCount: 1 }),
+                openRound({ id: 2, roundNumber: 2, name: 'Second wave', candidateCount: 0 }),
+              ]
+            : [
+                closed
+                  ? closedRound({ id: 1, roundNumber: 1, candidateCount: 1 })
+                  : openRound({ id: 1, roundNumber: 1, candidateCount: 1 }),
+              ],
+          progress: { processedCandidates: 0, totalCandidates: 1 },
+        }),
+      (url, init) => {
+        if (init?.method === 'PUT' && url.endsWith('/rounds/1/close')) {
+          closed = true
+          return Promise.resolve(
+            jsonResponse({
+              id: 1,
+              vacancyId: 1,
+              roundNumber: 1,
+              name: null,
+              status: 'closed',
+              closedAt: '2026-09-07T10:00:00Z',
+              candidateCount: 1,
+            }),
+          )
+        }
+        if (init?.method === 'POST' && url.endsWith('/vacancies/1/rounds')) {
+          opened = true
+          sentBody = JSON.parse(String(init.body))
+          return Promise.resolve(
+            jsonResponse(
+              {
+                id: 2,
+                vacancyId: 1,
+                roundNumber: 2,
+                name: 'Second wave',
+                status: 'open',
+                closedAt: null,
+                candidateCount: 0,
+              },
+              201,
+            ),
+          )
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+        }
+        if (url.includes('/rounds/2/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('[aria-label="Intake rounds"]').exists()).toBe(false)
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Manage rounds'))
+      ?.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[aria-label="Intake rounds"]').text()).toContain('Round 1')
+    await wrapper.find('button[aria-label="Close Round 1"]').trigger('click')
+    await flushPromises()
+    expect(document.body.textContent).toContain('Closing is permanent')
+    expect(document.body.textContent).toContain('3 slots still open')
+    expect(document.body.textContent).toContain('close this round?')
+
+    dialogButton('Close round')?.click()
+    await flushPromises()
+
+    expect(closed).toBe(true)
+    expect(wrapper.find('[aria-label="Intake rounds"]').text()).toContain('Closed')
+    expect(wrapper.text()).toContain('Alice Applicant')
+    expect(wrapper.findAll('button[aria-label="Delete candidate"]')).toHaveLength(0)
+
+    const newRoundButton = wrapper
+      .find('[aria-label="Intake rounds"]')
+      .findAll('button')
+      .find((button) => button.text().includes('New round'))
+    expect(newRoundButton, 'a New round action after closing the sole round').toBeDefined()
+    await newRoundButton!.trigger('click')
+    await flushPromises()
+
+    const nameInput = document.body.querySelector('input[aria-label="Round name"]')
+    await new DOMWrapper(nameInput as HTMLInputElement).setValue('Second wave')
+    dialogButton('Open round')?.click()
+    await flushPromises()
+
+    expect(opened).toBe(true)
+    expect(sentBody).toEqual({ name: 'Second wave' })
+    expect(wrapper.find('[aria-label="Intake rounds"]').text()).toContain('Round 2 — Second wave')
+    expect(wrapper.find('[aria-current="true"]').text()).toContain('Round 2')
+    expect(wrapper.text()).toContain('No candidates yet')
+    wrapper.unmount()
+  })
+
+  it.each([
+    { label: 'without a hiring target', hiring: null },
+    { label: 'when the hiring target is already filled', hiring: { neededHires: 2, activeHires: 2 } },
+  ])('domain: closing a round keeps the plain confirmation $label', async ({ hiring }) => {
+    stubFetch(
+      () => vacancyDetails({ hiring }),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Manage rounds'))
+      ?.trigger('click')
+    await flushPromises()
+    await wrapper.find('button[aria-label="Close Round 1"]').trigger('click')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('Closing is permanent')
+    expect(document.body.textContent).not.toContain('slots still open')
+    wrapper.unmount()
+  })
+
+  it('domain: a second round opens the round list, pinned to the active round', async () => {
+    stubFetch(
+      () =>
+        vacancyDetails({
+          rounds: [
+            closedRound({ id: 1, roundNumber: 1, name: 'First wave', candidateCount: 2 }),
+            openRound({ id: 2, roundNumber: 2, candidateCount: 1 }),
+          ],
+          progress: { processedCandidates: 0, totalCandidates: 1 },
+        }),
+      (url) => {
+        if (url.includes('/rounds/2/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    // The round list shows every wave in order with its status and headcount.
+    const section = wrapper.find('[aria-label="Intake rounds"]')
+    expect(section.exists()).toBe(true)
+    expect(section.text()).toContain('Round 1 — First wave')
+    expect(section.text()).toContain('Round 2')
+    expect(section.text()).toContain('Closed')
+    expect(section.text()).toContain('Open')
+    expect(section.text()).toContain('2 candidates')
+    expect(section.text()).toContain('1 candidate')
+
+    // The active round is selected, so its candidates are on screen.
+    expect(section.find('[aria-current="true"]').text()).toContain('Round 2')
+    expect(wrapper.find('[aria-label="Candidates"]').text()).toContain('Alice Applicant')
+    wrapper.unmount()
+  })
+
+  it('domain: switching back to a visited round keeps its candidates responsive during refresh', async () => {
+    let roundTwoRequests = 0
+    let resolveRoundTwoRefresh: ((response: Response) => void) | undefined
+    stubFetch(
+      () =>
+        vacancyDetails({
+          rounds: [
+            closedRound({ id: 1, roundNumber: 1, candidateCount: 1 }),
+            openRound({ id: 2, roundNumber: 2, candidateCount: 1 }),
+          ],
+          progress: { processedCandidates: 0, totalCandidates: 2 },
+        }),
+      (url) => {
+        if (url.includes('/rounds/2/candidates')) {
+          roundTwoRequests += 1
+          if (roundTwoRequests === 1) {
+            return Promise.resolve(jsonResponse([candidateSummary(1)]))
+          }
+          return new Promise<Response>((resolve) => {
+            resolveRoundTwoRefresh = resolve
+          })
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([bobSummary()]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const section = wrapper.find('[aria-label="Intake rounds"]')
+    const roundOne = section
+      .findAll('button')
+      .find((button) => button.text().includes('Round 1'))
+    const roundTwo = section
+      .findAll('button')
+      .find((button) => button.text().includes('Round 2'))
+
+    await roundOne!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[aria-label="Candidates"]').text()).toContain('Bob Builder')
+
+    await roundTwo!.trigger('click')
+
+    expect(section.find('[aria-current="true"]').text()).toContain('Round 2')
+    expect(wrapper.find('[aria-label="Candidates"]').text()).toContain('Alice Applicant')
+    expect(wrapper.find('[aria-label="Loading candidates"]').exists()).toBe(false)
+
+    resolveRoundTwoRefresh?.(jsonResponse([candidateSummary(1)]))
+    await flushPromises()
+    wrapper.unmount()
+  })
+
+  it('domain: Round Management re-pins to the active round when the selected round disappears', async () => {
+    let reloaded = false
+    stubFetch(
+      () =>
+        vacancyDetails({
+          rounds: reloaded
+            ? [
+                closedRound({ id: 2, roundNumber: 2, candidateCount: 1 }),
+                openRound({
+                  id: 3,
+                  roundNumber: 3,
+                  name: 'Replacement wave',
+                  candidateCount: 1,
+                }),
+              ]
+            : [
+                closedRound({ id: 1, roundNumber: 1, name: 'First wave', candidateCount: 1 }),
+                openRound({ id: 2, roundNumber: 2, candidateCount: 1 }),
+              ],
+          progress: { processedCandidates: 0, totalCandidates: 1 },
+        }),
+      (url, init) => {
+        if (init?.method === 'PUT' && url.endsWith('/rounds/2/close')) {
+          reloaded = true
+          return Promise.resolve(
+            jsonResponse({
+              id: 2,
+              vacancyId: 1,
+              roundNumber: 2,
+              name: null,
+              status: 'closed',
+              closedAt: '2026-09-09T10:00:00Z',
+              candidateCount: 1,
+            }),
+          )
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([bobSummary()]))
+        }
+        if (url.includes('/rounds/2/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+        }
+        if (url.includes('/rounds/3/candidates')) {
+          return Promise.resolve(
+            jsonResponse([candidateSummary(3, { sourceSenderName: 'Carol Welder' })]),
+          )
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const section = wrapper.find('[aria-label="Intake rounds"]')
+    const roundOne = section
+      .findAll('button')
+      .find((button) => button.text().includes('Round 1'))
+    await roundOne!.trigger('click')
+    await flushPromises()
+
+    expect(section.find('[aria-current="true"]').text()).toContain('Round 1')
+    expect(wrapper.find('[aria-label="Candidates"]').text()).toContain('Bob Builder')
+
+    await wrapper.find('button[aria-label="Close Round 2"]').trigger('click')
+    await flushPromises()
+    dialogButton('Close round')?.click()
+    await flushPromises()
+
+    expect(reloaded).toBe(true)
+    expect(wrapper.find('[aria-label="Intake rounds"]').text()).toContain(
+      'Round 3 — Replacement wave',
+    )
+    expect(
+      wrapper.find('[aria-label="Intake rounds"]').find('[aria-current="true"]').text(),
+    ).toContain('Round 3')
+    expect(wrapper.find('[aria-label="Candidates"]').text()).toContain('Carol Welder')
+    expect(wrapper.find('[aria-label="Candidates"]').text()).not.toContain('Bob Builder')
+    wrapper.unmount()
+  })
+
+  it('domain: a closed round shows its candidates read-only', async () => {
+    stubFetch(
+      () =>
+        vacancyDetails({
+          rounds: [
+            closedRound({ id: 1, roundNumber: 1, candidateCount: 1 }),
+            openRound({ id: 2, roundNumber: 2, candidateCount: 1 }),
+          ],
+          progress: { processedCandidates: 0, totalCandidates: 2 },
+        }),
+      (url) => {
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([bobSummary()]))
+        }
+        if (url.includes('/rounds/2/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    // Default view: the active round's candidates with their actions.
+    expect(wrapper.find('[aria-label="Candidates"]').text()).toContain('Alice Applicant')
+    expect(wrapper.findAll('button[aria-label="Delete candidate"]')).toHaveLength(1)
+
+    // HR opens the closed round to look back at its wave.
+    const roundOne = wrapper
+      .find('[aria-label="Intake rounds"]')
+      .findAll('button')
+      .find((button) => button.text().includes('Round 1'))
+    await roundOne!.trigger('click')
+    await flushPromises()
+
+    const candidates = wrapper.find('[aria-label="Candidates"]')
+    expect(candidates.text()).toContain('Bob Builder')
+    expect(candidates.text()).not.toContain('Alice Applicant')
+    expect(
+      wrapper.find('[aria-label="Intake rounds"]').find('[aria-current="true"]').text(),
+    ).toContain('Round 1')
+
+    // Read-only: no delete or import affordances while the closed round is viewed.
+    expect(wrapper.findAll('button[aria-label="Delete candidate"]')).toHaveLength(0)
+    expect(
+      wrapper.findAll('button').filter((button) => button.text().includes('Import .eml')),
+    ).toHaveLength(0)
+    wrapper.unmount()
+  })
+
+  it('domain: closing a round is permanent and freezes its review data', async () => {
+    let closed = false
+    stubFetch(
+      () =>
+        vacancyDetails({
+          rounds: [
+            closedRound({ id: 1, roundNumber: 1, candidateCount: 0 }),
+            closed
+              ? closedRound({ id: 2, roundNumber: 2, candidateCount: 1 })
+              : openRound({ id: 2, roundNumber: 2, candidateCount: 1 }),
+          ],
+          progress: { processedCandidates: 0, totalCandidates: 1 },
+        }),
+      (url, init) => {
+        if (init?.method === 'PUT' && url.endsWith('/rounds/2/close')) {
+          closed = true
+          return Promise.resolve(
+            jsonResponse({
+              id: 2,
+              vacancyId: 1,
+              roundNumber: 2,
+              name: null,
+              status: 'closed',
+              closedAt: '2026-09-07T10:00:00Z',
+              candidateCount: 1,
+            }),
+          )
+        }
+        if (url.includes('/rounds/2/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await wrapper.find('button[aria-label="Close Round 2"]').trigger('click')
+    await flushPromises()
+
+    // The confirm spells out that closing can’t be undone.
+    expect(document.body.textContent).toContain('Close Round 2?')
+    expect(document.body.textContent).toContain('Closing is permanent')
+    expect(document.body.textContent).toContain("can't be reopened")
+
+    dialogButton('Close round')?.click()
+    await flushPromises()
+
+    expect(closed).toBe(true)
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Round 2 closed', color: 'success' }),
+    )
+
+    // No round is active now: the close affordance is gone, the frozen round's
+    // candidates stay readable but read-only, and opening the next round is offered.
+    expect(wrapper.find('button[aria-label="Close Round 2"]').exists()).toBe(false)
+    expect(wrapper.findAll('button[aria-label="Delete candidate"]')).toHaveLength(0)
+    expect(wrapper.find('[aria-label="Candidates"]').text()).toContain('Alice Applicant')
+    expect(
+      wrapper.findAll('button').some((button) => button.text().includes('New round')),
+    ).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('domain: with no active round, HR opens the next round from the empty state', async () => {
+    let opened = false
+    let sentBody: unknown
+    stubFetch(
+      () =>
+        vacancyDetails({
+          rounds: opened
+            ? [
+                closedRound({ id: 1, roundNumber: 1, candidateCount: 0 }),
+                openRound({ id: 2, roundNumber: 2, name: 'Second wave', candidateCount: 0 }),
+              ]
+            : [closedRound({ id: 1, roundNumber: 1, candidateCount: 0 })],
+        }),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/vacancies/1/rounds')) {
+          opened = true
+          sentBody = JSON.parse(String(init.body))
+          return Promise.resolve(
+            jsonResponse(
+              {
+                id: 2,
+                vacancyId: 1,
+                roundNumber: 2,
+                name: 'Second wave',
+                status: 'open',
+                closedAt: null,
+                candidateCount: 0,
+              },
+              201,
+            ),
+          )
+        }
+        if (url.includes('/rounds/1/candidates') || url.includes('/rounds/2/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    // One closed round and none active: chrome stays quiet and imports wait.
+    expect(wrapper.find('[aria-label="Intake rounds"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('No active round')
+    expect(
+      wrapper.findAll('button').filter((button) => button.text().includes('Import .eml')),
+    ).toHaveLength(0)
+
+    const openRoundButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Open a round'))
+    expect(openRoundButton, 'an Open a round action in the empty state').toBeDefined()
+    await openRoundButton!.trigger('click')
+    await flushPromises()
+
+    const nameInput = document.body.querySelector('input[aria-label="Round name"]')
+    expect(nameInput, 'the round name input in the dialog').not.toBeNull()
+    await new DOMWrapper(nameInput as HTMLInputElement).setValue('Second wave')
+    dialogButton('Open round')?.click()
+    await flushPromises()
+
+    expect(sentBody).toEqual({ name: 'Second wave' })
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Round 2 — Second wave opened', color: 'success' }),
+    )
+
+    // The workspace moves into the new active round, ready for imports.
+    expect(wrapper.find('[aria-label="Intake rounds"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-current="true"]').text()).toContain('Round 2')
+    expect(wrapper.text()).toContain('No candidates yet')
+    expect(
+      wrapper.findAll('button').some((button) => button.text().includes('Import .eml')),
+    ).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('domain: the server refuses to open a second active round', async () => {
+    stubFetch(
+      () =>
+        vacancyDetails({
+          rounds: [closedRound({ id: 1, roundNumber: 1, candidateCount: 0 })],
+        }),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/vacancies/1/rounds')) {
+          return Promise.resolve(
+            jsonResponse(
+              { title: 'Conflict', detail: 'Another intake round is already active.' },
+              409,
+            ),
+          )
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const openRoundButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Open a round'))
+    await openRoundButton!.trigger('click')
+    await flushPromises()
+    const requestCountBeforeConflict = vi.mocked(fetch).mock.calls.length
+    dialogButton('Open round')?.click()
+    await flushPromises()
+
+    // The 409 surfaces as a toast, the dialog stays open, and nothing changed.
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Couldn't save that change",
+        description: "The data changed on the server. We've refreshed -- try again.",
+        color: 'error',
+      }),
+    )
+    expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThan(
+      requestCountBeforeConflict,
+    )
+    expect(document.body.textContent).toContain('Open a new round')
+    expect(wrapper.text()).toContain('No active round')
+    wrapper.unmount()
+  })
+
+  it('domain: an active-round conflict warns and refreshes the round manager', async () => {
+    let conflictObserved = false
+    stubFetch(
+      () =>
+        vacancyDetails({
+          rounds: [
+            conflictObserved
+              ? openRound({ id: 1, roundNumber: 1, candidateCount: 0 })
+              : closedRound({ id: 1, roundNumber: 1, candidateCount: 0 }),
+          ],
+        }),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/vacancies/1/rounds')) {
+          conflictObserved = true
+          return Promise.resolve(
+            jsonResponse({ title: 'IntakeRounds.ActiveRoundExists' }, 409),
+          )
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Open a round'))
+      ?.trigger('click')
+    await flushPromises()
+    const requestCountBeforeConflict = vi.mocked(fetch).mock.calls.length
+    dialogButton('Open round')?.click()
+    await flushPromises()
+
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'A round is already active',
+        description: 'Close the active round before opening a new one.',
+        color: 'warning',
+      }),
+    )
+    expect(document.body.textContent).toContain('Open a new round')
+    expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThan(requestCountBeforeConflict)
+    wrapper.unmount()
+  })
+
+  it('domain: promotion from a round that is not closed keeps the dialog open with its name', async () => {
+    let vacancyRequests = 0
+    stubFetch(
+      () => {
+        vacancyRequests += 1
+        return vacancyDetails({
+          rounds: [
+            closedRound({ id: 1, roundNumber: 1, name: 'First wave', candidateCount: 1 }),
+            openRound({ id: 2, roundNumber: 2, candidateCount: 1 }),
+          ],
+        })
+      },
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/rounds/2/promotions')) {
+          return Promise.resolve(jsonResponse({ title: 'IntakeRounds.NotClosed' }, 409))
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+        }
+        if (url.includes('/rounds/2/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(2)]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Promote from'))
+      ?.trigger('click')
+    await flushPromises()
+    const candidateCheckbox = new DOMWrapper(
+      document.body.querySelector('input[aria-label="Promote Alice Applicant"]') as HTMLInputElement,
+    )
+    await candidateCheckbox.setValue(true)
+    await new DOMWrapper(
+      Array.from(document.body.querySelectorAll('button')).find((button) =>
+        button.textContent?.includes('Promote selected'),
+      ) as HTMLButtonElement,
+    ).trigger('click')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain("Round 1 — First wave isn't closed yet")
+    expect(document.body.textContent).toContain('You can only promote from closed rounds.')
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(vacancyRequests).toBeGreaterThan(1)
+    wrapper.unmount()
+  })
+
+  it('domain: promotion without an active round shows the lifecycle guidance and refreshes', async () => {
+    let vacancyRequests = 0
+    stubFetch(
+      () => {
+        vacancyRequests += 1
+        return vacancyDetails({
+          rounds:
+            vacancyRequests > 1
+              ? [closedRound({ id: 1, roundNumber: 1, name: 'First wave', candidateCount: 1 })]
+              : [
+                  closedRound({ id: 1, roundNumber: 1, name: 'First wave', candidateCount: 1 }),
+                  openRound({ id: 2, roundNumber: 2, candidateCount: 1 }),
+                ],
+        })
+      },
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/rounds/2/promotions')) {
+          return Promise.resolve(jsonResponse({ title: 'IntakeRounds.NoActiveRound' }, 409))
+        }
+        if (url.includes('/rounds/1/candidates') || url.includes('/rounds/2/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Promote from'))
+      ?.trigger('click')
+    await flushPromises()
+    const candidateCheckbox = new DOMWrapper(
+      document.body.querySelector('input[aria-label="Promote Alice Applicant"]') as HTMLInputElement,
+    )
+    await candidateCheckbox.setValue(true)
+    await new DOMWrapper(
+      Array.from(document.body.querySelectorAll('button')).find((button) =>
+        button.textContent?.includes('Promote selected'),
+      ) as HTMLButtonElement,
+    ).trigger('click')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('No active round')
+    expect(document.body.textContent).toContain(
+      'Open a round first, then promote these candidates into it.',
+    )
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(vacancyRequests).toBeGreaterThan(1)
     wrapper.unmount()
   })
 })

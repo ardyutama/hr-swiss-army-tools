@@ -1,5 +1,6 @@
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Messaging;
+using hr_sat.Application.Features.Shared;
 using hr_sat.Domain;
 
 namespace hr_sat.Application.Features.Vacancies;

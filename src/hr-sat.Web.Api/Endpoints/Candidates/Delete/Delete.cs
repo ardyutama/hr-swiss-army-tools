@@ -8,15 +8,16 @@ internal sealed class Delete : IEndpoint
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
         app.MapDelete(
-                "/api/vacancies/{vacancyId:long}/candidates/{candidateId:long}",
+                "/api/vacancies/{vacancyId:long}/rounds/{roundId:long}/candidates/{candidateId:long}",
                 async (
                     long vacancyId,
+                    long roundId,
                     long candidateId,
                     ICommandHandler<DeleteCandidateCommand> handler,
                     CancellationToken cancellationToken) =>
                 {
                     var result = await handler.Handle(
-                        new DeleteCandidateCommand(vacancyId, candidateId),
+                        new DeleteCandidateCommand(vacancyId, roundId, candidateId),
                         cancellationToken);
                     return result.Match<IResult>(
                         TypedResults.NoContent,

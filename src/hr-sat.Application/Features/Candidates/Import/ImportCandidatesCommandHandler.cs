@@ -1,4 +1,5 @@
 using hr_sat.Application.Abstractions.Data;
+using hr_sat.Application.Features.Shared;
 using hr_sat.Application.Abstractions.Messaging;
 using hr_sat.Application.Abstractions.Storage;
 using hr_sat.Domain;
@@ -19,57 +20,58 @@ internal sealed class ImportCandidatesCommandHandler(
         ImportCandidatesCommand command,
         CancellationToken cancellationToken)
     {
-        await using var transaction = await dbContext.BeginTransactionAsync(cancellationToken);
-        var vacancy = await dbContext.FindVacancyForUpdateAsync(
-            command.VacancyId,
-            cancellationToken);
-        if (vacancy is null)
-        {
-            return Result<ImportCandidatesResponse>.Failure(
-                CandidateErrors.NotFound(command.VacancyId));
-        }
-
-        var canReceiveResult = vacancy.EnsureCanReceiveCandidateImport();
-        if (canReceiveResult.IsFailure)
-        {
-            return Result<ImportCandidatesResponse>.Failure(canReceiveResult.Error);
-        }
-
-        var existingHashKeys = (await dbContext.Candidates
-                .Where(candidate => candidate.VacancyId == command.VacancyId)
-                .Select(candidate => candidate.SourceSha256)
-                .ToListAsync(cancellationToken))
-            .Select(Convert.ToHexString)
-            .ToHashSet(StringComparer.Ordinal);
-        var filePreparer = new ImportFilePreparer(
-            command.VacancyId,
-            existingHashKeys,
-            dbContext,
-            fileStorage,
-            timeProvider,
-            filePreparerLogger);
-        var files = command.Files!;
-        var outcomes = new List<ImportFileOutcome>(files.Count);
-
+        ImportFilePreparer? filePreparer = null;
         try
         {
-            foreach (var file in files)
+            var writeResult = await RoundWrite.ExecuteAsync<IReadOnlyList<ImportFileOutcome>>(
+                command.VacancyId,
+                command.RoundId,
+                dbContext,
+                (vacancy, targetRoundId) => vacancy.EnsureCanReceiveCandidateImport(targetRoundId),
+                async (_, round) =>
+                {
+                    var existingHashKeys = (await dbContext.Candidates
+                            .Where(candidate => candidate.IntakeRoundId == round.Id)
+                            .Select(candidate => candidate.SourceSha256)
+                            .ToListAsync(cancellationToken))
+                        .Select(Convert.ToHexString)
+                        .ToHashSet(StringComparer.Ordinal);
+                    filePreparer = new ImportFilePreparer(
+                        round.Id,
+                        existingHashKeys,
+                        dbContext,
+                        fileStorage,
+                        timeProvider,
+                        filePreparerLogger);
+                    var files = command.Files!;
+                    var outcomes = new List<ImportFileOutcome>(files.Count);
+
+                    foreach (var file in files)
+                    {
+                        outcomes.Add(await filePreparer.PrepareAsync(file, cancellationToken));
+                    }
+
+                    return Result<IReadOnlyList<ImportFileOutcome>>.Success(outcomes);
+                },
+                cancellationToken);
+            if (writeResult.IsFailure)
             {
-                outcomes.Add(await filePreparer.PrepareAsync(file, cancellationToken));
+                return Result<ImportCandidatesResponse>.Failure(writeResult.Error);
             }
 
-            await dbContext.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
+            return new ImportCandidatesResponse(
+                writeResult.Value
+                    .Select(outcome => outcome.ToResponse(command.VacancyId, command.RoundId))
+                    .ToList());
         }
         catch
         {
-            await filePreparer.DeleteStoredFilesAsync();
+            if (filePreparer is not null)
+            {
+                await filePreparer.DeleteStoredFilesAsync();
+            }
+
             throw;
         }
-
-        return new ImportCandidatesResponse(
-            outcomes
-                .Select(outcome => outcome.ToResponse(command.VacancyId))
-                .ToList());
     }
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type {
+  CandidateHireOutcome,
   CandidateReviewStatus,
   CandidateSummary,
 } from '../api'
@@ -35,6 +36,18 @@ const reviewStatusColors: Record<CandidateReviewStatus, 'success' | 'error' | 'n
   flagged: 'neutral',
   shortlisted: 'success',
   rejected: 'error',
+}
+
+const hireOutcomeLabels: Record<Exclude<CandidateHireOutcome, 'none'>, string> = {
+  hired: 'Hired',
+  runaway: 'Runaway',
+  declined: 'Declined',
+}
+
+const hireOutcomeColors: Record<Exclude<CandidateHireOutcome, 'none'>, 'success' | 'error' | 'neutral'> = {
+  hired: 'success',
+  runaway: 'error',
+  declined: 'neutral',
 }
 
 // Column proportions applied via <colgroup> so the semantic table keeps a fixed layout.
@@ -140,9 +153,18 @@ const columnWidths = ['24%', '14%', '8%', '28%', '12%', '7.5rem']
           </td>
 
           <td class="ctable__col border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
-            <UBadge :color="reviewStatusColors[candidate.reviewStatus]" variant="subtle">
-              {{ reviewStatusLabels[candidate.reviewStatus] }}
-            </UBadge>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <UBadge :color="reviewStatusColors[candidate.reviewStatus]" variant="subtle">
+                {{ reviewStatusLabels[candidate.reviewStatus] }}
+              </UBadge>
+              <UBadge
+                v-if="candidate.hireOutcome !== 'none'"
+                :color="hireOutcomeColors[candidate.hireOutcome]"
+                variant="subtle"
+              >
+                {{ hireOutcomeLabels[candidate.hireOutcome] }}
+              </UBadge>
+            </div>
           </td>
 
           <td class="ctable__col ctable__col--actions border-b border-default px-2 py-4 text-right align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">

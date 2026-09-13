@@ -9,9 +9,10 @@ internal sealed class UpdateDetails : IEndpoint
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
         app.MapPut(
-                "/api/vacancies/{vacancyId:long}/candidates/{candidateId:long}/details",
+                "/api/vacancies/{vacancyId:long}/rounds/{roundId:long}/candidates/{candidateId:long}/details",
                 async (
                     long vacancyId,
+                    long roundId,
                     long candidateId,
                     UpdateDetailsRequest request,
                     ICommandHandler<UpdateCandidateDetailsCommand, CandidateDetailsResponse> handler,
@@ -20,6 +21,7 @@ internal sealed class UpdateDetails : IEndpoint
                     var result = await handler.Handle(
                         new UpdateCandidateDetailsCommand(
                             vacancyId,
+                            roundId,
                             candidateId,
                             request.FullName,
                             request.ContactEmail),

@@ -49,11 +49,13 @@ playbooks for the matching task.
 ### Vue client development
 
 For client-side work in `src/hr-sat.Client/` (Vue SFCs, composables, router, shared UI, Vite
-configuration, or frontend tests), read `docs/agents/vue.md`. It defines the repository's
-frontend rules and points to the required Vue, router, and testing best-practice skills.
-Nuxt UI v4 is the client UI source of truth: import its components directly, style with
-Tailwind CSS v4, and keep `UApp` at the application root. Do not add `App*` UI wrappers or
-resurrect the deleted `src/shared/ui/` layer; see ADR-0007.
+configuration, or frontend tests), read `docs/agents/vue.md` after `CONTEXT.md` and any
+relevant ADRs. Client slice conventions (layout, placement test, state ownership, import
+discipline) are owned by `.agents/skills/vue-feature-slices/` — the source of truth per
+ADR-0011; `docs/agents/vue.md` adds only the workflow and repo-specific deltas. Nuxt UI v4
+is the client UI source of truth: import its components directly, style with Tailwind CSS
+v4, and keep `UApp` at the application root. Do not add `App*` UI wrappers or resurrect
+the deleted `src/shared/ui/` layer; see ADR-0007.
 
 ### Issue tracker
 

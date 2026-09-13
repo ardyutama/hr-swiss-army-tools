@@ -2,6 +2,7 @@ using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Messaging;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.IntakeRounds;
 using hr_sat.Domain.Vacancies;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -16,6 +17,7 @@ public sealed class AppDbContext(
     public DbSet<Vacancy> Vacancies => Set<Vacancy>();
     public DbSet<VacancyRequirement> VacancyRequirements => Set<VacancyRequirement>();
     public DbSet<Candidate> Candidates => Set<Candidate>();
+    public DbSet<IntakeRound> IntakeRounds => Set<IntakeRound>();
     public DbSet<CandidateRequirementReview> CandidateRequirementReviews => Set<CandidateRequirementReview>();
     public DbSet<CvDocument> CvDocuments => Set<CvDocument>();
     public DbSet<PendingFileDeletion> PendingFileDeletions => Set<PendingFileDeletion>();
@@ -23,7 +25,12 @@ public sealed class AppDbContext(
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken) =>
         Database.BeginTransactionAsync(cancellationToken);
 
-    public async Task<Vacancy?> FindVacancyForUpdateAsync(
+    public async Task<Vacancy?> LockVacancyAsync(
+        long id,
+        CancellationToken cancellationToken) =>
+        await LockVacancyRowAsync(id, cancellationToken);
+
+    private async Task<Vacancy?> LockVacancyRowAsync(
         long id,
         CancellationToken cancellationToken)
     {
@@ -32,18 +39,9 @@ public sealed class AppDbContext(
             throw new InvalidOperationException("A transaction is required before locking a vacancy.");
         }
 
-        var vacancy = await Vacancies
+        return await Vacancies
             .FromSqlInterpolated($"SELECT * FROM vacancy WHERE id = {id} FOR UPDATE")
             .SingleOrDefaultAsync(cancellationToken);
-
-        if (vacancy is not null)
-        {
-            await Entry(vacancy)
-                .Collection(item => item.Requirements)
-                .LoadAsync(cancellationToken);
-        }
-
-        return vacancy;
     }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -78,6 +76,7 @@ public sealed class AppDbContext(
         modelBuilder.Entity<Vacancy>().Ignore(item => item.DomainEvents);
         modelBuilder.Entity<VacancyRequirement>().Ignore(item => item.DomainEvents);
         modelBuilder.Entity<Candidate>().Ignore(item => item.DomainEvents);
+        modelBuilder.Entity<IntakeRound>().Ignore(item => item.DomainEvents);
         modelBuilder.Entity<CandidateRequirementReview>().Ignore(item => item.DomainEvents);
         modelBuilder.Entity<CvDocument>().Ignore(item => item.DomainEvents);
     }

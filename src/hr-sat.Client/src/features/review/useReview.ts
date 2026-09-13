@@ -2,19 +2,31 @@ import { computed, shallowRef, watch, type Ref } from 'vue'
 import { getVacancy, type VacancyDetails } from '@/features/vacancies/api'
 import {
   listCandidates,
+  type CandidateHireOutcome,
   type CandidateReviewStatus,
   type CandidateSummary,
 } from '@/features/candidates/api'
 import {
+  filterCandidates,
+  sortByReceived,
+  type CandidateFilterState,
+} from '@/features/candidates/filter'
+import {
   getCandidateDetails,
   updateCandidateDetails,
   updateCandidateNotes,
+  updateCandidateOutcome,
   updateCandidateRequirementReview,
   updateCandidateReview,
   type CandidateDetailsPayload,
   type CandidateDetails,
 } from './api'
 import { notesValidationError } from './validation'
+import {
+  problemMessage,
+  problemMessageText,
+  type ProblemMessage,
+} from '@/shared/problem-details'
 
 export type ReviewViewState = 'loading' | 'error' | 'ready'
 export type NotesSaveState = 'idle' | 'saving' | 'saved' | 'error'
@@ -30,7 +42,12 @@ interface ReviewDecisionResult {
  * details, and the notes auto-save contract from ADR-0008 #9 (decision and
  * navigation silently commit pending notes — no explicit Save).
  */
-export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
+export function useReview(
+  vacancyId: Ref<string>,
+  roundId: Ref<string>,
+  candidateId: Ref<string>,
+  filters: Ref<CandidateFilterState>,
+) {
   const vacancy = shallowRef<VacancyDetails | null>(null)
   const summaries = shallowRef<CandidateSummary[] | null>(null)
   const candidate = shallowRef<CandidateDetails | null>(null)
@@ -46,32 +63,55 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
   const requirementError = shallowRef<string | null>(null)
   const deciding = shallowRef(false)
   const decisionError = shallowRef<string | null>(null)
+  const settingOutcome = shallowRef(false)
+  const outcomeError = shallowRef<string | null>(null)
   const shortlistWarningActive = shallowRef(false)
+  const conflictWarning = shallowRef<ProblemMessage | null>(null)
 
   let contextToken = 0
   let detailsToken = 0
 
-  const currentIndex = computed(
-    () => summaries.value?.findIndex((summary) => String(summary.id) === candidateId.value) ?? -1,
+  const reviewCandidates = computed(() =>
+    sortByReceived(
+      filterCandidates(
+        summaries.value ?? [],
+        filters.value.status,
+        filters.value.query,
+        filters.value.outcome,
+      ),
+      filters.value.receivedSort,
+    ),
+  )
+  const currentIndex = computed(() =>
+    reviewCandidates.value.findIndex((summary) => String(summary.id) === candidateId.value),
   )
   const requirements = computed(() =>
     [...(vacancy.value?.requirements ?? [])].sort((left, right) => left.position - right.position),
   )
   const requirementCount = computed(() => requirements.value.length)
-  const total = computed(() => summaries.value?.length ?? 0)
+  const total = computed(() => reviewCandidates.value.length)
   /** 1-based position of the current candidate; 0 while the ordering is unknown. */
   const position = computed(() => (currentIndex.value < 0 ? 0 : currentIndex.value + 1))
   const previousCandidateId = computed(() =>
-    currentIndex.value > 0 ? String(summaries.value![currentIndex.value - 1]!.id) : null,
+    currentIndex.value > 0 ? String(reviewCandidates.value[currentIndex.value - 1]!.id) : null,
   )
   const nextCandidateId = computed(() =>
     currentIndex.value >= 0 && currentIndex.value < total.value - 1
-      ? String(summaries.value![currentIndex.value + 1]!.id)
+      ? String(reviewCandidates.value[currentIndex.value + 1]!.id)
       : null,
   )
 
   const notesDirty = computed(
     () => candidate.value !== null && notes.value !== (candidate.value.notes ?? ''),
+  )
+
+  // A closed round freezes all review data (notes, status, requirement reviews,
+  // details) — the workspace stays readable but stops mutating.
+  const isRoundClosed = computed(
+    () => vacancy.value?.rounds.find((round) => String(round.id) === roundId.value)?.status === 'closed',
+  )
+  const canSetHireOutcome = computed(
+    () => vacancy.value?.status === 'open' && candidate.value?.reviewStatus === 'shortlisted',
   )
 
   const viewState = computed<ReviewViewState>(() => {
@@ -106,6 +146,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
       return
     }
 
+    const previousSummary = summaries.value.find((summary) => summary.id === updated.id)
     summaries.value = summaries.value.map((summary) =>
       summary.id === updated.id
         ? {
@@ -114,6 +155,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
             contactEmail: updated.contactEmail,
             notes: updated.notes,
             reviewStatus: updated.reviewStatus,
+            hireOutcome: updated.hireOutcome,
           }
         : summary,
     )
@@ -129,6 +171,16 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
           processedCandidates,
           totalCandidates: summaries.value.length,
         },
+        hiring: vacancy.value.hiring
+          ? {
+              ...vacancy.value.hiring,
+              activeHires: previousSummary
+                ? vacancy.value.hiring.activeHires
+                    - (previousSummary.hireOutcome === 'hired' ? 1 : 0)
+                    + (updated.hireOutcome === 'hired' ? 1 : 0)
+                : vacancy.value.hiring.activeHires,
+            }
+          : vacancy.value.hiring,
       }
     }
   }
@@ -139,7 +191,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     try {
       const [details, list] = await Promise.all([
         getVacancy(vacancyId.value),
-        listCandidates(vacancyId.value),
+        listCandidates(vacancyId.value, roundId.value),
       ])
       // Ignore stale responses when the route param changed meanwhile.
       if (token !== contextToken) {
@@ -151,7 +203,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
       if (token !== contextToken) {
         return
       }
-      loadError.value = error instanceof Error ? error.message : 'Failed to load the vacancy'
+      loadError.value = problemMessageText(problemMessage(error, 'Something went wrong'))
     }
   }
 
@@ -164,7 +216,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
       return
     }
     try {
-      const details = await getCandidateDetails(vacancyId.value, id)
+      const details = await getCandidateDetails(vacancyId.value, roundId.value, id)
       if (token !== detailsToken) {
         return
       }
@@ -178,7 +230,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
       if (token !== detailsToken) {
         return
       }
-      loadError.value = error instanceof Error ? error.message : 'Failed to load the candidate'
+      loadError.value = problemMessageText(problemMessage(error, 'Something went wrong'))
     }
   }
 
@@ -190,8 +242,9 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
 
     savingDetails.value = true
     detailsError.value = null
+    conflictWarning.value = null
     try {
-      const updated = await updateCandidateDetails(vacancyId.value, current.id, payload)
+      const updated = await updateCandidateDetails(vacancyId.value, roundId.value, current.id, payload)
       if (candidate.value?.id !== updated.id) {
         return false
       }
@@ -199,7 +252,12 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
       patchSummary(updated)
       return true
     } catch (error) {
-      detailsError.value = error instanceof Error ? error.message : 'Failed to save candidate details'
+      const message = reviewProblemMessage(error)
+      if (message.kind === 'lifecycle') {
+        conflictWarning.value = message
+      } else {
+        detailsError.value = problemMessageText(message)
+      }
       return false
     } finally {
       savingDetails.value = false
@@ -217,9 +275,11 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
 
     savingRequirementId.value = requirementId
     requirementError.value = null
+    conflictWarning.value = null
     try {
       const updated = await updateCandidateRequirementReview(
         vacancyId.value,
+        roundId.value,
         current.id,
         requirementId,
         confirmed,
@@ -230,11 +290,54 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
       candidate.value = updated
       return true
     } catch (error) {
-      requirementError.value =
-        error instanceof Error ? error.message : 'Failed to save the requirement review'
+      const message = reviewProblemMessage(error)
+      if (message.kind === 'lifecycle') {
+        conflictWarning.value = message
+      } else {
+        requirementError.value = problemMessageText(message)
+      }
       return false
     } finally {
       savingRequirementId.value = null
+    }
+  }
+
+  async function setOutcome(outcome: CandidateHireOutcome, note?: string): Promise<boolean> {
+    const current = candidate.value
+    if (!current || settingOutcome.value || !canSetHireOutcome.value) {
+      return false
+    }
+    if (!(await saveNotes())) {
+      return false
+    }
+
+    settingOutcome.value = true
+    outcomeError.value = null
+    conflictWarning.value = null
+    try {
+      const updated = await updateCandidateOutcome(
+        vacancyId.value,
+        roundId.value,
+        current.id,
+        note?.trim() ? { outcome, note: note.trim() } : { outcome },
+      )
+      if (candidate.value?.id !== updated.id) {
+        return false
+      }
+      candidate.value = updated
+      notes.value = updated.notes ?? ''
+      patchSummary(updated)
+      return true
+    } catch (error) {
+      const message = reviewProblemMessage(error)
+      if (message.kind === 'lifecycle') {
+        conflictWarning.value = message
+      } else {
+        outcomeError.value = problemMessageText(message)
+      }
+      return false
+    } finally {
+      settingOutcome.value = false
     }
   }
 
@@ -264,7 +367,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     }
     notesSaveState.value = 'saving'
     try {
-      const updated = await updateCandidateNotes(vacancyId.value, current.id, notes.value)
+      const updated = await updateCandidateNotes(vacancyId.value, roundId.value, current.id, notes.value)
       if (candidate.value?.id !== updated.id) {
         return false
       }
@@ -274,7 +377,11 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
       notesSavedAt.value = new Date()
       patchSummary(updated)
       return true
-    } catch {
+    } catch (error) {
+      const message = reviewProblemMessage(error)
+      if (message.kind === 'lifecycle') {
+        conflictWarning.value = message
+      }
       notesSaveState.value = 'error'
       return false
     }
@@ -297,6 +404,7 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     if (!current || deciding.value) {
       return { applied: false, nextCandidateId: null }
     }
+    const nextCandidateAfterDecision = nextCandidateId.value
     if (status === 'shortlisted' && !hasCandidateDetails(current)) {
       shortlistWarningActive.value = true
       return { applied: false, nextCandidateId: null }
@@ -307,8 +415,9 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     }
     deciding.value = true
     decisionError.value = null
+    conflictWarning.value = null
     try {
-      const updated = await updateCandidateReview(vacancyId.value, current.id, {
+      const updated = await updateCandidateReview(vacancyId.value, roundId.value, current.id, {
         reviewStatus: status,
         notes: notes.value,
       })
@@ -324,10 +433,14 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
       if (candidateDetailsWarning.value) {
         return { applied: true, nextCandidateId: null }
       }
-      return { applied: true, nextCandidateId: nextCandidateId.value }
+      return { applied: true, nextCandidateId: nextCandidateAfterDecision }
     } catch (error) {
-      decisionError.value =
-        error instanceof Error ? error.message : 'Failed to save the review decision'
+      const message = reviewProblemMessage(error)
+      if (message.kind === 'lifecycle') {
+        conflictWarning.value = message
+      } else {
+        decisionError.value = problemMessageText(message)
+      }
       return { applied: false, nextCandidateId: null }
     } finally {
       deciding.value = false
@@ -340,14 +453,15 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     }
   })
 
-  // Reload the vacancy context when the vacancy route param changes.
+  // Reload the vacancy context when the vacancy or round route param changes.
   watch(
-    vacancyId,
+    [vacancyId, roundId],
     () => {
       vacancy.value = null
       summaries.value = null
       candidate.value = null
       loadError.value = null
+      conflictWarning.value = null
       void loadContext()
     },
     { immediate: true },
@@ -360,11 +474,13 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
       candidate.value = null
       notes.value = ''
       shortlistWarningActive.value = false
+      conflictWarning.value = null
       savingDetails.value = false
       detailsError.value = null
       savingRequirementId.value = null
       requirementError.value = null
       decisionError.value = null
+      outcomeError.value = null
       void loadDetails()
     },
     { immediate: true },
@@ -377,7 +493,9 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     candidate,
     loadError,
     viewState,
+    isRoundClosed,
     candidateDetailsWarning,
+    conflictWarning,
     position,
     total,
     previousCandidateId,
@@ -392,6 +510,9 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     requirementError,
     deciding,
     decisionError,
+    settingOutcome,
+    outcomeError,
+    canSetHireOutcome,
     load: async () => {
       await loadContext()
       await loadDetails()
@@ -401,6 +522,14 @@ export function useReview(vacancyId: Ref<string>, candidateId: Ref<string>) {
     updateDetails,
     updateRequirementReview,
     toggleRequirementAt,
+    setOutcome,
     decide,
   }
+}
+
+function reviewProblemMessage(error: unknown): ProblemMessage {
+  return problemMessage(error, 'Something went wrong', {
+    conflictDescription:
+      'The data changed on the server. Go back and reopen this round to see the latest, then try again.',
+  })
 }

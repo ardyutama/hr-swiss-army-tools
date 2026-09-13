@@ -36,8 +36,11 @@ The alternatives considered:
 - Tailwind CSS v4 is the styling system. Design tokens live in `@theme` in
   `src/style.css`; the legacy `:root` custom properties are deleted once every slice
   migrates. Utility classes are allowed in templates.
-- Form validation uses `<UForm :schema>` with Zod schemas in the feature folder; the
-  feature `validation.ts` modules are retired.
+- Form validation uses `<UForm :schema>` with Zod schemas in the feature folder.
+  **Amended (2026-09-09, ADR-0011)**: the feature `validation.ts` modules are **not**
+  retired — they became the Zod schemas consumed by `<UForm :schema>` (e.g.
+  `src/features/vacancies/validation.ts`). What is retired is bespoke, non-Zod validation
+  helpers; the schema modules are the living form of this rule.
 - Toasts use Nuxt UI's `useToast()`; `vue-sonner` is removed. The app root is wrapped
   in `<UApp>` (required for toasts, tooltips, and overlays).
 - Icons come from Iconify via `UIcon` (on-demand).

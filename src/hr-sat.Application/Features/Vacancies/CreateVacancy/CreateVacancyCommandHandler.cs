@@ -12,7 +12,11 @@ internal sealed class CreateVacancyCommandHandler(IApplicationDbContext dbContex
         CreateVacancyCommand command,
         CancellationToken cancellationToken)
     {
-        var createResult = Vacancy.Create(command.Title, command.OpenedOn, command.Requirements);
+        var createResult = Vacancy.Create(
+            command.Title,
+            command.OpenedOn,
+            command.Requirements,
+            command.NeededHires);
         if (createResult.IsFailure)
         {
             return Result<VacancyDetailsResponse>.Failure(createResult.Error);

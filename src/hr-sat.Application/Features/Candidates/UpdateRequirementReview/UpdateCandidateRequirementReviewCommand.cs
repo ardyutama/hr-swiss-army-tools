@@ -5,6 +5,7 @@ namespace hr_sat.Application.Features.Candidates.UpdateRequirementReview;
 
 public sealed record UpdateCandidateRequirementReviewCommand(
     long VacancyId,
+    long RoundId,
     long CandidateId,
     long RequirementId,
     bool Confirmed) : ICommand<CandidateDetailsResponse>;

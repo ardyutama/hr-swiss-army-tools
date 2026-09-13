@@ -12,7 +12,7 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
     public async Task Importing_eml_files_preserves_source_data_and_pdf_documents() // US-12/US-13: HR imports emails and retains their source content and PDF attachments
     {
         using var client = factory.CreateClient();
-        var vacancyLocation = await CreateVacancyAsync(client);
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client);
         var alicePdf = Encoding.ASCII.GetBytes("%PDF-1.7\nAlice CV\n%%EOF");
         var bobPdf = Encoding.ASCII.GetBytes("%PDF-1.7\nBob CV\n%%EOF");
         var coverLetterPdf = Encoding.ASCII.GetBytes("%PDF-1.7\nCover letter\n%%EOF");
@@ -37,7 +37,7 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
                 ("cover-letter.pdf", coverLetterPdf)),
             "bob.eml");
 
-        var importResponse = await client.PostAsync($"{vacancyLocation}/candidates/import", form);
+        var importResponse = await client.PostAsync($"{vacancyLocation}/rounds/{roundId}/candidates/import", form);
 
         Assert.Equal(HttpStatusCode.OK, importResponse.StatusCode);
         var import = await importResponse.Content.ReadFromJsonAsync<ImportResponse>();
@@ -79,7 +79,7 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
     public async Task Importing_eml_with_non_utc_date_preserves_the_source_instant() // US-12/US-13: HR imports emails from exported source files
     {
         using var client = factory.CreateClient();
-        var vacancyLocation = await CreateVacancyAsync(client);
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client);
         using var form = new MultipartFormDataContent();
         AddFile(
             form,
@@ -92,7 +92,7 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
                 ("offset.pdf", Encoding.ASCII.GetBytes("%PDF-1.7\nOffset\n%%EOF"))),
             "offset.eml");
 
-        var response = await client.PostAsync($"{vacancyLocation}/candidates/import", form);
+        var response = await client.PostAsync($"{vacancyLocation}/rounds/{roundId}/candidates/import", form);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var import = await response.Content.ReadFromJsonAsync<ImportResponse>();
@@ -109,7 +109,7 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
     public async Task Importing_a_batch_allows_candidates_without_pdf_documents() // US-12/US-17: an email-only candidate remains reviewable
     {
         using var client = factory.CreateClient();
-        var vacancyLocation = await CreateVacancyAsync(client);
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client);
         using var form = new MultipartFormDataContent();
         AddFile(
             form,
@@ -129,7 +129,7 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
                 "There is no PDF here."),
             "missing.eml");
 
-        var response = await client.PostAsync($"{vacancyLocation}/candidates/import", form);
+        var response = await client.PostAsync($"{vacancyLocation}/rounds/{roundId}/candidates/import", form);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var import = await response.Content.ReadFromJsonAsync<ImportResponse>();
@@ -149,7 +149,7 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
     public async Task Importing_the_same_source_email_twice_skips_the_duplicate() // domain: exact source bytes are unique within a vacancy
     {
         using var client = factory.CreateClient();
-        var vacancyLocation = await CreateVacancyAsync(client);
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client);
         var source = CreateEml(
             "Duplicate Applicant",
             "duplicate@example.com",
@@ -160,13 +160,13 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
         using (var firstForm = new MultipartFormDataContent())
         {
             AddFile(firstForm, source, "first.eml");
-            var firstResponse = await client.PostAsync($"{vacancyLocation}/candidates/import", firstForm);
+            var firstResponse = await client.PostAsync($"{vacancyLocation}/rounds/{roundId}/candidates/import", firstForm);
             Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
         }
 
         using var secondForm = new MultipartFormDataContent();
         AddFile(secondForm, source, "second.eml");
-        var secondResponse = await client.PostAsync($"{vacancyLocation}/candidates/import", secondForm);
+        var secondResponse = await client.PostAsync($"{vacancyLocation}/rounds/{roundId}/candidates/import", secondForm);
 
         Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
         var import = await secondResponse.Content.ReadFromJsonAsync<ImportResponse>();
@@ -184,7 +184,7 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
     public async Task Importing_into_a_closed_vacancy_is_rejected() // domain: closed vacancy is read-only and cannot receive candidate imports
     {
         using var client = factory.CreateClient();
-        var vacancyLocation = await CreateVacancyAsync(client);
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client);
         var closeResponse = await client.PostAsync($"{vacancyLocation}/close", content: null);
         closeResponse.EnsureSuccessStatusCode();
         using var form = new MultipartFormDataContent();
@@ -198,7 +198,7 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
                 ("closed.pdf", Encoding.ASCII.GetBytes("%PDF-1.7\nClosed\n%%EOF"))),
             "closed.eml");
 
-        var response = await client.PostAsync($"{vacancyLocation}/candidates/import", form);
+        var response = await client.PostAsync($"{vacancyLocation}/rounds/{roundId}/candidates/import", form);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var problem = await response.Content.ReadFromJsonAsync<ValidationProblemResponse>();
@@ -213,10 +213,10 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
     public async Task Importing_without_files_returns_a_validation_problem() // US-12: the drop zone must receive at least one exported .eml file
     {
         using var client = factory.CreateClient();
-        var vacancyLocation = await CreateVacancyAsync(client);
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client);
         using var form = new MultipartFormDataContent();
 
-        var response = await client.PostAsync($"{vacancyLocation}/candidates/import", form);
+        var response = await client.PostAsync($"{vacancyLocation}/rounds/{roundId}/candidates/import", form);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var problem = await response.Content.ReadFromJsonAsync<ValidationProblemResponse>();
@@ -224,7 +224,7 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
         Assert.Contains("files", problem.Errors.Keys);
     }
 
-    private static async Task<string> CreateVacancyAsync(HttpClient client)
+    private static async Task<(string Location, long RoundId)> CreateVacancyAsync(HttpClient client)
     {
         var response = await client.PostAsJsonAsync("/api/vacancies", new
         {
@@ -233,7 +233,10 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
             requirements = new[] { "SQL" }
         });
         response.EnsureSuccessStatusCode();
-        return response.Headers.Location!.OriginalString;
+        var location = response.Headers.Location!.OriginalString;
+        var vacancy = await response.Content.ReadFromJsonAsync<VacancyResponse>();
+        Assert.NotNull(vacancy);
+        return (location, Assert.Single(vacancy.Rounds).Id);
     }
 
     private static void AddFile(MultipartFormDataContent form, byte[] content, string filename)
@@ -325,7 +328,10 @@ public sealed class ImportCandidatesTests(ApiFactory factory) : IClassFixture<Ap
 
     private sealed record VacancyResponse(
         long Id,
+        IReadOnlyList<VacancyRoundResponse> Rounds,
         VacancyProgress Progress);
+
+    private sealed record VacancyRoundResponse(long Id);
 
     private sealed record VacancySummary(
         long Id,

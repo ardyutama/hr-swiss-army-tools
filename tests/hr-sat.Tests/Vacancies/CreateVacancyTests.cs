@@ -34,6 +34,50 @@ public sealed class CreateVacancyTests(ApiFactory factory) : IClassFixture<ApiFa
     }
 
     [Fact]
+    public async Task Create_vacancy_accepts_needed_hires_and_returns_interim_hiring_state()
+    {
+        using var client = factory.CreateClient();
+        var request = new
+        {
+            title = "Warehouse Coordinator",
+            openedOn = "2026-08-29",
+            requirements = new[] { "Inventory control" },
+            neededHires = 5
+        };
+
+        var response = await client.PostAsJsonAsync("/api/vacancies", request);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var vacancy = await response.Content.ReadFromJsonAsync<VacancyResponse>();
+        Assert.NotNull(vacancy);
+        Assert.NotNull(vacancy.Hiring);
+        Assert.Equal(5, vacancy.Hiring.NeededHires);
+        Assert.Equal(0, vacancy.Hiring.ActiveHires);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(10000)]
+    public async Task Create_vacancy_rejects_needed_hires_outside_the_supported_range(int neededHires)
+    {
+        using var client = factory.CreateClient();
+        var request = new
+        {
+            title = "Warehouse Coordinator",
+            openedOn = "2026-08-29",
+            requirements = new[] { "Inventory control" },
+            neededHires
+        };
+
+        var response = await client.PostAsJsonAsync("/api/vacancies", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblemResponse>();
+        Assert.NotNull(problem);
+        Assert.Contains("neededHires", problem.Errors.Keys);
+    }
+
+    [Fact]
     public async Task Create_vacancy_requires_at_least_one_requirement() // US-9: create a vacancy with a role title, date, and skills requirements
     {
         using var client = factory.CreateClient();
@@ -191,9 +235,12 @@ public sealed class CreateVacancyTests(ApiFactory factory) : IClassFixture<ApiFa
         string Title,
         DateOnly OpenedOn,
         string Status,
-        IReadOnlyList<VacancyRequirementResponse> Requirements);
+        IReadOnlyList<VacancyRequirementResponse> Requirements,
+        VacancyHiring? Hiring);
 
     private sealed record VacancyRequirementResponse(string Phrase, int Position);
+
+    private sealed record VacancyHiring(int NeededHires, int ActiveHires);
 
     private sealed record ValidationProblemResponse(
         Dictionary<string, string[]> Errors);

@@ -1,9 +1,10 @@
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Messaging;
-using hr_sat.Application.Features.Candidates;
 using hr_sat.Application.Features.Candidates.GetDetails;
+using hr_sat.Application.Features.Shared;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.Vacancies;
 
 namespace hr_sat.Application.Features.Candidates.UpdateReview;
 
@@ -23,11 +24,16 @@ internal sealed class UpdateCandidateReviewCommandHandler(IApplicationDbContext 
                 }));
         }
 
-        var updateResult = await CandidateWrite.ExecuteAsync(
+        var updateResult = await RoundWrite.ExecuteCandidateAsync(
             command.VacancyId,
+            command.RoundId,
             command.CandidateId,
             dbContext,
-            (_, candidate) => candidate.ApplyReview(reviewStatus, command.Notes),
+            (vacancy, candidateId) => vacancy.ReviewCandidate(
+                command.RoundId,
+                candidateId,
+                reviewStatus,
+                command.Notes),
             cancellationToken);
         if (updateResult.IsFailure)
         {
@@ -36,6 +42,7 @@ internal sealed class UpdateCandidateReviewCommandHandler(IApplicationDbContext 
 
         return await CandidateDetailsReader.ReadAsync(
             command.VacancyId,
+            command.RoundId,
             command.CandidateId,
             dbContext,
             cancellationToken);

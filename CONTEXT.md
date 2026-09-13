@@ -36,8 +36,40 @@ _Avoid_: Delete, archive
 The explicit, irreversible removal of one candidate together with all information it owns.
 _Avoid_: Delete, erase
 
+**Intake Round**:
+A named wave of application intake within one vacancy; it owns its candidate list and review workspace, and exactly one can be active per vacancy at a time. Identified by a per-vacancy round number (never reused) with an optional name.
+_Avoid_: Batch interview, hiring batch
+
+**Active Round**:
+The intake round currently accepting candidate imports and edits for its vacancy; a vacancy may legally have none between waves.
+_Avoid_: Current batch, open batch
+
+**Round Closure**:
+The explicit, irreversible end of an active round, marked by HR; a closed round never reopens and its review data (imports, review status, notes, requirement reviews) is read-only forever, while hire-outcome bookkeeping on its candidates stays editable until the vacancy closes (reopening is a vacancy power).
+_Avoid_: Batch close, round archive
+
+**Round Management**:
+HR's administration of a vacancy's intake rounds: opening the next round and closing the active one. It changes round lifecycle only, never candidate review data.
+_Avoid_: Round settings, batch management
+
+**Settled**:
+The moment a record becomes read-only through its lifecycle: a round's review data settles at round closure; hire-outcome bookkeeping settles at vacancy closure. Attempts to change settled data are refused and must be re-expressed through the lifecycle's own powers (promotion, reopening).
+_Avoid_: Locked, frozen
+
+**Lifecycle Conflict**:
+A refusal of an operation because the record's lifecycle state forbids it: either an attempt to change settled data (closed round, closed vacancy) or a failed lifecycle precondition (round already active, no active round, source round not yet closed). Lifecycle conflicts are expected and actionable: they surface as amber warnings whose copy tells HR how to re-express the intent through the lifecycle's own powers. Unknown conflicts and technical failures surface as red errors.
+_Avoid_: settled-state error, validation failure
+
+**Promote**:
+Moving a new, flagged, or shortlisted-without-outcome candidate from a closed round into the active round, preserving review status, requirement reviews, and notes.
+_Avoid_: Copy candidate, re-import
+
+**Prior Application Notice**:
+A display-only indicator that a candidate's source sender email also appears in another round of the same vacancy; it is person-intuition, not person-proof, and never blocks import or affects review status.
+_Avoid_: Duplicate block, global person history
+
 **Candidate**:
-One person's submission to one vacancy, created from one source email; the same person submitted to another vacancy is a different candidate.
+One person's submission to one intake round, created from one source email; the same person submitted to another round or vacancy is a different candidate.
 _Avoid_: Talent, shared person, global candidate
 
 **Source Email**:
@@ -117,8 +149,16 @@ A personalized message generated from an email template for one candidate for HR
 _Avoid_: Sent email, bulk email
 
 **Needed Hires**:
-The number of people a vacancy must ultimately hire, recorded on the vacancy; a vacancy stays open until that many hires are active.
-_Avoid_: Headcount request, batch size
+The number of people a vacancy must ultimately hire, recorded on the vacancy; the system never closes a vacancy automatically, so a filled vacancy stays open until HR closes it. Intake rounds carry no quota of their own.
+_Avoid_: Headcount request, batch size, round quota
+
+**Filled**:
+The display state of a vacancy whose active hires have reached its needed hires; the vacancy remains open.
+_Avoid_: Auto-closed vacancy, completed vacancy
+
+**Hire Outcome**:
+The bookkeeping record of how a shortlisted candidate's hiring stands: none, hired, runaway, or declined. Set only on shortlisted candidates, editable until the vacancy closes, and never altered by review-status decisions; a runaway re-opens one needed-hire slot.
+_Avoid_: Hiring status, review decision
 
 **Hired Candidate**:
 A shortlisted candidate who has started the job; the hire is active until they are marked as runaway.
@@ -129,8 +169,12 @@ A hired candidate who no-showed, quit, or went unreachable while the vacancy is 
 _Avoid_: Terminated employee, failed candidate
 
 **Declined**:
-The outcome when a candidate turns down the offer; it does not reopen a needed-hire slot the way a runaway does.
+The outcome when a shortlisted candidate exits on their own initiative: turning down the offer, withdrawing mid-process, or going silent before an offer exists; it does not reopen a needed-hire slot the way a runaway does.
 _Avoid_: Rejected candidate, withdrawn candidate
+
+**Bench**:
+The shortlisted candidates on a vacancy who carry no hire outcome; they are undecided rather than rejected, and remain available as backfill when a hire goes runaway or for promotion into a later round.
+_Avoid_: Talent pool, waitlist
 
 **Shortage**:
 A vacancy's needed hires minus its active hires; the number of slots still to fill, which increases again when a runaway is recorded.

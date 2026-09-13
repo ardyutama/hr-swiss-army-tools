@@ -1,6 +1,7 @@
 import { delJson, getJson, postFormData } from '@/shared/http'
 
 export type CandidateReviewStatus = 'new' | 'flagged' | 'shortlisted' | 'rejected'
+export type CandidateHireOutcome = 'none' | 'hired' | 'runaway' | 'declined'
 
 export interface CvDocumentResult {
   id: number
@@ -13,6 +14,7 @@ export interface CvDocumentResult {
 export interface ImportedCandidate {
   id: number
   reviewStatus: CandidateReviewStatus
+  hireOutcome: CandidateHireOutcome
   sourceSenderName: string | null
   sourceSenderEmail: string | null
   sourceSubject: string | null
@@ -37,6 +39,7 @@ export interface ImportCandidatesResponse {
 
 export function importCandidates(
   vacancyId: string,
+  roundId: string,
   files: File[],
 ): Promise<ImportCandidatesResponse> {
   const formData = new FormData()
@@ -44,7 +47,7 @@ export function importCandidates(
     formData.append('files', file, file.name)
   }
   return postFormData<ImportCandidatesResponse>(
-    `/api/vacancies/${vacancyId}/candidates/import`,
+    `/api/vacancies/${vacancyId}/rounds/${roundId}/candidates/import`,
     formData,
   )
 }
@@ -55,6 +58,7 @@ export interface CandidateSummary {
   contactEmail: string | null
   notes: string | null
   reviewStatus: CandidateReviewStatus
+  hireOutcome: CandidateHireOutcome
   sourceSenderName: string | null
   sourceSenderEmail: string | null
   sourceSubject: string | null
@@ -62,10 +66,14 @@ export interface CandidateSummary {
   cvDocumentCount: number
 }
 
-export function listCandidates(vacancyId: string): Promise<CandidateSummary[]> {
-  return getJson<CandidateSummary[]>(`/api/vacancies/${vacancyId}/candidates`)
+export function listCandidates(vacancyId: string, roundId: string): Promise<CandidateSummary[]> {
+  return getJson<CandidateSummary[]>(`/api/vacancies/${vacancyId}/rounds/${roundId}/candidates`)
 }
 
-export function deleteCandidate(vacancyId: string, candidateId: number): Promise<void> {
-  return delJson(`/api/vacancies/${vacancyId}/candidates/${candidateId}`)
+export function deleteCandidate(
+  vacancyId: string,
+  roundId: string,
+  candidateId: number,
+): Promise<void> {
+  return delJson(`/api/vacancies/${vacancyId}/rounds/${roundId}/candidates/${candidateId}`)
 }

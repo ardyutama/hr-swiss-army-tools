@@ -4,5 +4,6 @@ namespace hr_sat.Application.Features.Candidates.GetCvDocument;
 
 public sealed record GetCvDocumentQuery(
     long VacancyId,
+    long RoundId,
     long CandidateId,
     long DocumentId) : IQuery<CvDocumentDownloadResponse>;

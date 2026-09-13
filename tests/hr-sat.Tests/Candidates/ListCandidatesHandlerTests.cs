@@ -1,5 +1,6 @@
 using hr_sat.Application.Features.Candidates.List;
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.IntakeRounds;
 using Shouldly;
 using Xunit;
 
@@ -16,11 +17,11 @@ public sealed class ListCandidatesHandlerTests
         await dbContext.SaveChangesAsync(CancellationToken.None);
         dbContext.Candidates.AddRange(
             CandidateTestData.CreateCandidate(
-                vacancy.Id,
+                vacancy.Rounds.Single().Id,
                 2,
                 new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero)),
             CandidateTestData.CreateCandidate(
-                vacancy.Id,
+                vacancy.Rounds.Single().Id,
                 1,
                 new DateTimeOffset(2026, 8, 20, 11, 0, 0, TimeSpan.Zero)));
         await dbContext.SaveChangesAsync(CancellationToken.None);
@@ -28,7 +29,7 @@ public sealed class ListCandidatesHandlerTests
         var handler = new ListCandidatesQueryHandler(dbContext);
 
         var result = await handler.Handle(
-            new ListCandidatesQuery(vacancy.Id),
+            new ListCandidatesQuery(vacancy.Id, vacancy.Rounds.Single().Id),
             CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
@@ -40,11 +41,11 @@ public sealed class ListCandidatesHandlerTests
     public async Task Handle_Should_IncludeCvDocumentCount_WhenVacancyExists() // US-14: HR sees at a glance whether a candidate has a CV
     {
         await using var dbContext = new TestDbContext();
-        var (vacancy, _) = await CandidateTestData.SeedCandidateAsync(dbContext);
+        var (vacancy, seededCandidate) = await CandidateTestData.SeedCandidateAsync(dbContext);
         var handler = new ListCandidatesQueryHandler(dbContext);
 
         var result = await handler.Handle(
-            new ListCandidatesQuery(vacancy.Id),
+            new ListCandidatesQuery(vacancy.Id, seededCandidate.IntakeRoundId),
             CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
@@ -59,10 +60,27 @@ public sealed class ListCandidatesHandlerTests
         var handler = new ListCandidatesQueryHandler(dbContext);
 
         var result = await handler.Handle(
-            new ListCandidatesQuery(999),
+            new ListCandidatesQuery(999, 1),
             CancellationToken.None);
 
         result.IsFailure.ShouldBeTrue();
         result.Error.ShouldBe(CandidateErrors.NotFound(999));
+    }
+
+    [Fact]
+    public async Task Handle_Should_ReturnRoundNotFound_WhenRoundDoesNotBelongToVacancy()
+    {
+        await using var dbContext = new TestDbContext();
+        var vacancy = CandidateTestData.CreateVacancy();
+        dbContext.Vacancies.Add(vacancy);
+        await dbContext.SaveChangesAsync(CancellationToken.None);
+        var handler = new ListCandidatesQueryHandler(dbContext);
+
+        var result = await handler.Handle(
+            new ListCandidatesQuery(vacancy.Id, 999),
+            CancellationToken.None);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.ShouldBe(IntakeRoundErrors.NotFound(999));
     }
 }

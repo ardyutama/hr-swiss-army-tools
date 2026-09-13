@@ -3,6 +3,7 @@ interface ShortcutRow {
   key: string
   action: string
   context: string
+  group?: string
 }
 
 const shortcutRows: ShortcutRow[] = [
@@ -12,6 +13,9 @@ const shortcutRows: ShortcutRow[] = [
   { key: 'S', action: 'Shortlist candidate', context: 'Triage mode' },
   { key: 'F', action: 'Flag candidate', context: 'Triage mode' },
   { key: 'R', action: 'Reject candidate', context: 'Triage mode' },
+  { key: 'Shift+H', action: 'Mark Hired', context: 'Triage mode', group: 'Hire outcomes' },
+  { key: 'Shift+U', action: 'Mark Runaway', context: 'Triage mode' },
+  { key: 'Shift+D', action: 'Mark Declined', context: 'Triage mode' },
   { key: '1-9', action: 'Toggle requirement by position', context: 'Triage mode' },
   { key: 'E', action: 'Edit candidate details', context: 'Triage mode' },
   { key: 'O', action: 'Open/close source email', context: 'Triage mode' },
@@ -55,15 +59,22 @@ const emit = defineEmits<{
               </tr>
             </thead>
             <tbody class="divide-y divide-default">
-              <tr v-for="shortcut in shortcutRows" :key="`${shortcut.key}-${shortcut.action}`">
-                <th scope="row" class="whitespace-nowrap px-4 py-3 font-medium text-highlighted">
-                  <kbd class="rounded border border-default bg-muted/50 px-1.5 py-0.5 text-xs font-semibold">
-                    {{ shortcut.key }}
-                  </kbd>
-                </th>
-                <td class="px-4 py-3 text-highlighted">{{ shortcut.action }}</td>
-                <td class="px-4 py-3 text-muted">{{ shortcut.context }}</td>
-              </tr>
+              <template v-for="shortcut in shortcutRows" :key="`${shortcut.key}-${shortcut.action}`">
+                <tr v-if="shortcut.group" class="border-b border-default bg-muted/30">
+                  <th colspan="3" scope="colgroup" class="px-4 py-2 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted">
+                    {{ shortcut.group }}
+                  </th>
+                </tr>
+                <tr>
+                  <th scope="row" class="whitespace-nowrap px-4 py-3 font-medium text-highlighted">
+                    <kbd class="rounded border border-default bg-muted/50 px-1.5 py-0.5 text-xs font-semibold">
+                      {{ shortcut.key }}
+                    </kbd>
+                  </th>
+                  <td class="px-4 py-3 text-highlighted">{{ shortcut.action }}</td>
+                  <td class="px-4 py-3 text-muted">{{ shortcut.context }}</td>
+                </tr>
+              </template>
             </tbody>
           </table>
         </div>

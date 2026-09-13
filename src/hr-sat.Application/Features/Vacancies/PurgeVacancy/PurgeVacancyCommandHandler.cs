@@ -16,19 +16,22 @@ internal sealed class PurgeVacancyCommandHandler(
         CancellationToken cancellationToken)
     {
         await using var transaction = await dbContext.BeginTransactionAsync(cancellationToken);
-        var vacancy = await dbContext.FindVacancyForUpdateAsync(command.Id, cancellationToken);
+        var vacancy = await dbContext.LockVacancyAsync(command.Id, cancellationToken);
         if (vacancy is null)
         {
             return VacancyErrors.NotFound(command.Id);
         }
 
         var sourceStorageKeys = await dbContext.Candidates
-            .Where(candidate => candidate.VacancyId == command.Id)
+            .Where(candidate => dbContext.IntakeRounds.Any(round =>
+                round.Id == candidate.IntakeRoundId && round.VacancyId == command.Id))
             .Select(candidate => candidate.SourceStorageKey)
             .ToListAsync(cancellationToken);
         var documentStorageKeys = await dbContext.CvDocuments
             .Where(document => dbContext.Candidates.Any(candidate =>
-                candidate.Id == document.CandidateId && candidate.VacancyId == command.Id))
+                candidate.Id == document.CandidateId &&
+                dbContext.IntakeRounds.Any(round =>
+                    round.Id == candidate.IntakeRoundId && round.VacancyId == command.Id)))
             .Select(document => document.StorageKey)
             .ToListAsync(cancellationToken);
         var deletedCount = await dbContext.Vacancies

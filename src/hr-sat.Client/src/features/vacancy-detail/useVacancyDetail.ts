@@ -1,5 +1,6 @@
 import { computed, shallowRef, watch, type Ref } from 'vue'
 import { getVacancy, type VacancyDetails } from '@/features/vacancies/api'
+import { problemMessage, problemMessageText } from '@/shared/problem-details'
 
 export type VacancyDetailViewState = 'loading' | 'error' | 'ready'
 
@@ -34,7 +35,7 @@ export function useVacancyDetail(vacancyId: Ref<string>) {
       if (token !== requestToken) {
         return
       }
-      loadError.value = error instanceof Error ? error.message : 'Failed to load vacancy'
+      loadError.value = problemMessageText(problemMessage(error, 'Something went wrong'))
     }
   }
 

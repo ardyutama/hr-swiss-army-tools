@@ -6,6 +6,7 @@ internal sealed record CandidateSummaryResponse(
     string? ContactEmail,
     string? Notes,
     string ReviewStatus,
+    string HireOutcome,
     string? SourceSenderName,
     string? SourceSenderEmail,
     string? SourceSubject,
