@@ -70,3 +70,13 @@ button {
   }
 }
 
+.app-sidebar {
+  --ui-text-highlighted: var(--color-sidebar-active);
+  --ui-text: var(--color-sidebar-foreground);
+  --ui-text-muted: var(--color-sidebar-foreground);
+  --ui-text-dimmed: color-mix(in oklab, var(--color-sidebar-foreground) 65%, var(--color-sidebar));
+  --ui-bg-elevated: rgb(255 255 255 / 0.1);
+  --ui-border: rgb(255 255 255 / 0.08);
+  --ui-border-inverted: var(--color-sidebar-active);
+}
+

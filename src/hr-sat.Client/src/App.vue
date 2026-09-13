@@ -1,54 +1,75 @@
 <script setup lang="ts">
-interface NavItem {
-  label: string
-  to: string
-}
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import { useLocalStorage } from '@vueuse/core'
+import type { NavigationMenuItem } from '@nuxt/ui'
 
-interface NavSection {
-  label: string
-  items: NavItem[]
-}
+const route = useRoute()
+const sidebarOpen = useLocalStorage('sidebar-open', true)
 
 // ADR-0008 decision 15: no dead UI — upcoming nav items live as tickets, not placeholders.
-const navSections: NavSection[] = [
+// Routes are flat, so vue-router never activates '/' on /vacancies/*; the Vacancies item
+// owns its active rule explicitly and stays lit through the whole vacancy flow.
+const navItems = computed<NavigationMenuItem[]>(() => [
+  { label: 'Sorting CV', type: 'label' },
   {
-    label: 'Sorting CV',
-    items: [{ label: 'Vacancies', to: '/' }],
+    label: 'Vacancies',
+    icon: 'i-lucide-briefcase',
+    to: '/',
+    active: route.path === '/' || route.path.startsWith('/vacancies'),
   },
-]
+])
 </script>
 
 <template>
   <UApp>
-    <div class="grid min-h-screen grid-cols-1 bg-default text-highlighted md:grid-cols-[15rem_minmax(0,1fr)]">
-      <aside class="border-b border-default bg-sidebar px-4 py-6 text-sidebar-foreground md:min-h-screen md:border-b-0 md:border-r">
-        <nav class="flex flex-col gap-7" aria-label="Main navigation">
-          <div class="rounded-xl border-2 border-sidebar-active px-3 py-3 text-center font-bold tracking-[0.1em] text-sidebar-active">
-            HR·SAT
-          </div>
+    <UDashboardGroup unit="px" :persistent="false">
+      <UDashboardSidebar
+        v-model:open="sidebarOpen"
+        collapsible
+        :default-size="240"
+        class="app-sidebar bg-sidebar"
+        :menu="{ close: false }"
+        :ui="{
+          header: 'px-3',
+          body: 'px-3',
+          content: 'app-sidebar bg-sidebar',
+        }"
+      >
+        <template #header="{ collapsed }">
+          <RouterLink
+            v-if="!collapsed"
+            to="/"
+            class="rounded-md text-base font-bold tracking-tight text-sidebar-active focus-visible:outline-2 focus-visible:outline-sidebar-active/50"
+          >
+            HR <span class="font-semibold text-sidebar-foreground/70">SAT</span>
+          </RouterLink>
+          <UDashboardSidebarCollapse square class="ms-auto" />
+        </template>
 
-          <section v-for="section in navSections" :key="section.label">
-            <h2 class="mb-2 text-xs font-bold uppercase tracking-[0.1em] text-sidebar-foreground/70">
-              {{ section.label }}
-            </h2>
-            <ul class="m-0 flex list-none flex-col gap-1 p-0">
-              <li v-for="item in section.items" :key="item.label">
-                <RouterLink
-                  :to="item.to"
-                  exact-active-class="bg-primary font-semibold text-sidebar-active"
-                  class="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground no-underline transition-colors hover:bg-white/10"
-                >
-                  {{ item.label }}
-                </RouterLink>
-              </li>
-            </ul>
-          </section>
-        </nav>
-      </aside>
+        <template #default="{ collapsed }">
+          <UNavigationMenu
+            :collapsed="collapsed"
+            :items="navItems"
+            orientation="vertical"
+            color="neutral"
+            :ui="{
+              label: 'px-3 font-bold uppercase tracking-[0.1em] text-sidebar-foreground/60',
+              link: 'px-3 py-2.5 before:rounded-xl',
+            }"
+          />
+        </template>
+      </UDashboardSidebar>
 
-      <main class="min-w-0 bg-default px-4 py-6 sm:px-8 sm:py-7 lg:px-9">
-        <router-view />
-      </main>
-    </div>
+      <UDashboardPanel :ui="{ body: 'gap-0 p-4 sm:px-8 sm:py-7 lg:px-9' }">
+        <template #header>
+          <UDashboardNavbar title="HR SAT" class="lg:hidden" />
+        </template>
+
+        <template #body>
+          <router-view />
+        </template>
+      </UDashboardPanel>
+    </UDashboardGroup>
   </UApp>
 </template>
