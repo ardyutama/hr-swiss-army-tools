@@ -4,6 +4,8 @@ export type EmailTemplateKind = 'shortlisted' | 'rejected'
 
 /** Editable subject + body text owned by one vacancy for one kind (glossary: Email Template). */
 export interface EmailTemplate {
+  id: number
+  vacancyId: number
   kind: EmailTemplateKind
   subject: string
   body: string
@@ -35,8 +37,8 @@ export interface RenderedMessage {
   body: string
 }
 
-export function listEmailTemplates(vacancyId: string): Promise<VacancyEmailTemplates> {
-  return getJson<VacancyEmailTemplates>(`/api/vacancies/${vacancyId}/email-templates`)
+export function listEmailTemplates(vacancyId: string): Promise<EmailTemplate[]> {
+  return getJson<EmailTemplate[]>(`/api/vacancies/${vacancyId}/email-templates`)
 }
 
 export function upsertEmailTemplate(

@@ -10,12 +10,12 @@ the candidate's data (name, vacancy title) as placeholders.
 
 **Status:** ready-for-agent
 
-- [ ] Create/replace a Shortlisted template for a vacancy; View and Delete work
-- [ ] Create/replace a Rejected template for a vacancy; View and Delete work
-- [ ] Copy a template from a previous vacancy (independent copy)
-- [ ] Template rendering substitutes candidate name and vacancy title (server-side, previewable)
-- [ ] Closed vacancy: template mutations refused as lifecycle conflict; View and copy-from still work
-- [ ] Backend and frontend tests pass (written after implementation)
+- [X] Create/replace a Shortlisted template for a vacancy; View and Delete work
+- [X] Create/replace a Rejected template for a vacancy; View and Delete work
+- [X] Copy a template from a previous vacancy (independent copy)
+- [X] Template rendering substitutes candidate name and vacancy title (server-side, previewable)
+- [X] Closed vacancy: template mutations refused as lifecycle conflict; View and copy-from still work
+- [X] Backend and frontend tests pass (written after implementation)
 
 ## Design (settled 2026-09-13, grilling session)
 

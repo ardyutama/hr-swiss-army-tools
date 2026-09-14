@@ -26,6 +26,8 @@ const props = defineProps<{
   initial: EmailTemplateWritePayload | null
   /** Vacancy title when the editor opened from the copy-from picker; nothing persists until save. */
   copiedFrom: string | null
+  /** Closed vacancy copy-from is inspectable but cannot mutate the vacancy. */
+  readonly: boolean
   candidates: CandidateSummary[]
   saving: boolean
   /** Non-validation request failure, surfaced inline. */
@@ -36,7 +38,11 @@ const emit = defineEmits<{
   submit: [payload: EmailTemplateWritePayload]
 }>()
 
-const title = computed(() => `${props.editing ? 'Edit' : 'Create'} ${props.kind} template`)
+const title = computed(() =>
+  props.readonly && props.copiedFrom
+    ? `Template copied from ${props.copiedFrom}`
+    : `${props.editing ? 'Edit' : 'Create'} ${props.kind} template`,
+)
 const submitLabel = computed(() => (props.editing ? 'Save changes' : 'Create template'))
 
 const form = reactive({ subject: '', body: '' })
@@ -102,6 +108,9 @@ function insertPlaceholder(token: string) {
 }
 
 function onSubmit(event: FormSubmitEvent<TemplateFormOutput>) {
+  if (props.readonly) {
+    return
+  }
   emit('submit', { subject: event.data.subject, body: event.data.body })
 }
 
@@ -161,6 +170,7 @@ defineExpose({
                 <UInput
                   v-model="form.subject"
                   :maxlength="SUBJECT_MAX_LENGTH"
+                  :readonly="props.readonly"
                   autocomplete="off"
                   class="w-full"
                 />
@@ -175,11 +185,16 @@ defineExpose({
 
           <div ref="bodyField" @focusin="lastFocusedField = 'body'">
             <UFormField label="Body" name="body">
-              <UTextarea v-model="form.body" :rows="10" class="w-full" />
+              <UTextarea
+                v-model="form.body"
+                :rows="10"
+                :readonly="props.readonly"
+                class="w-full"
+              />
             </UFormField>
           </div>
 
-          <div class="flex flex-wrap items-center gap-2">
+          <div v-if="!props.readonly" class="flex flex-wrap items-center gap-2">
             <span class="text-xs text-muted">Insert a placeholder:</span>
             <UButton
               v-for="placeholder in templatePlaceholders"
@@ -212,7 +227,12 @@ defineExpose({
         <UButton color="neutral" variant="outline" :disabled="props.saving" @click="open = false">
           Cancel
         </UButton>
-        <UButton color="primary" :loading="props.saving" @click="formRef?.submit()">
+        <UButton
+          v-if="!props.readonly"
+          color="primary"
+          :loading="props.saving"
+          @click="formRef?.submit()"
+        >
           {{ submitLabel }}
         </UButton>
       </div>

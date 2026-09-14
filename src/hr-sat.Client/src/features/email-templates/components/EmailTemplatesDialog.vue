@@ -52,13 +52,20 @@ const editorKind = shallowRef<EmailTemplateKind>('shortlisted')
 const editorEditing = shallowRef(false)
 const editorInitial = shallowRef<EmailTemplateWritePayload | null>(null)
 const editorCopiedFrom = shallowRef<string | null>(null)
+const editorReadonly = shallowRef(false)
 const editorError = shallowRef<string | null>(null)
 
-function openEditor(kind: EmailTemplateKind, initial: EmailTemplateWritePayload | null, copiedFrom: string | null) {
+function openEditor(
+  kind: EmailTemplateKind,
+  initial: EmailTemplateWritePayload | null,
+  copiedFrom: string | null,
+  readonly = false,
+) {
   editorKind.value = kind
   editorEditing.value = templates.value?.[kind] != null
   editorInitial.value = initial
   editorCopiedFrom.value = copiedFrom
+  editorReadonly.value = readonly
   editorError.value = null
   editorOpen.value = true
 }
@@ -74,7 +81,12 @@ function openEdit(kind: EmailTemplateKind) {
 
 /** Copy-from is an editor prefill, not a silent overwrite: nothing persists until HR saves. */
 function openCopy(kind: EmailTemplateKind, source: TemplateSource) {
-  openEditor(kind, { subject: source.subject, body: source.body }, source.vacancyTitle)
+  openEditor(
+    kind,
+    { subject: source.subject, body: source.body },
+    source.vacancyTitle,
+    closed.value,
+  )
 }
 
 async function onEditorSubmit(payload: EmailTemplateWritePayload) {
@@ -193,6 +205,7 @@ function openView(kind: EmailTemplateKind) {
     :editing="editorEditing"
     :initial="editorInitial"
     :copied-from="editorCopiedFrom"
+    :readonly="editorReadonly"
     :candidates="props.candidates"
     :saving="saving"
     :error="editorError"

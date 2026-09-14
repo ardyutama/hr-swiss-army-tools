@@ -5,6 +5,7 @@ import {
   deleteEmailTemplate,
   listEmailTemplates,
   upsertEmailTemplate,
+  type EmailTemplate,
   type EmailTemplateKind,
   type EmailTemplateWritePayload,
   type VacancyEmailTemplates,
@@ -14,6 +15,13 @@ export type EmailTemplatesViewState = 'loading' | 'error' | 'ready'
 
 export function emailTemplateKindLabel(kind: EmailTemplateKind): string {
   return kind === 'shortlisted' ? 'Shortlisted' : 'Rejected'
+}
+
+function templatesByKind(items: EmailTemplate[]): VacancyEmailTemplates {
+  return {
+    shortlisted: items.find((template) => template.kind === 'shortlisted') ?? null,
+    rejected: items.find((template) => template.kind === 'rejected') ?? null,
+  }
 }
 
 /**
@@ -38,7 +46,7 @@ export function useEmailTemplates(vacancyId: MaybeRefOrGetter<string>) {
   async function load() {
     loadError.value = null
     try {
-      templates.value = await listEmailTemplates(toValue(vacancyId))
+      templates.value = templatesByKind(await listEmailTemplates(toValue(vacancyId)))
     } catch (error) {
       loadError.value = problemMessageText(problemMessage(error, "Couldn't load email templates"))
     }
