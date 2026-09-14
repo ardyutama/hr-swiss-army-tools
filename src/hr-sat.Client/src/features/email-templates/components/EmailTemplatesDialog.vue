@@ -8,15 +8,20 @@ import type {
   EmailTemplateKind,
   EmailTemplateWritePayload,
   TemplateSource,
+  VacancyEmailTemplates,
 } from '../api'
-import { useEmailTemplates } from '../useEmailTemplates'
-import { useTemplateSources } from '../useTemplateSources'
+import type { EmailTemplatesViewState } from '../useEmailTemplates'
 import TemplateEditorDialog from './TemplateEditorDialog.vue'
 import TemplateSection from './TemplateSection.vue'
 import TemplateViewDialog from './TemplateViewDialog.vue'
 
 const open = defineModel<boolean>('open', { required: true })
 
+// Presentation over flow-constructed lifecycles: the page's flow owns
+// useEmailTemplates/useTemplateSources and passes their state down; save/remove
+// arrive as function props so failed saves stay awaitable and route back into
+// the editor. This dialog keeps the editor/view mediation (nested dialogs,
+// per-section delete confirm) and triggers the open-time loads via emits.
 const props = defineProps<{
   vacancyId: string
   vacancyTitle: string
@@ -24,22 +29,29 @@ const props = defineProps<{
   status: 'open' | 'closed'
   /** The viewed round's unfiltered candidates — page filters must not shrink preview choices. */
   candidates: CandidateSummary[]
+  templates: VacancyEmailTemplates | null
+  loadError: string | null
+  viewState: EmailTemplatesViewState
+  saving: boolean
+  deleting: boolean
+  sources: Partial<Record<EmailTemplateKind, TemplateSource[]>>
+  save: (kind: EmailTemplateKind, payload: EmailTemplateWritePayload) => Promise<void>
+  remove: (kind: EmailTemplateKind) => Promise<void>
 }>()
 
-// Self-contained dialog: it drives its own composables rather than joining the
-// page's useVacancyDetailFlow.
-const { templates, loadError, viewState, saving, deleting, load, save, remove } =
-  useEmailTemplates(() => props.vacancyId)
-const { sources, loadSources } = useTemplateSources(() => props.vacancyId)
+const emit = defineEmits<{
+  reload: []
+  'load-sources': [kind: EmailTemplateKind]
+}>()
 
 const closed = computed(() => props.status === 'closed')
 const description = computed(() => `${props.vacancyTitle} · Opened ${formatDate(props.openedOn)}`)
 
 watch(open, (isOpen) => {
   if (isOpen) {
-    void load()
-    loadSources('shortlisted')
-    loadSources('rejected')
+    emit('reload')
+    emit('load-sources', 'shortlisted')
+    emit('load-sources', 'rejected')
   }
 })
 
@@ -62,7 +74,7 @@ function openEditor(
   readonly = false,
 ) {
   editorKind.value = kind
-  editorEditing.value = templates.value?.[kind] != null
+  editorEditing.value = props.templates?.[kind] != null
   editorInitial.value = initial
   editorCopiedFrom.value = copiedFrom
   editorReadonly.value = readonly
@@ -75,7 +87,7 @@ function openCreate(kind: EmailTemplateKind) {
 }
 
 function openEdit(kind: EmailTemplateKind) {
-  const template = templates.value?.[kind]
+  const template = props.templates?.[kind]
   openEditor(kind, template ? { subject: template.subject, body: template.body } : null, null)
 }
 
@@ -91,7 +103,7 @@ function openCopy(kind: EmailTemplateKind, source: TemplateSource) {
 
 async function onEditorSubmit(payload: EmailTemplateWritePayload) {
   try {
-    await save(editorKind.value, payload)
+    await props.save(editorKind.value, payload)
     editorOpen.value = false
   } catch (error) {
     if (fieldErrorsOf(error)) {
@@ -114,7 +126,7 @@ async function onDelete(kind: EmailTemplateKind) {
   deletingKind.value = kind
   deleteErrors[kind] = null
   try {
-    await remove(kind)
+    await props.remove(kind)
   } catch (error) {
     deleteErrors[kind] = problemMessageText(problemMessage(error, "Couldn't delete the template"))
   } finally {
@@ -162,7 +174,7 @@ function openView(kind: EmailTemplateKind) {
           title="Couldn't load email templates"
           :description="loadError ?? undefined"
           role="alert"
-          :actions="[{ label: 'Try again', color: 'error', variant: 'outline', onClick: load }]"
+          :actions="[{ label: 'Try again', color: 'error', variant: 'outline', onClick: () => emit('reload') }]"
         />
 
         <template v-else>

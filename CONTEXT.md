@@ -148,6 +148,10 @@ _Avoid_: Match status, stored score
 A personalized message generated from an email template for one candidate for HR to send using their email client.
 _Avoid_: Sent email, bulk email
 
+**Contactable Candidate**:
+A candidate eligible to receive a Prepared Message: a Rejected Candidate or a member of the Bench with a contact email recorded. New and flagged candidates, shortlisted candidates carrying a hire outcome, and candidates without a contact email are never contacted; the send flow names who was left out and why.
+_Avoid_: Recipient, send-list member
+
 **Needed Hires**:
 The number of people a vacancy must ultimately hire, recorded on the vacancy; the system never closes a vacancy automatically, so a filled vacancy stays open until HR closes it. Intake rounds carry no quota of their own.
 _Avoid_: Headcount request, batch size, round quota

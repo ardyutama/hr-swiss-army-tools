@@ -2,7 +2,7 @@
 import { computed, shallowRef, watch } from 'vue'
 import { formatDate } from '@/features/vacancies/format'
 import type { EmailTemplate, EmailTemplateKind, TemplateSource } from '../api'
-import { emailTemplateKindLabel } from '../useEmailTemplates'
+import { emailTemplateKindLabel } from '../format'
 
 const props = defineProps<{
   kind: EmailTemplateKind

@@ -19,11 +19,6 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 type FetchHandler = (url: string, init?: RequestInit) => Promise<Response> | undefined
 
-/**
- * Stubs the fetch seam: the handler serves the flow's endpoints and the vacancy
- * rollup answers only its exact URL. Anything else throws, so contract drift
- * fails loudly with the offending URL instead of a downstream type error.
- */
 function stubFetch(vacancy: () => unknown, handler: FetchHandler): void {
   vi.stubGlobal(
     'fetch',
@@ -113,19 +108,18 @@ function candidateSummary(id: number, overrides: Partial<Record<string, unknown>
   }
 }
 
-function bobSummary() {
+function bobSummary(overrides: Partial<Record<string, unknown>> = {}) {
   return candidateSummary(2, {
     sourceSenderName: 'Bob Builder',
     sourceSenderEmail: 'bob@example.com',
     sourceSubject: 'Bob application',
     reviewStatus: 'shortlisted',
     notes: 'Strong MIG experience',
+    ...overrides,
   })
 }
 
 function mountView(id = '1') {
-  // A memory-history router with a stub review route stands in for the real router;
-  // the candidate-review route itself is wired by ticket 05.
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -150,11 +144,6 @@ function mountView(id = '1') {
   return { router, wrapper }
 }
 
-/**
- * Mount with initial route query params. Unlike mountView, the query must be
- * resolved before the view's setup runs — the view reads route.query once — so
- * the router pushes the location and awaits isReady before mounting.
- */
 async function mountViewWithQuery(id: string, query: Record<string, string>) {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -213,6 +202,7 @@ afterEach(() => {
   vi.clearAllMocks()
   vi.unstubAllGlobals()
   document.body.innerHTML = ''
+  delete (window.navigator as { clipboard?: unknown }).clipboard
 })
 
 describe('VacancyDetailView', () => {
@@ -399,7 +389,7 @@ describe('VacancyDetailView', () => {
           return Promise.resolve(
             jsonResponse([
               candidateSummary(1),
-              bobSummary(),
+              bobSummary({ contactEmail: 'bob@example.com' }),
               candidateSummary(3, {
                 sourceSenderName: null,
                 sourceSenderEmail: null,
@@ -447,12 +437,20 @@ describe('VacancyDetailView', () => {
     expect(wrapper.text()).toContain('Strong MIG experience')
     expect(wrapper.text()).not.toContain('Extraction pending')
 
-    // Send is a placeholder until templates exist; Delete is available.
-    const sendButtons = wrapper.findAll('button[aria-label*="Send email"]')
-    expect(sendButtons).toHaveLength(3)
-    expect(
-      sendButtons.every((button) => (button.element as HTMLButtonElement).disabled),
-    ).toBe(true)
+    // Row send follows the Contactable Candidate rule: a Bench candidate with an
+    // email recorded can be contacted; undecided (new) rows are disabled and the
+    // label carries the reason. Delete stays available regardless.
+    const sendButtonIn = (name: string) =>
+      wrapper
+        .findAll('.crow')
+        .find((row) => row.text().includes(name))!
+        .find('button[aria-label*="Send email"]')
+    const bobSend = sendButtonIn('Bob Builder')
+    expect(bobSend.attributes('aria-label')).toBe('Send email')
+    expect((bobSend.element as HTMLButtonElement).disabled).toBe(false)
+    const aliceSend = sendButtonIn('Alice Applicant')
+    expect((aliceSend.element as HTMLButtonElement).disabled).toBe(true)
+    expect(aliceSend.attributes('aria-label')).toBe('Send email — Not yet shortlisted or rejected')
     expect(wrapper.findAll('button[aria-label="Delete candidate"]')).toHaveLength(3)
 
     // The drop zone only lives inside the import dialog, which starts closed.
@@ -1916,6 +1914,93 @@ describe('VacancyDetailView', () => {
     wrapper.unmount()
   })
 
+  /** Serves the candidates list plus the email-templates endpoints; anything else still throws via stubFetch. */
+  function emailTemplatesFetch(
+    options: {
+      templates?: () => unknown
+      sources?: Record<string, unknown[]>
+      candidates?: () => unknown[]
+      onUpsert?: (kind: string, body: unknown) => unknown
+      onDelete?: (kind: string) => void
+      onRender?: (body: unknown) => unknown
+    } = {},
+  ): FetchHandler {
+    return (url, init) => {
+      if (url.endsWith('/vacancies/1/email-templates')) {
+        return Promise.resolve(
+          jsonResponse(options.templates?.() ?? []),
+        )
+      }
+      if (init?.method === 'PUT' && url.includes('/email-templates/')) {
+        const kind = url.slice(url.lastIndexOf('/') + 1)
+        const body = JSON.parse(String(init.body))
+        return Promise.resolve(jsonResponse(options.onUpsert?.(kind, body) ?? { kind, ...body }))
+      }
+      if (init?.method === 'DELETE' && url.includes('/email-templates/')) {
+        options.onDelete?.(url.slice(url.lastIndexOf('/') + 1))
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      if (url.includes('/email-templates/sources')) {
+        const kind = new URL(url, 'http://localhost').searchParams.get('kind') ?? ''
+        return Promise.resolve(jsonResponse(options.sources?.[kind] ?? []))
+      }
+      if (init?.method === 'POST' && url.endsWith('/email-templates/render')) {
+        const body = JSON.parse(String(init.body))
+        return Promise.resolve(
+          jsonResponse(
+            options.onRender?.(body) ?? {
+              subject: 'Good news, Bob Builder',
+              body: 'Hi Bob Builder, we would like to invite you to an interview.',
+            },
+          ),
+        )
+      }
+      if (url.includes('/rounds/1/candidates')) {
+        return Promise.resolve(jsonResponse(options.candidates?.() ?? []))
+      }
+      return undefined
+    }
+  }
+
+  function topDialog(): Element {
+    const dialogs = document.body.querySelectorAll('[role="dialog"]')
+    const top = dialogs[dialogs.length - 1]
+    if (!top) {
+      throw new Error('Expected an open dialog in document.body')
+    }
+    return top
+  }
+
+  function buttonIn(root: Element, text: string): HTMLButtonElement {
+    const button = Array.from(root.querySelectorAll('button')).find((candidate) =>
+      candidate.textContent?.includes(text),
+    )
+    if (!button) {
+      throw new Error(`Expected a "${text}" button`)
+    }
+    return button as HTMLButtonElement
+  }
+
+  /** Opens the prepared-messages dialog through the header's Send To All button. */
+  async function openPreparedMessagesDialog(wrapper: VueWrapper) {
+    const button = wrapper
+      .findAll('button')
+      .find((candidate) => candidate.text().includes('Send email to all candidates'))
+    expect(button, 'a Send email to all candidates button').toBeDefined()
+    await button!.trigger('click')
+    await flushPromises()
+  }
+
+  /** Stubs the Clipboard API for one test; afterEach removes the property again. */
+  function stubClipboard() {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
+    Object.defineProperty(window.navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    return writeText
+  }
+
   describe('US-19: email templates', () => {
     function emailTemplate(kind: 'shortlisted' | 'rejected') {
       return {
@@ -1935,83 +2020,15 @@ describe('VacancyDetailView', () => {
       }
     }
 
-    /** Serves the candidates list plus the email-templates endpoints; anything else still throws via stubFetch. */
-    function emailTemplatesFetch(
-      options: {
-        templates?: () => unknown
-        sources?: Record<string, unknown[]>
-        candidates?: () => unknown[]
-        onUpsert?: (kind: string, body: unknown) => unknown
-        onDelete?: (kind: string) => void
-        onRender?: (body: unknown) => unknown
-      } = {},
-    ): FetchHandler {
-      return (url, init) => {
-        if (url.endsWith('/vacancies/1/email-templates')) {
-          return Promise.resolve(
-            jsonResponse(options.templates?.() ?? []),
-          )
-        }
-        if (init?.method === 'PUT' && url.includes('/email-templates/')) {
-          const kind = url.slice(url.lastIndexOf('/') + 1)
-          const body = JSON.parse(String(init.body))
-          return Promise.resolve(jsonResponse(options.onUpsert?.(kind, body) ?? { kind, ...body }))
-        }
-        if (init?.method === 'DELETE' && url.includes('/email-templates/')) {
-          options.onDelete?.(url.slice(url.lastIndexOf('/') + 1))
-          return Promise.resolve(new Response(null, { status: 204 }))
-        }
-        if (url.includes('/email-templates/sources')) {
-          const kind = new URL(url, 'http://localhost').searchParams.get('kind') ?? ''
-          return Promise.resolve(jsonResponse(options.sources?.[kind] ?? []))
-        }
-        if (init?.method === 'POST' && url.endsWith('/email-templates/render')) {
-          const body = JSON.parse(String(init.body))
-          return Promise.resolve(
-            jsonResponse(
-              options.onRender?.(body) ?? {
-                subject: 'Good news, Bob Builder',
-                body: 'Hi Bob Builder, we would like to invite you to an interview.',
-              },
-            ),
-          )
-        }
-        if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse(options.candidates?.() ?? []))
-        }
-        return undefined
-      }
-    }
-
-    function topDialog(): Element {
-      const dialogs = document.body.querySelectorAll('[role="dialog"]')
-      const top = dialogs[dialogs.length - 1]
-      if (!top) {
-        throw new Error('Expected an open dialog in document.body')
-      }
-      return top
-    }
-
     function templateSection(heading: string): Element {
       return bodyElement(`[aria-label="${heading}"]`)
     }
 
-    function buttonIn(root: Element, text: string): HTMLButtonElement {
-      const button = Array.from(root.querySelectorAll('button')).find((candidate) =>
-        candidate.textContent?.includes(text),
-      )
-      if (!button) {
-        throw new Error(`Expected a "${text}" button`)
-      }
-      return button as HTMLButtonElement
-    }
-
     async function openEmailTemplatesDialog(wrapper: VueWrapper) {
-      const button = wrapper
-        .findAll('button')
-        .find((candidate) => candidate.text().includes('Send email to all candidates'))
-      expect(button, 'a Send email to all candidates button').toBeDefined()
-      await button!.trigger('click')
+      // The header button opens the prepared-messages dialog; the templates
+      // dialog stacks on top of it through the dialog's Edit templates action.
+      await openPreparedMessagesDialog(wrapper)
+      await new DOMWrapper(buttonIn(topDialog(), 'Edit templates')).trigger('click')
       await flushPromises()
     }
 
@@ -2179,9 +2196,8 @@ describe('VacancyDetailView', () => {
       await new DOMWrapper(buttonIn(editor, 'Create template')).trigger('click')
       await flushPromises()
 
-      const closeButton = document.body.querySelector(
-        '[role="dialog"] button[aria-label="Close"]',
-      )
+      // The templates dialog is stacked on the prepared-messages dialog; close the top one.
+      const closeButton = topDialog().querySelector('button[aria-label="Close"]')
       expect(closeButton).not.toBeNull()
       await new DOMWrapper(closeButton as HTMLButtonElement).trigger('click')
       await flushPromises()
@@ -2286,6 +2302,288 @@ describe('VacancyDetailView', () => {
       expect(copiedSubject.readOnly).toBe(true)
       expect(copiedBody.readOnly).toBe(true)
       expect(putCalls).toBe(0)
+      wrapper.unmount()
+    })
+  })
+
+  describe('US-19: send via mailto', () => {
+    it('US-19: send stays disabled with the reason until a candidate is contactable', async () => {
+      stubFetch(
+        () => vacancyDetails(),
+        (url) => {
+          if (url.includes('/rounds/1/candidates')) {
+            return Promise.resolve(
+              jsonResponse([
+                candidateSummary(1),
+                bobSummary({ contactEmail: 'bob@example.com' }),
+                candidateSummary(3, {
+                  sourceSenderName: 'Fred Flagged',
+                  sourceSenderEmail: 'fred@example.com',
+                  reviewStatus: 'flagged',
+                }),
+                candidateSummary(4, {
+                  sourceSenderName: 'Hilda Hired',
+                  sourceSenderEmail: 'hilda@example.com',
+                  reviewStatus: 'shortlisted',
+                  hireOutcome: 'hired',
+                  contactEmail: 'hilda@example.com',
+                }),
+                candidateSummary(5, {
+                  sourceSenderName: 'Eve Emailless',
+                  sourceSenderEmail: 'eve@example.com',
+                  reviewStatus: 'rejected',
+                }),
+              ]),
+            )
+          }
+          return undefined
+        },
+      )
+
+      const { wrapper } = mountView()
+      await flushPromises()
+
+      const sendButtonIn = (name: string) =>
+        wrapper
+          .findAll('.crow')
+          .find((row) => row.text().includes(name))!
+          .find('button[aria-label*="Send email"]')
+
+      // The only Contactable Candidate: shortlisted on the Bench with an email.
+      const bobSend = sendButtonIn('Bob Builder')
+      expect(bobSend.attributes('aria-label')).toBe('Send email')
+      expect((bobSend.element as HTMLButtonElement).disabled).toBe(false)
+
+      // Everyone else keeps a rendered but disabled button whose label says why.
+      const blocked: Array<[string, string]> = [
+        ['Alice Applicant', 'Send email — Not yet shortlisted or rejected'],
+        ['Fred Flagged', 'Send email — Not yet shortlisted or rejected'],
+        ['Hilda Hired', 'Send email — Hire outcome already recorded'],
+        ['Eve Emailless', 'Send email — Needs an email address'],
+      ]
+      for (const [name, label] of blocked) {
+        const button = sendButtonIn(name)
+        expect(button.attributes('aria-label'), name).toBe(label)
+        expect(button.attributes('title'), name).toBe(label)
+        expect((button.element as HTMLButtonElement).disabled, name).toBe(true)
+      }
+      wrapper.unmount()
+    })
+
+    function shortlistedTemplate() {
+      return {
+        id: 1,
+        vacancyId: 1,
+        kind: 'shortlisted',
+        subject: 'Good news, {{candidate_name}}',
+        body: 'Hi {{candidate_name}}, we would like to invite you to an interview.',
+      }
+    }
+
+    function rejectedTemplate() {
+      return {
+        id: 2,
+        vacancyId: 1,
+        kind: 'rejected',
+        subject: 'Thank you, {{candidate_name}}',
+        body: 'Hi {{candidate_name}}, thank you for applying.',
+      }
+    }
+
+    it('US-19: HR opens one candidate’s prepared message and sends it from their mail client', async () => {
+      stubFetch(
+        () => vacancyDetails(),
+        emailTemplatesFetch({
+          templates: () => [shortlistedTemplate()],
+          candidates: () => [bobSummary({ contactEmail: 'bob@example.com' })],
+          onRender: () => ({
+            subject: 'Good news, Bob Builder',
+            body: 'Hi Bob Builder,\n\nWe would like to invite you to an interview.',
+          }),
+        }),
+      )
+
+      const { wrapper } = mountView()
+      await flushPromises()
+
+      const bobRow = wrapper.findAll('.crow').find((row) => row.text().includes('Bob Builder'))
+      await bobRow!.find('button[aria-label="Send email"]').trigger('click')
+      await flushPromises()
+
+      // The row action opens the same dialog as Send To All, filtered to Bob.
+      const dialog = topDialog()
+      expect(dialog.textContent).toContain('Prepared messages')
+      expect(dialog.textContent).toContain('1 candidate in Round 1')
+      expect(dialog.textContent).toContain('Bob Builder')
+      expect(dialog.textContent).toContain('Good news, Bob Builder')
+      expect(dialog.textContent).toContain('We would like to invite you to an interview.')
+
+      // RFC 6068: header values percent-encoded, body line breaks as CRLF.
+      const mailto = dialog.querySelector('a[href^="mailto:"]') as HTMLAnchorElement
+      expect(mailto).not.toBeNull()
+      expect(mailto.getAttribute('href')).toBe(
+        'mailto:bob@example.com?subject=Good%20news%2C%20Bob%20Builder&body=Hi%20Bob%20Builder%2C%0D%0A%0D%0AWe%20would%20like%20to%20invite%20you%20to%20an%20interview.',
+      )
+      wrapper.unmount()
+    })
+
+    it('US-19: Send To All prepares one message per contactable candidate and names who was left out', async () => {
+      stubFetch(
+        () => vacancyDetails(),
+        emailTemplatesFetch({
+          templates: () => [shortlistedTemplate(), rejectedTemplate()],
+          candidates: () => [
+            candidateSummary(1),
+            bobSummary({ contactEmail: 'bob@example.com' }),
+            candidateSummary(3, {
+              sourceSenderName: 'Carol Welder',
+              sourceSenderEmail: 'carol@example.com',
+              reviewStatus: 'rejected',
+              contactEmail: 'carol@example.com',
+            }),
+            candidateSummary(4, {
+              sourceSenderName: 'Hilda Hired',
+              sourceSenderEmail: 'hilda@example.com',
+              reviewStatus: 'shortlisted',
+              hireOutcome: 'hired',
+              contactEmail: 'hilda@example.com',
+            }),
+            candidateSummary(5, {
+              sourceSenderName: 'Eve Emailless',
+              sourceSenderEmail: 'eve@example.com',
+              reviewStatus: 'rejected',
+            }),
+          ],
+          onRender: (body) => {
+            const { candidateId } = body as { candidateId: number }
+            const names: Record<number, string> = { 2: 'Bob Builder', 3: 'Carol Welder' }
+            return {
+              subject: `Update for ${names[candidateId]}`,
+              body: `Dear ${names[candidateId]}`,
+            }
+          },
+        }),
+      )
+
+      const { router, wrapper } = mountView()
+      await flushPromises()
+      await openPreparedMessagesDialog(wrapper)
+
+      const dialog = topDialog()
+      // Scope is the selected round's full list; exclusions are counted with reasons.
+      expect(dialog.textContent).toContain('5 candidates in Round 1')
+      expect(dialog.textContent).toContain(
+        'Contacting 2 of 5 candidates — 1 is new or flagged, 1 already has a hire outcome.',
+      )
+
+      // One prepared message per Contactable Candidate, each rendered with their data.
+      expect(dialog.querySelectorAll('a[href^="mailto:"]')).toHaveLength(2)
+      expect(dialog.textContent).toContain('Update for Bob Builder')
+      expect(dialog.textContent).toContain('Update for Carol Welder')
+      expect(dialog.textContent).not.toContain('Hilda')
+      expect(dialog.textContent).not.toContain('Alice Applicant')
+
+      // The email-less rejected candidate is named in her own section, never silently skipped.
+      const missingSection = dialog.querySelector('[aria-label="Needs an email address"]')
+      expect(missingSection).not.toBeNull()
+      expect(missingSection!.textContent).toContain('Eve Emailless')
+
+      // The fix path jumps to her review workspace and closes the dialog.
+      await new DOMWrapper(buttonIn(missingSection as Element, 'Add email in review')).trigger(
+        'click',
+      )
+      await flushPromises()
+      expect(router.currentRoute.value.name).toBe('candidate-review')
+      expect(router.currentRoute.value.params).toMatchObject({
+        id: '1',
+        roundId: '1',
+        candidateId: '5',
+      })
+      await vi.waitFor(() => {
+        expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+      })
+      wrapper.unmount()
+    })
+
+    it('US-19: a missing template blocks that kind with a path to create it', async () => {
+      stubFetch(
+        () => vacancyDetails(),
+        emailTemplatesFetch({
+          templates: () => [rejectedTemplate()],
+          candidates: () => [
+            bobSummary({ contactEmail: 'bob@example.com' }),
+            candidateSummary(3, {
+              sourceSenderName: 'Carol Welder',
+              sourceSenderEmail: 'carol@example.com',
+              reviewStatus: 'rejected',
+              contactEmail: 'carol@example.com',
+            }),
+          ],
+          onRender: () => ({ subject: 'Update for Carol Welder', body: 'Dear Carol Welder' }),
+        }),
+      )
+
+      const { wrapper } = mountView()
+      await flushPromises()
+      await openPreparedMessagesDialog(wrapper)
+
+      const dialog = topDialog()
+      // The rejected candidate's message is prepared; the missing shortlisted kind
+      // is called out with a path forward — the app never invents default copy.
+      expect(dialog.textContent).toContain('Update for Carol Welder')
+      expect(dialog.textContent).toContain('No shortlisted template yet')
+      expect(dialog.textContent).not.toContain('bob@example.com')
+
+      // Create template stacks the templates dialog on top of the prepared list.
+      await new DOMWrapper(buttonIn(dialog, 'Create template')).trigger('click')
+      await flushPromises()
+      expect(topDialog().textContent).toContain('Email templates')
+      wrapper.unmount()
+    })
+
+    it('US-19: Copy writes the prepared message to the clipboard as To/Subject/body', async () => {
+      stubFetch(
+        () => vacancyDetails(),
+        emailTemplatesFetch({
+          templates: () => [shortlistedTemplate(), rejectedTemplate()],
+          candidates: () => [
+            bobSummary({ contactEmail: 'bob@example.com' }),
+            candidateSummary(3, {
+              sourceSenderName: 'Carol Welder',
+              sourceSenderEmail: 'carol@example.com',
+              reviewStatus: 'rejected',
+              contactEmail: 'carol@example.com',
+            }),
+          ],
+          onRender: (body) => {
+            const { candidateId } = body as { candidateId: number }
+            const names: Record<number, string> = { 2: 'Bob Builder', 3: 'Carol Welder' }
+            return {
+              subject: `Update for ${names[candidateId]}`,
+              body: `Dear ${names[candidateId]},\n\nSee you soon.`,
+            }
+          },
+        }),
+      )
+      const writeText = stubClipboard()
+
+      const { wrapper } = mountView()
+      await flushPromises()
+      await openPreparedMessagesDialog(wrapper)
+
+      const dialog = topDialog()
+      const carolRow = Array.from(dialog.querySelectorAll('li')).find((item) =>
+        item.textContent?.includes('Carol Welder'),
+      )
+      expect(carolRow, "Carol's prepared message row").toBeDefined()
+      await new DOMWrapper(buttonIn(carolRow as Element, 'Copy')).trigger('click')
+      await flushPromises()
+
+      // The clipboard fallback carries headers, a blank line, then the body; the row confirms.
+      expect(writeText).toHaveBeenCalledWith(
+        'To: carol@example.com\nSubject: Update for Carol Welder\n\nDear Carol Welder,\n\nSee you soon.',
+      )
+      expect(buttonIn(carolRow as Element, 'Copied')).toBeDefined()
       wrapper.unmount()
     })
   })

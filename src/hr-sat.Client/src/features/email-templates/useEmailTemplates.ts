@@ -10,12 +10,9 @@ import {
   type EmailTemplateWritePayload,
   type VacancyEmailTemplates,
 } from './api'
+import { emailTemplateKindLabel } from './format'
 
 export type EmailTemplatesViewState = 'loading' | 'error' | 'ready'
-
-export function emailTemplateKindLabel(kind: EmailTemplateKind): string {
-  return kind === 'shortlisted' ? 'Shortlisted' : 'Rejected'
-}
 
 function templatesByKind(items: EmailTemplate[]): VacancyEmailTemplates {
   return {
@@ -24,11 +21,6 @@ function templatesByKind(items: EmailTemplate[]): VacancyEmailTemplates {
   }
 }
 
-/**
- * Owns the two per-vacancy templates inside the email-templates dialog. Success
- * toasts live here; failures are re-thrown without a toast so the dialog can
- * surface them inline (ADR-0008 #14: errors render inline, never toast-only).
- */
 export function useEmailTemplates(vacancyId: MaybeRefOrGetter<string>) {
   const toast = useToast()
   const templates = shallowRef<VacancyEmailTemplates | null>(null)
@@ -52,7 +44,6 @@ export function useEmailTemplates(vacancyId: MaybeRefOrGetter<string>) {
     }
   }
 
-  /** Upserts one template, then patches state from the returned DTO so it cannot drift. */
   async function save(kind: EmailTemplateKind, payload: EmailTemplateWritePayload): Promise<void> {
     saving.value = true
     try {
@@ -68,7 +59,6 @@ export function useEmailTemplates(vacancyId: MaybeRefOrGetter<string>) {
     }
   }
 
-  /** Deletes one template. Failures re-throw so the section keeps the failure visible inline. */
   async function remove(kind: EmailTemplateKind): Promise<void> {
     deleting.value = true
     try {

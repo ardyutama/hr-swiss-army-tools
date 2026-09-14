@@ -57,11 +57,6 @@ export function useVacancies() {
     }
   }
 
-  /**
-   * Starts an edit prefill for the form dialog (`null` cancels a pending one).
-   * Details are best-effort: when the fetch fails, the summary-backed form stays
-   * editable. The latest call wins, so a stale response never fills the form.
-   */
   function beginEdit(vacancy: VacancySummary | null) {
     const token = ++editRequestToken
     editingDetails.value = null
@@ -79,11 +74,6 @@ export function useVacancies() {
       })
   }
 
-  /**
-   * Creates or updates a vacancy, then reloads the list so it cannot drift from
-   * the server. Re-throws failures so the view can route server field errors
-   * back into the form dialog.
-   */
   async function save(payload: VacancyWritePayload, editingId: string | null): Promise<void> {
     saving.value = true
     try {
@@ -124,10 +114,6 @@ export function useVacancies() {
     }
   }
 
-  /**
-   * Deletes a vacancy, then reloads the list. Re-throws failures without a toast
-   * so the confirm dialog can keep the failure visible inline.
-   */
   async function remove(vacancy: VacancySummary): Promise<void> {
     removing.value = true
     try {

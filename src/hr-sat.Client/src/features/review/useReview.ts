@@ -36,12 +36,6 @@ interface ReviewDecisionResult {
   nextCandidateId: string | null
 }
 
-/**
- * Owns the S4 review-workspace lifecycle: vacancy context (title, ordered
- * requirements), the candidate ordering for Prev/Next, the current candidate's
- * details, and the notes auto-save contract from ADR-0008 #9 (decision and
- * navigation silently commit pending notes — no explicit Save).
- */
 export function useReview(
   vacancyId: Ref<string>,
   roundId: Ref<string>,

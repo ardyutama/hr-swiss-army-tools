@@ -2,7 +2,7 @@
 import { shallowRef, watch } from 'vue'
 import type { CandidateSummary } from '@/features/candidates/api'
 import type { EmailTemplate, EmailTemplateKind } from '../api'
-import { emailTemplateKindLabel } from '../useEmailTemplates'
+import { emailTemplateKindLabel } from '../format'
 import { defaultPreviewCandidate, useTemplatePreview } from '../useTemplatePreview'
 import PreparedMessagePreview from './PreparedMessagePreview.vue'
 
