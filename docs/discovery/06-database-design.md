@@ -118,9 +118,10 @@ erDiagram
 ```
 
 The diagram shows ownership, not every cardinality constraint. A vacancy owns at least one
-requirement. A candidate owns at least one CV document. A vacancy can own at most one email
-template of each kind. A candidate can temporarily have no primary CV only when multiple
-PDFs require HR selection.
+requirement. A candidate may have zero or more CV documents in V1 because a no-PDF email is
+accepted and retained for manual follow-up. A vacancy can own at most one email template of
+each kind. A candidate can temporarily have no primary CV when it has multiple PDFs or no
+PDFs.
 
 ## PostgreSQL schema
 
@@ -328,7 +329,8 @@ transaction.
 - Closing warns about `new` or `flagged` candidates but is allowed; reopening enables changes.
 - Ordinary vacancy deletion succeeds only when no candidates exist. Purge is the explicit
   operation that removes a populated vacancy.
-- Candidate import validates one source email and at least one PDF before creating rows.
+- Candidate import validates one source email and retains zero or more PDF attachments before
+    creating rows; a no-PDF import is valid V1 behavior.
   Files in a batch import independently; failed files create no database records.
 - One PDF becomes primary automatically. Multiple PDFs begin without a primary selection and
   extraction remains pending until HR selects one.

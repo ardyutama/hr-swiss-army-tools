@@ -1,0 +1,17 @@
+From: Budi Santoso <budi.santoso@example.com>
+To: hiring@example.com
+Date: Tue, 01 Sep 2026 08:00:00 +0000
+Subject: Application for Field Technician - Surabaya
+Content-Type: multipart/mixed; boundary="seed-budi"
+
+--seed-budi
+Content-Type: text/plain; charset=utf-8
+
+Please find my CV attached.
+--seed-budi
+Content-Type: application/pdf; name="cv-a.pdf"
+Content-Disposition: attachment; filename="cv-a.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQK
+--seed-budi--

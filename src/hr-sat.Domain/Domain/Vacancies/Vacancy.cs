@@ -198,6 +198,26 @@ public sealed class Vacancy : Entity
             : EnsureOpenRound(roundId, requireActive: true);
     }
 
+    public Result<Candidate> ImportCandidate(CandidateImportData importData)
+    {
+        ArgumentNullException.ThrowIfNull(importData);
+
+        var roundResult = EnsureOpenRound(importData.IntakeRoundId, requireActive: false);
+        if (roundResult.IsFailure)
+        {
+            return Result<Candidate>.Failure(roundResult.Error);
+        }
+
+        var candidateResult = Candidate.Import(importData);
+        if (candidateResult.IsFailure)
+        {
+            return candidateResult;
+        }
+
+        roundResult.Value.AddCandidate(candidateResult.Value);
+        return candidateResult.Value;
+    }
+
     public Result<IntakeRound> EnsureCanRemoveCandidate(long roundId)
     {
         var openResult = VacancyLifecycleRules.EnsureCanRemoveCandidate(Status);

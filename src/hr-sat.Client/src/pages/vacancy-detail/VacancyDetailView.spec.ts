@@ -1927,7 +1927,7 @@ describe('VacancyDetailView', () => {
 
     function plumberSource() {
       return {
-        vacancyId: '9',
+        vacancyId: 9,
         vacancyTitle: 'Plumber',
         openedOn: '2026-01-15',
         subject: 'Copied subject',

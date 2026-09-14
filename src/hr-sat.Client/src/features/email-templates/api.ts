@@ -17,7 +17,7 @@ export interface VacancyEmailTemplates {
 
 /** One other vacancy owning a template of the requested kind (copy-from source). */
 export interface TemplateSource {
-  vacancyId: string
+  vacancyId: number
   vacancyTitle: string
   openedOn: string
   subject: string

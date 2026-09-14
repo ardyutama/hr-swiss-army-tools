@@ -1,6 +1,6 @@
 namespace hr_sat.Domain.Candidates;
 
-internal sealed record CandidateImportData(
+public sealed record CandidateImportData(
     long IntakeRoundId,
     string? SourceSenderName,
     string? SourceSenderEmail,

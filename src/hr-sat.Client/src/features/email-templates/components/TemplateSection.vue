@@ -40,7 +40,7 @@ watch(
 
 function onCopyPick(event: Event) {
   const select = event.target as HTMLSelectElement
-  const source = props.sources?.find((candidate) => candidate.vacancyId === select.value)
+  const source = props.sources?.find((candidate) => String(candidate.vacancyId) === select.value)
   select.value = ''
   if (source) {
     emit('copy', source)

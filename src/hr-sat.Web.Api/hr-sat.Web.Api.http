@@ -1,0 +1,81 @@
+@host = http://localhost:5086
+@vacancyTitle = REST Client Demo Vacancy
+@roundName = REST Client Round 2
+
+# @name createVacancy
+POST {{host}}/api/vacancies
+Content-Type: application/json
+
+{
+  "title": "{{vacancyTitle}}",
+  "openedOn": "2026-09-14",
+  "requirements": ["Recruitment", "Employee Relations"],
+  "neededHires": 1
+}
+
+###
+
+# @name closeInitialRound
+PUT {{host}}/api/vacancies/{{createVacancy.response.body.$.id}}/rounds/{{createVacancy.response.body.$.rounds[0].id}}/close
+
+###
+
+# @name createRound
+POST {{host}}/api/vacancies/{{createVacancy.response.body.$.id}}/rounds
+Content-Type: application/json
+
+{
+  "name": "{{roundName}}"
+}
+
+###
+
+# @name importCandidate
+POST {{host}}/api/vacancies/{{createVacancy.response.body.$.id}}/rounds/{{createRound.response.body.$.id}}/candidates/import
+Content-Type: multipart/form-data; boundary=hrsat-boundary
+
+--hrsat-boundary
+Content-Disposition: form-data; name="files"; filename="bambang-riyanto-no-attachment.eml"
+Content-Type: message/rfc822
+
+< src/hr-sat.Infrastructure/Infrastructure/Seed/Fixtures/bambang-riyanto-no-attachment.eml
+--hrsat-boundary--
+
+###
+
+# @name listCandidates
+GET {{host}}/api/vacancies/{{createVacancy.response.body.$.id}}/rounds/{{createRound.response.body.$.id}}/candidates
+
+###
+
+# @name updateReview
+PUT {{host}}/api/vacancies/{{createVacancy.response.body.$.id}}/rounds/{{createRound.response.body.$.id}}/candidates/{{listCandidates.response.body.$[0].id}}/review
+Content-Type: application/json
+
+{
+  "reviewStatus": "shortlisted",
+  "notes": "REST Client review"
+}
+
+###
+
+# @name upsertTemplate
+PUT {{host}}/api/vacancies/{{createVacancy.response.body.$.id}}/email-templates/shortlisted
+Content-Type: application/json
+
+{
+  "subject": "Next steps for {{candidate_name}}",
+  "body": "Hi {{candidate_name}}, we would like to continue your application for {{vacancy_title}}."
+}
+
+###
+
+# @name renderTemplate
+POST {{host}}/api/vacancies/{{createVacancy.response.body.$.id}}/email-templates/render
+Content-Type: application/json
+
+{
+  "candidateId": {{listCandidates.response.body.$[0].id}},
+  "subject": "Next steps for {{candidate_name}}",
+  "body": "Hi {{candidate_name}}, we would like to continue your application for {{vacancy_title}}."
+}
