@@ -57,8 +57,12 @@ The moment a record becomes read-only through its lifecycle: a round's review da
 _Avoid_: Locked, frozen
 
 **Lifecycle Conflict**:
-A refusal of an operation because the record's lifecycle state forbids it: either an attempt to change settled data (closed round, closed vacancy) or a failed lifecycle precondition (round already active, no active round, source round not yet closed). Lifecycle conflicts are expected and actionable: they surface as amber warnings whose copy tells HR how to re-express the intent through the lifecycle's own powers. Unknown conflicts and technical failures surface as red errors.
+A refusal of an operation because the record's lifecycle state forbids it: either an attempt to change settled data (closed round, closed vacancy) or a failed lifecycle precondition (round already active, no active round, source round not yet closed). Lifecycle conflicts are expected and actionable: they surface as amber warnings whose copy tells HR how to re-express the intent through the lifecycle's own powers. Unknown conflicts surface as red errors; unexpected faults that escape a flow's own handling are Technical Failures, never Lifecycle Conflicts.
 _Avoid_: settled-state error, validation failure
+
+**Technical Failure**:
+An unexpected fault that escapes a flow's own handling — a render error, an unhandled rejection, or a failed navigation. Technical failures surface as red errors: the app shell stays alive and HR can return to the Vacancy list or reload. Never used for Lifecycle Conflicts, which are expected and amber.
+_Avoid_: crash, exception, white screen
 
 **Promote**:
 Moving a new, flagged, or shortlisted-without-outcome candidate from a closed round into the active round, preserving review status, requirement reviews, and notes.

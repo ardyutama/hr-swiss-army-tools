@@ -549,10 +549,6 @@ describe('VacancyListView', () => {
     expect(header('Progress')!.attributes('aria-sort')).toBe('ascending')
 
     await header('Progress')!.find('button').trigger('click')
-    await flushPromises()
-    // DEBUG
-    console.log('desc rows', JSON.stringify(rowTitles()))
-    console.log('progress aria', header('Progress')!.attributes('aria-sort'))
     expect(rowTitles()).toEqual(['Alpha', 'Charlie', 'Bravo'])
     expect(header('Progress')!.attributes('aria-sort')).toBe('descending')
 

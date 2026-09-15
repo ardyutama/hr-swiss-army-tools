@@ -1340,7 +1340,9 @@ describe('VacancyDetailView', () => {
     await flushPromises()
     expect(document.body.textContent).toContain('Closing is permanent')
     expect(document.body.textContent).toContain('3 slots still open')
-    expect(document.body.textContent).toContain('close this round?')
+    expect(document.body.textContent).toContain(
+      'To keep hiring, open a new round after closing this one.',
+    )
 
     dialogButton('Close round')?.click()
     await flushPromises()
@@ -1666,8 +1668,8 @@ describe('VacancyDetailView', () => {
     await wrapper.find('button[aria-label="Close Round 2"]').trigger('click')
     await flushPromises()
 
-    // The confirm spells out that closing can’t be undone.
-    expect(document.body.textContent).toContain('Close Round 2?')
+    // The confirm identifies the selected round and spells out that closing can’t be undone.
+    expect(document.body.textContent).toContain('Round 2')
     expect(document.body.textContent).toContain('Closing is permanent')
     expect(document.body.textContent).toContain("can't be reopened")
 

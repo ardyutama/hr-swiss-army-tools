@@ -3,6 +3,8 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useLocalStorage } from '@vueuse/core'
 import type { NavigationMenuItem } from '@nuxt/ui'
+import TechnicalFailureView from './technical-failure/TechnicalFailureView.vue'
+import { technicalFailure } from './technical-failure/technicalFailure'
 
 const route = useRoute()
 const sidebarOpen = useLocalStorage('sidebar-open', true)
@@ -67,7 +69,8 @@ const navItems = computed<NavigationMenuItem[]>(() => [
         </template>
 
         <template #body>
-          <router-view />
+          <TechnicalFailureView v-if="technicalFailure" />
+          <router-view v-else />
         </template>
       </UDashboardPanel>
     </UDashboardGroup>

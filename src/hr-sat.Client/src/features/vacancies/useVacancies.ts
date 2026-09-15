@@ -28,16 +28,27 @@ function progressRatio(vacancy: VacancySummary): number | null {
   return totalCandidates <= 0 ? null : processedCandidates / totalCandidates
 }
 
-function compareBy(key: VacancySortKey, a: VacancySummary, b: VacancySummary): number {
+function compareBy(
+  key: VacancySortKey,
+  left: VacancySummary,
+  right: VacancySummary,
+  direction: number,
+): number {
   switch (key) {
     case 'title':
-      return a.title.localeCompare(b.title)
+      return left.title.localeCompare(right.title) * direction
     case 'opened':
-      return a.openedOn.localeCompare(b.openedOn)
+      return left.openedOn.localeCompare(right.openedOn) * direction
     case 'progress': {
-      const ra = progressRatio(a)
-      const rb = progressRatio(b)
-      return (ra ?? 2) - (rb ?? 2)
+      const leftRatio = progressRatio(left)
+      const rightRatio = progressRatio(right)
+      if (leftRatio === null) {
+        return rightRatio === null ? 0 : 1
+      }
+      if (rightRatio === null) {
+        return -1
+      }
+      return (leftRatio - rightRatio) * direction
     }
   }
 }
@@ -110,7 +121,9 @@ export function useVacancies() {
       return filteredVacancies.value
     }
     const direction = sortDirection.value === 'asc' ? 1 : -1
-    return [...filteredVacancies.value].sort((a, b) => compareBy(key, a, b) * direction)
+    return [...filteredVacancies.value].sort((left, right) =>
+      compareBy(key, left, right, direction),
+    )
   })
 
   const cvsToSort = computed(() =>
