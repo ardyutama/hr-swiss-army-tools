@@ -1,5 +1,5 @@
 import type { CandidateSummary } from '@/features/candidates/api'
-import type { VacancyProgress } from './api'
+import type { VacancyProgress, VacancyReviewCounts } from './api'
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   year: 'numeric',
@@ -19,6 +19,24 @@ export function progressPercent(progress: VacancyProgress): number {
     return 0
   }
   return Math.min(100, Math.round((progress.processedCandidates / progress.totalCandidates) * 100))
+}
+
+/** Compact per-status count line for the vacancy progress cell; zero counts are omitted. */
+export function reviewCountsText(counts: VacancyReviewCounts): string {
+  const parts: string[] = []
+  if (counts.new > 0) {
+    parts.push(`${counts.new} new`)
+  }
+  if (counts.flagged > 0) {
+    parts.push(`${counts.flagged} flagged`)
+  }
+  if (counts.shortlisted > 0) {
+    parts.push(`${counts.shortlisted} shortlisted`)
+  }
+  if (counts.rejected > 0) {
+    parts.push(`${counts.rejected} rejected`)
+  }
+  return parts.join(' · ')
 }
 
 /** Best available display name until CV extraction fills in the candidate details. */

@@ -1,20 +1,38 @@
 <script setup lang="ts">
 import StatusBadge from './StatusBadge.vue'
 import type { VacancySummary } from '../api'
-import { formatDate, progressPercent } from '../format'
+import type { SortDirection, VacancySortKey } from '../useVacancies'
+import { formatDate, progressPercent, reviewCountsText } from '../format'
 import { hiringProgressText, isFilled } from '../hiring'
 
-defineProps<{
+const props = defineProps<{
   rows: VacancySummary[]
+  sortKey: VacancySortKey | null
+  sortDirection: SortDirection
 }>()
 
 const emit = defineEmits<{
   edit: [row: VacancySummary]
   remove: [row: VacancySummary]
+  sort: [key: VacancySortKey]
 }>()
 
 // Column proportions applied via <colgroup> so the semantic table keeps a fixed layout.
-const columnWidths = ['32%', '13%', '25%', '13%', '5rem']
+const columnWidths = ['24%', '10%', '34%', '14%', '12%', '5rem']
+
+function ariaSort(key: VacancySortKey): 'ascending' | 'descending' | 'none' {
+  if (props.sortKey !== key) {
+    return 'none'
+  }
+  return props.sortDirection === 'asc' ? 'ascending' : 'descending'
+}
+
+function sortIcon(key: VacancySortKey): string {
+  if (props.sortKey !== key) {
+    return 'i-lucide-chevrons-up-down'
+  }
+  return props.sortDirection === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'
+}
 </script>
 
 <template>
@@ -25,11 +43,27 @@ const columnWidths = ['32%', '13%', '25%', '13%', '5rem']
       </colgroup>
       <thead class="vtable__head">
         <tr>
-          <th scope="col" class="vtable__col vtable__col--role border-b border-default px-2 pb-3 pt-0 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5">Vacancy</th>
-          <th scope="col" class="vtable__col vtable__col--status border-b border-default px-2 pb-3 pt-0 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5">Status</th>
-          <th scope="col" class="vtable__col vtable__col--progress border-b border-default px-2 pb-3 pt-0 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5">Candidates</th>
-          <th scope="col" class="vtable__col vtable__col--date border-b border-default px-2 pb-3 pt-0 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5">Opened</th>
-          <th scope="col" class="vtable__col vtable__col--actions border-b border-default px-2 pb-3 pt-0 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5"><span class="sr-only">Actions</span></th>
+          <th scope="col" :aria-sort="ariaSort('title')" class="vtable__col vtable__col--role border-b border-default px-2 pb-3 pt-4 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5">
+            <button type="button" class="vtable__sort inline-flex cursor-pointer items-center gap-1 uppercase tracking-[0.06em] transition-colors hover:text-highlighted" @click="emit('sort', 'title')">
+              Vacancy
+              <UIcon :name="sortIcon('title')" class="size-3.5 shrink-0" />
+            </button>
+          </th>
+          <th scope="col" class="vtable__col vtable__col--status border-b border-default px-2 pb-3 pt-4 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5">Status</th>
+          <th scope="col" :aria-sort="ariaSort('progress')" class="vtable__col vtable__col--progress border-b border-default px-2 pb-3 pt-4 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5">
+            <button type="button" class="vtable__sort inline-flex cursor-pointer items-center gap-1 uppercase tracking-[0.06em] transition-colors hover:text-highlighted" @click="emit('sort', 'progress')">
+              Progress
+              <UIcon :name="sortIcon('progress')" class="size-3.5 shrink-0" />
+            </button>
+          </th>
+          <th scope="col" class="vtable__col vtable__col--hiring border-b border-default px-2 pb-3 pt-4 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5">Hiring</th>
+          <th scope="col" :aria-sort="ariaSort('opened')" class="vtable__col vtable__col--date border-b border-default px-2 pb-3 pt-4 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5">
+            <button type="button" class="vtable__sort inline-flex cursor-pointer items-center gap-1 uppercase tracking-[0.06em] transition-colors hover:text-highlighted" @click="emit('sort', 'opened')">
+              Opened
+              <UIcon :name="sortIcon('opened')" class="size-3.5 shrink-0" />
+            </button>
+          </th>
+          <th scope="col" class="vtable__col vtable__col--actions border-b border-default px-2 pb-3 pt-4 text-left text-xs font-semibold uppercase tracking-[0.06em] text-muted first:pl-5 last:pr-5"><span class="sr-only">Actions</span></th>
         </tr>
       </thead>
 
@@ -62,15 +96,24 @@ const columnWidths = ['32%', '13%', '25%', '13%', '5rem']
                 </span>
               </div>
               <div
-                v-if="row.hiring"
-                class="flex items-center gap-2 text-xs tabular-nums text-muted"
+                v-if="reviewCountsText(row.reviewCounts)"
+                class="vrow__review-counts text-xs tabular-nums text-muted"
               >
-                <span>{{ hiringProgressText(row.hiring) }}</span>
+                {{ reviewCountsText(row.reviewCounts) }}
+              </div>
+            </div>
+          </td>
+
+          <td class="vtable__col vtable__col--hiring border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
+            <div v-if="row.hiring" class="flex flex-col gap-1.5">
+              <span class="vrow__hiring whitespace-nowrap text-sm tabular-nums text-muted">{{ hiringProgressText(row.hiring) }}</span>
+              <div>
                 <UBadge v-if="isFilled(row.hiring)" color="success" variant="subtle">
                   Filled
                 </UBadge>
               </div>
             </div>
+            <span v-else class="vrow__hiring vrow__hiring--none text-sm text-muted">—</span>
           </td>
 
           <td class="vtable__col vtable__col--date border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
@@ -79,10 +122,10 @@ const columnWidths = ['32%', '13%', '25%', '13%', '5rem']
 
           <td class="vtable__col vtable__col--actions border-b border-default px-2 py-4 text-right align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
             <div
-              v-if="row.status === 'open'"
               class="vrow__actions flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
             >
               <UButton
+                v-if="row.status === 'open'"
                 icon="i-lucide-pencil"
                 color="neutral"
                 variant="ghost"
@@ -96,8 +139,8 @@ const columnWidths = ['32%', '13%', '25%', '13%', '5rem']
                 color="error"
                 variant="ghost"
                 size="sm"
-                aria-label="Delete vacancy"
-                title="Delete vacancy"
+                aria-label="Purge vacancy"
+                title="Purge vacancy"
                 @click="emit('remove', row)"
               />
             </div>

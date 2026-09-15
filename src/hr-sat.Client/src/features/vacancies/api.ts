@@ -5,6 +5,14 @@ export interface VacancyProgress {
   totalCandidates: number
 }
 
+/** Per-status candidate counts for one vacancy, in glossary review-status terms. */
+export interface VacancyReviewCounts {
+  new: number
+  flagged: number
+  shortlisted: number
+  rejected: number
+}
+
 export interface VacancyHiring {
   neededHires: number
   activeHires: number
@@ -16,6 +24,7 @@ export interface VacancySummary {
   openedOn: string
   status: 'open' | 'closed'
   progress: VacancyProgress
+  reviewCounts: VacancyReviewCounts
   hiring?: VacancyHiring | null
 }
 
@@ -73,4 +82,8 @@ export function updateVacancy(id: string, payload: VacancyWritePayload): Promise
 
 export function deleteVacancy(id: string): Promise<void> {
   return delJson(`/api/vacancies/${id}`)
+}
+
+export function closeVacancy(id: string): Promise<VacancyDetails> {
+  return postJson<VacancyDetails>(`/api/vacancies/${id}/close`, {})
 }

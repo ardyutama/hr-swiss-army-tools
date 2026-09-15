@@ -3,16 +3,24 @@ import { shallowRef, useTemplateRef } from 'vue'
 import VacancyTable from '@/features/vacancies/components/VacancyTable.vue'
 import VacancyFormDialog from '@/features/vacancies/components/VacancyFormDialog.vue'
 import ConfirmDeleteDialog from '@/features/vacancies/components/ConfirmDeleteDialog.vue'
+import VacancyToolbar from '@/features/vacancies/components/VacancyToolbar.vue'
 import { useVacancies } from '@/features/vacancies/useVacancies'
 import type { VacancySummary, VacancyWritePayload } from '@/features/vacancies/api'
 import { problemMessage, problemMessageText } from '@/shared/problem-details'
 
 const {
-  vacancies,
   loadError,
   viewState,
-  openCount,
   cvsToSort,
+  statusFilter,
+  searchQuery,
+  statusCounts,
+  filteredVacancies,
+  clearFilters,
+  sortKey,
+  sortDirection,
+  toggleSort,
+  sortedVacancies,
   saving,
   removing,
   editingDetails,
@@ -90,48 +98,40 @@ async function confirmDelete() {
     <header class="flex items-start justify-between gap-4">
       <div class="min-w-0">
         <h1 class="text-2xl font-bold tracking-tight">Vacancies</h1>
-        <p class="mt-1 text-sm text-muted">
-          Each vacancy collects and sorts its own candidates.
-        </p>
+        <p class="mt-1 text-sm text-muted">{{ cvsToSort }} CVs to sort across all vacancies</p>
       </div>
       <UButton icon="i-lucide-plus" class="shrink-0 mt-1" @click="openCreate">
         Add vacancy
       </UButton>
     </header>
 
-    <section class="flex gap-4 flex-wrap" aria-label="Vacancy statistics">
-      <UCard class="flex-1 min-w-44 max-w-64">
-        <div class="flex flex-col gap-1">
-          <span class="text-sm font-medium text-muted">Open vacancies</span>
-          <span class="text-2xl font-bold tracking-tight text-highlighted">{{ openCount }}</span>
-        </div>
-      </UCard>
-      <UCard class="flex-1 min-w-44 max-w-64">
-        <div class="flex flex-col gap-1">
-          <span class="text-sm font-medium text-muted">CVs to sort</span>
-          <span class="text-2xl font-bold tracking-tight text-highlighted">{{ cvsToSort }}</span>
-          <span class="text-xs text-dimmed">across all vacancies</span>
-        </div>
-      </UCard>
-    </section>
-
-    <section class="rounded-xl border border-default bg-default shadow-sm py-2 min-h-88">
-      <!-- Loading -->
+    <section class="rounded-xl border border-default bg-default shadow-sm py-2">
+      <!-- Shape-matched table skeleton (ADR-0008 decision 14) -->
       <div
         v-if="viewState === 'loading'"
         class="flex flex-col"
         aria-busy="true"
         aria-label="Loading vacancies"
       >
+        <div class="flex items-center gap-4 border-b border-default px-5 pb-3 pt-1">
+          <USkeleton class="h-3 w-24" />
+          <USkeleton class="h-3 w-16" />
+          <USkeleton class="h-3 w-28" />
+          <USkeleton class="h-3 w-20" />
+          <USkeleton class="h-3 w-16" />
+          <USkeleton class="h-3 w-10" />
+        </div>
         <div
           v-for="n in 4"
           :key="n"
-          class="flex items-center gap-4 px-5 py-4 border-b border-default last:border-b-0"
+          class="flex items-center gap-4 border-b border-default px-5 py-4 last:border-b-0"
         >
-          <USkeleton class="h-4 w-1/3" />
+          <USkeleton class="h-4 w-1/4" />
           <USkeleton class="h-5 w-16 rounded-full" />
-          <USkeleton class="h-2 w-1/4 rounded-full" />
+          <USkeleton class="h-1.5 w-1/4 rounded-full" />
+          <USkeleton class="h-4 w-24" />
           <USkeleton class="h-4 w-20" />
+          <USkeleton class="h-6 w-12" />
         </div>
       </div>
 
@@ -158,8 +158,33 @@ async function confirmDelete() {
         :actions="[{ label: 'Add your first vacancy', icon: 'i-lucide-plus', onClick: openCreate }]"
       />
 
-      <!-- Data -->
-      <VacancyTable v-else :rows="vacancies ?? []" @edit="openEdit" @remove="requestDelete" />
+      <!-- Ready: toolbar row, then the filtered table or a no-match state -->
+      <template v-else>
+        <div class="border-b border-default px-5 py-3">
+          <VacancyToolbar
+            v-model:status="statusFilter"
+            v-model:query="searchQuery"
+            :counts="statusCounts"
+          />
+        </div>
+        <UEmpty
+          v-if="filteredVacancies.length === 0"
+          icon="i-lucide-search-x"
+          title="No vacancies match these filters"
+          description="Try a different search or clear the filters."
+          class="min-h-40 px-6 py-10"
+          :actions="[{ label: 'Clear filters', icon: 'i-lucide-x', onClick: clearFilters }]"
+        />
+        <VacancyTable
+          v-else
+          :rows="sortedVacancies"
+          :sort-key="sortKey"
+          :sort-direction="sortDirection"
+          @edit="openEdit"
+          @remove="requestDelete"
+          @sort="toggleSort"
+        />
+      </template>
     </section>
 
     <VacancyFormDialog

@@ -1,9 +1,20 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { CandidateSummary } from '@/features/candidates/api'
 import { candidateDisplayName } from '@/features/candidates/format'
 import type { RenderedMessage } from '../api'
 
 const candidateId = defineModel<number | null>('candidateId', { required: true })
+const candidateItems = computed(() =>
+  props.candidates.map((candidate) => ({
+    label: candidateDisplayName(candidate),
+    value: candidate.id,
+  })),
+)
+
+function onCandidatePick(candidateIdValue: number | undefined) {
+  candidateId.value = candidateIdValue ?? null
+}
 
 const props = defineProps<{
   candidates: CandidateSummary[]
@@ -36,14 +47,15 @@ const props = defineProps<{
     <template v-if="props.candidates.length > 0">
       <label class="flex flex-col gap-1.5 text-sm">
         <span class="text-xs font-medium text-muted">Preview for</span>
-        <select
-          v-model.number="candidateId"
-          class="min-h-10 rounded-xl border border-default bg-default px-3 py-2 text-sm text-highlighted outline-none focus:border-primary"
-        >
-          <option v-for="candidate in props.candidates" :key="candidate.id" :value="candidate.id">
-            {{ candidateDisplayName(candidate) }}
-          </option>
-        </select>
+        <USelect
+          :model-value="candidateId ?? undefined"
+          :items="candidateItems"
+          value-key="value"
+          label-key="label"
+          aria-label="Preview for"
+          class="w-full"
+          @update:model-value="onCandidatePick"
+        />
       </label>
 
       <UAlert

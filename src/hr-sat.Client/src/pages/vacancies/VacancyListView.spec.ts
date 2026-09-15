@@ -23,6 +23,7 @@ function vacancy(overrides: Partial<Record<string, unknown>> = {}) {
     openedOn: '2026-08-27',
     status: 'open',
     progress: { processedCandidates: 0, totalCandidates: 0 },
+    reviewCounts: { new: 0, flagged: 0, shortlisted: 0, rejected: 0 },
     ...overrides,
   }
 }
@@ -72,12 +73,89 @@ describe('VacancyListView', () => {
     const wrapper = mount(VacancyListView)
     await flushPromises()
 
+    const allChip = wrapper
+      .find('[role="group"][aria-label="Filter by vacancy status"]')
+      .findAll('button')
+      .find((chip) => chip.text().includes('All'))
+    await allChip!.trigger('click')
+
     expect(wrapper.text()).toContain('Welder')
     expect(wrapper.text()).toContain('Open')
     expect(wrapper.text()).toContain('3/30')
     expect(wrapper.text()).toContain('Forklift Operator')
     expect(wrapper.text()).toContain('Closed')
     expect(wrapper.text()).toContain('30/30')
+  })
+
+  it('US-10: the list defaults to open vacancies and the chips carry live counts', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse([
+          vacancy({ title: 'Open Welder' }),
+          vacancy({ id: '2', title: 'Closed Fitter', status: 'closed' }),
+          vacancy({ id: '3', title: 'Closed Turner', status: 'closed' }),
+        ]),
+      ),
+    )
+
+    const wrapper = mount(VacancyListView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Open Welder')
+    expect(wrapper.text()).not.toContain('Closed Fitter')
+    expect(wrapper.text()).not.toContain('Closed Turner')
+
+    const chips = wrapper
+      .find('[role="group"][aria-label="Filter by vacancy status"]')
+      .findAll('button')
+    expect(chips.find((chip) => chip.text().includes('Open'))?.text()).toContain('1')
+    expect(chips.find((chip) => chip.text().includes('Closed'))?.text()).toContain('2')
+    expect(chips.find((chip) => chip.text().includes('All'))?.text()).toContain('3')
+
+    await chips.find((chip) => chip.text().includes('Closed'))!.trigger('click')
+
+    expect(wrapper.text()).not.toContain('Open Welder')
+    expect(wrapper.text()).toContain('Closed Fitter')
+    expect(wrapper.text()).toContain('Closed Turner')
+  })
+
+  it('US-10: HR narrows the vacancy list by searching titles', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse([vacancy({ title: 'MIG Welder' }), vacancy({ id: '2', title: 'Forklift Operator' })]),
+      ),
+    )
+
+    const wrapper = mount(VacancyListView)
+    await flushPromises()
+
+    await wrapper.find('input[aria-label="Search vacancies"]').setValue('mig')
+
+    expect(wrapper.text()).toContain('MIG Welder')
+    expect(wrapper.text()).not.toContain('Forklift Operator')
+  })
+
+  it('US-10: HR clears the filters when no vacancies match', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse([vacancy({ status: 'closed' })])),
+    )
+
+    const wrapper = mount(VacancyListView)
+    await flushPromises()
+
+    // The default Open filter hides the only (closed) vacancy.
+    expect(wrapper.text()).toContain('No vacancies match these filters')
+    expect(wrapper.text()).not.toContain('Welder')
+
+    const clearButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Clear filters'))
+    await clearButton!.trigger('click')
+
+    expect(wrapper.text()).toContain('Welder')
   })
 
   it('domain: a vacancy-list load failure uses friendly retry copy', async () => {
@@ -91,13 +169,14 @@ describe('VacancyListView', () => {
     wrapper.unmount()
   })
 
-  it('US-10: hiring progress and the filled state are separate from candidate progress', async () => {
+  it('US-10: hiring progress and the filled state sit in their own column', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
         jsonResponse([
           vacancy({
             progress: { processedCandidates: 3, totalCandidates: 30 },
+            reviewCounts: { new: 27, flagged: 0, shortlisted: 2, rejected: 1 },
             hiring: { neededHires: 10, activeHires: 0 },
           }),
           vacancy({
@@ -121,14 +200,25 @@ describe('VacancyListView', () => {
     expect(wrapper.text()).toContain('0/10 hired \u00b7 10 to go')
     expect(wrapper.text()).toContain('Filled')
 
-    const v1Row = wrapper.findAll('tbody tr').find((row) => row.text().includes('No Hiring Target'))
-    expect(v1Row).toBeDefined()
-    expect(v1Row!.text()).toContain('1/4')
-    expect(v1Row!.text()).not.toContain('hired')
-    expect(v1Row!.text()).not.toContain('Filled')
+    const noTargetRow = wrapper.findAll('tbody tr').find((row) => row.text().includes('No Hiring Target'))
+    expect(noTargetRow).toBeDefined()
+    expect(noTargetRow!.text()).toContain('1/4')
+    expect(noTargetRow!.text()).toContain('—')
+    expect(noTargetRow!.text()).not.toContain('hired')
+    expect(noTargetRow!.text()).not.toContain('Filled')
+
+    // Review-count line renders under the bar and omits zero-count statuses.
+    const welderRow = wrapper.findAll('tbody tr').find((row) => row.text().includes('Welder'))
+    const countsCell = welderRow!.find('.vrow__review-counts')
+    expect(countsCell.exists()).toBe(true)
+    expect(countsCell.text()).toBe('27 new · 2 shortlisted · 1 rejected')
+    expect(countsCell.text()).not.toContain('flagged')
+    // An all-zero pipeline renders no count line at all.
+    const filledRow = wrapper.findAll('tbody tr').find((row) => row.text().includes('Filled Operator'))
+    expect(filledRow!.find('.vrow__review-counts').exists()).toBe(false)
   })
 
-  it('domain: closed vacancy is read-only — row actions are hidden', async () => {
+  it('domain: closed vacancy is read-only — it can be purged but not edited (US-11)', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(jsonResponse([vacancy({ status: 'closed' })])),
@@ -137,8 +227,15 @@ describe('VacancyListView', () => {
     const wrapper = mount(VacancyListView)
     await flushPromises()
 
+    const closedChip = wrapper
+      .find('[role="group"][aria-label="Filter by vacancy status"]')
+      .findAll('button')
+      .find((chip) => chip.text().includes('Closed'))
+    await closedChip!.trigger('click')
+
+    expect(wrapper.text()).toContain('Welder')
     expect(wrapper.find('button[aria-label="Edit vacancy"]').exists()).toBe(false)
-    expect(wrapper.find('button[aria-label="Delete vacancy"]').exists()).toBe(false)
+    expect(wrapper.find('button[aria-label="Purge vacancy"]').exists()).toBe(true)
   })
 
   it('US-9: HR creates a vacancy and sees it listed', async () => {
@@ -198,7 +295,7 @@ describe('VacancyListView', () => {
     wrapper.unmount()
   })
 
-  it('US-11: HR is told when deleting a vacancy fails and the list stays intact', async () => {
+  it('US-11: HR is told when purging a vacancy fails and the list stays intact', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'DELETE') {
         return Promise.resolve(jsonResponse({ title: 'Server error' }, 500))
@@ -210,10 +307,10 @@ describe('VacancyListView', () => {
     const wrapper = mount(VacancyListView)
     await flushPromises()
 
-    await wrapper.find('button[aria-label="Delete vacancy"]').trigger('click')
+    await wrapper.find('button[aria-label="Purge vacancy"]').trigger('click')
     await flushPromises()
 
-    dialogButton('Delete vacancy')?.click()
+    dialogButton('Purge vacancy')?.click()
     await flushPromises()
 
     // Dialog stays open with the error; the loaded list is untouched.
@@ -222,6 +319,49 @@ describe('VacancyListView', () => {
     expect(document.body.textContent).toContain("can't be undone")
     expect(wrapper.text()).toContain('Welder')
     expect(wrapper.text()).not.toContain("Couldn't load vacancies")
+
+    wrapper.unmount()
+  })
+
+  it('US-11: the purge dialog states it removes the vacancy together with its candidate information', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse([vacancy()])))
+
+    const wrapper = mount(VacancyListView)
+    await flushPromises()
+
+    await wrapper.find('button[aria-label="Purge vacancy"]').trigger('click')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('Purge vacancy?')
+    expect(document.body.textContent).toContain('together with all candidate information it owns')
+    expect(dialogButton('Purge vacancy')).toBeDefined()
+
+    wrapper.unmount()
+  })
+
+  it('US-11: HR purges a vacancy and sees it gone from the list', async () => {
+    let purged = false
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'DELETE') {
+        purged = true
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      return Promise.resolve(jsonResponse(purged ? [] : [vacancy()]))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mount(VacancyListView)
+    await flushPromises()
+
+    await wrapper.find('button[aria-label="Purge vacancy"]').trigger('click')
+    await flushPromises()
+    dialogButton('Purge vacancy')?.click()
+    await flushPromises()
+
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Vacancy "Welder" purged successfully', color: 'success' }),
+    )
+    expect(wrapper.text()).toContain('No vacancies yet')
 
     wrapper.unmount()
   })
@@ -357,6 +497,65 @@ describe('VacancyListView', () => {
     expect(sentBody).toEqual(
       expect.objectContaining({ neededHires: null }),
     )
+    wrapper.unmount()
+  })
+
+  it('US-10: HR sorts the vacancy list by title, opened date, and progress', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse([
+          vacancy({ title: 'Charlie', openedOn: '2026-08-27', progress: { processedCandidates: 3, totalCandidates: 30 } }),
+          vacancy({ id: '2', title: 'Alpha', openedOn: '2026-09-01', progress: { processedCandidates: 2, totalCandidates: 4 } }),
+          vacancy({ id: '3', title: 'Bravo', openedOn: '2026-08-20', progress: { processedCandidates: 0, totalCandidates: 0 } }),
+        ]),
+      ),
+    )
+
+    const wrapper = mount(VacancyListView)
+    await flushPromises()
+
+    const rowTitles = () =>
+      wrapper.findAll('tbody tr').map((row) => row.find('.vrow__title').text())
+    const header = (text: string) =>
+      wrapper.findAll('th').find((th) => th.text().includes(text))
+
+    // Default: server order, no sort announced.
+    expect(rowTitles()).toEqual(['Charlie', 'Alpha', 'Bravo'])
+    expect(header('Vacancy')!.attributes('aria-sort')).toBe('none')
+
+    // Title: asc → desc → back to default.
+    await header('Vacancy')!.find('button').trigger('click')
+    expect(rowTitles()).toEqual(['Alpha', 'Bravo', 'Charlie'])
+    expect(header('Vacancy')!.attributes('aria-sort')).toBe('ascending')
+
+    await header('Vacancy')!.find('button').trigger('click')
+    expect(rowTitles()).toEqual(['Charlie', 'Bravo', 'Alpha'])
+    expect(header('Vacancy')!.attributes('aria-sort')).toBe('descending')
+
+    await header('Vacancy')!.find('button').trigger('click')
+    expect(rowTitles()).toEqual(['Charlie', 'Alpha', 'Bravo'])
+    expect(header('Vacancy')!.attributes('aria-sort')).toBe('none')
+
+    // Opened date: business date order, not creation order.
+    await header('Opened')!.find('button').trigger('click')
+    expect(rowTitles()).toEqual(['Bravo', 'Charlie', 'Alpha'])
+    expect(header('Opened')!.attributes('aria-sort')).toBe('ascending')
+    expect(header('Vacancy')!.attributes('aria-sort')).toBe('none')
+
+    // Progress: processed ratio; a candidate-less vacancy ranks last.
+    await header('Progress')!.find('button').trigger('click')
+    expect(rowTitles()).toEqual(['Charlie', 'Alpha', 'Bravo'])
+    expect(header('Progress')!.attributes('aria-sort')).toBe('ascending')
+
+    await header('Progress')!.find('button').trigger('click')
+    await flushPromises()
+    // DEBUG
+    console.log('desc rows', JSON.stringify(rowTitles()))
+    console.log('progress aria', header('Progress')!.attributes('aria-sort'))
+    expect(rowTitles()).toEqual(['Alpha', 'Charlie', 'Bravo'])
+    expect(header('Progress')!.attributes('aria-sort')).toBe('descending')
+
     wrapper.unmount()
   })
 })

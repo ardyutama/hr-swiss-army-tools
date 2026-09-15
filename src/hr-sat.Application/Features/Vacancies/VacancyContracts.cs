@@ -6,6 +6,9 @@ public sealed record VacancyRequirementResponse(long Id, string Phrase, int Posi
 
 public sealed record VacancyProgressResponse(int ProcessedCandidates, int TotalCandidates);
 
+/// <summary>Per-status candidate counts for one vacancy, in glossary review-status terms.</summary>
+public sealed record VacancyReviewCountsResponse(int New, int Flagged, int Shortlisted, int Rejected);
+
 public sealed record VacancyHiringResponse(int NeededHires, int ActiveHires);
 
 public sealed record VacancyRoundResponse(
@@ -73,4 +76,5 @@ public sealed record VacancySummaryResponse(
     DateOnly OpenedOn,
     string Status,
     VacancyProgressResponse Progress,
+    VacancyReviewCountsResponse ReviewCounts,
     VacancyHiringResponse? Hiring);

@@ -656,6 +656,56 @@ describe('VacancyDetailView', () => {
     wrapper.unmount()
   })
 
+  it('domain: HR closes a vacancy and it becomes read-only', async () => {
+    let closed = false
+    stubFetch(
+      () =>
+        vacancyDetails(
+          closed
+            ? { status: 'closed', closedAt: '2026-09-15T00:00:00Z' }
+            : {},
+        ),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/vacancies/1/close')) {
+          closed = true
+          return Promise.resolve(
+            jsonResponse(vacancyDetails({ status: 'closed', closedAt: '2026-09-15T00:00:00Z' })),
+          )
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    // Open vacancy offers the close affordance.
+    const closeButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Close vacancy'))
+    expect(closeButton, 'close affordance on an open vacancy').toBeDefined()
+    await closeButton!.trigger('click')
+    await flushPromises()
+
+    // The confirm spells out what closing means.
+    expect(document.body.textContent).toContain('Close vacancy')
+    expect(document.body.textContent).toContain('read-only')
+
+    dialogButton('Close vacancy')?.click()
+    await flushPromises()
+
+    // After closing, the vacancy reads closed and the affordance is gone.
+    expect(closed).toBe(true)
+    expect(wrapper.text()).toContain('Closed')
+    expect(
+      wrapper.findAll('button').filter((button) => button.text().includes('Close vacancy')),
+    ).toHaveLength(0)
+    wrapper.unmount()
+  })
+
   it('US-14: HR filters by review-status chips with live counts, combined AND with search', async () => {
     stubFetch(
       () => vacancyDetails(),
@@ -1170,10 +1220,18 @@ describe('VacancyDetailView', () => {
     expect(dialog?.textContent).toContain('Oldest Applicant')
     expect(dialog?.textContent).not.toContain('Alice Applicant')
 
-    const sourceRound = new DOMWrapper(
-      document.body.querySelector('select[aria-label="Source round"]') as HTMLSelectElement,
+    const sourceRoundTrigger = document.body.querySelector('[aria-label="Source round"]')
+    expect(sourceRoundTrigger?.tagName).toBe('BUTTON')
+    await new DOMWrapper(sourceRoundTrigger as HTMLButtonElement).trigger('keydown', {
+      key: 'ArrowDown',
+    })
+    await flushPromises()
+
+    const sourceRoundOption = Array.from(document.body.querySelectorAll('[role="option"]')).find(
+      (option) => option.textContent?.includes('Round 2 — Second wave'),
     )
-    await sourceRound.setValue('2')
+    expect(sourceRoundOption).toBeDefined()
+    await new DOMWrapper(sourceRoundOption as HTMLElement).trigger('keydown', { key: 'Enter' })
     await flushPromises()
     expect(document.body.textContent).toContain('Alice Applicant')
     expect(document.body.textContent).toContain('Bob Flagged')
@@ -1981,6 +2039,18 @@ describe('VacancyDetailView', () => {
     return button as HTMLButtonElement
   }
 
+  async function selectMenuOption(trigger: Element, optionLabel: string) {
+    await new DOMWrapper(trigger).trigger('keydown', { key: 'ArrowDown' })
+    await flushPromises()
+
+    const option = Array.from(document.body.querySelectorAll('[role="option"]')).find((candidate) =>
+      candidate.textContent?.includes(optionLabel),
+    )
+    expect(option).toBeDefined()
+    await new DOMWrapper(option as HTMLElement).trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+  }
+
   /** Opens the prepared-messages dialog through the header's Send To All button. */
   async function openPreparedMessagesDialog(wrapper: VueWrapper) {
     const button = wrapper
@@ -2131,6 +2201,18 @@ describe('VacancyDetailView', () => {
       const viewer = topDialog()
       expect(viewer.textContent).toContain('Prepared message')
       expect(viewer.textContent).toContain('Good news, Bob Builder')
+
+      const previewPicker = viewer.querySelector('[aria-label="Preview for"]')
+      expect(previewPicker).not.toBeNull()
+      vi.useFakeTimers()
+      try {
+        await selectMenuOption(previewPicker as HTMLElement, 'Alice Applicant')
+        await vi.advanceTimersByTimeAsync(350)
+        await flushPromises()
+      } finally {
+        vi.useRealTimers()
+      }
+      expect(renderBody).toMatchObject({ candidateId: 1 })
       wrapper.unmount()
     })
 
@@ -2153,8 +2235,9 @@ describe('VacancyDetailView', () => {
 
       const section = templateSection('Shortlisted template')
       expect(section.textContent).toContain('Copy from a previous vacancy')
-      await new DOMWrapper(section.querySelector('select') as HTMLElement).setValue('9')
-      await flushPromises()
+      const copyPicker = section.querySelector('[aria-label="Copy from a previous vacancy"]')
+      expect(copyPicker).not.toBeNull()
+      await selectMenuOption(copyPicker as HTMLElement, 'Plumber')
 
       const editor = topDialog()
       expect(editor.textContent).toContain('Copied from Plumber')
@@ -2189,8 +2272,9 @@ describe('VacancyDetailView', () => {
       await openEmailTemplatesDialog(wrapper)
 
       const section = templateSection('Shortlisted template')
-      await new DOMWrapper(section.querySelector('select') as HTMLElement).setValue('9')
-      await flushPromises()
+      const copyPicker = section.querySelector('[aria-label="Copy from a previous vacancy"]')
+      expect(copyPicker).not.toBeNull()
+      await selectMenuOption(copyPicker as HTMLElement, 'Plumber')
 
       const editor = topDialog()
       await new DOMWrapper(buttonIn(editor, 'Create template')).trigger('click')
@@ -2287,10 +2371,9 @@ describe('VacancyDetailView', () => {
       expect(rejected.textContent).toContain('No rejected template yet.')
       expect(rejected.textContent).not.toContain('Create template')
       // Copy-from stays available on a closed vacancy.
-      const copyPicker = rejected.querySelector('select') as HTMLSelectElement
+      const copyPicker = rejected.querySelector('[aria-label="Copy from a previous vacancy"]')
       expect(copyPicker).not.toBeNull()
-      await new DOMWrapper(copyPicker).setValue('9')
-      await flushPromises()
+      await selectMenuOption(copyPicker as HTMLElement, 'Plumber')
 
       const copiedSource = topDialog()
       expect(copiedSource.textContent).toContain('Template copied from Plumber')

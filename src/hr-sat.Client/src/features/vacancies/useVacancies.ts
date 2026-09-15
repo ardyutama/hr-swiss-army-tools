@@ -16,6 +16,32 @@ import { vacancyFormFieldKeys } from './validation'
 
 export type VacanciesViewState = 'loading' | 'error' | 'empty' | 'ready'
 
+export type VacancyStatusFilter = 'open' | 'closed' | 'all'
+
+export type VacancySortKey = 'title' | 'opened' | 'progress'
+
+export type SortDirection = 'asc' | 'desc'
+
+/** Processed ratio used for progress sorting; a vacancy with no candidates always ranks last. */
+function progressRatio(vacancy: VacancySummary): number | null {
+  const { processedCandidates, totalCandidates } = vacancy.progress
+  return totalCandidates <= 0 ? null : processedCandidates / totalCandidates
+}
+
+function compareBy(key: VacancySortKey, a: VacancySummary, b: VacancySummary): number {
+  switch (key) {
+    case 'title':
+      return a.title.localeCompare(b.title)
+    case 'opened':
+      return a.openedOn.localeCompare(b.openedOn)
+    case 'progress': {
+      const ra = progressRatio(a)
+      const rb = progressRatio(b)
+      return (ra ?? 2) - (rb ?? 2)
+    }
+  }
+}
+
 export function useVacancies() {
   const toast = useToast()
   const vacancies = shallowRef<VacancySummary[] | null>(null)
@@ -23,6 +49,10 @@ export function useVacancies() {
   const saving = shallowRef(false)
   const removing = shallowRef(false)
   const editingDetails = shallowRef<VacancyDetails | null>(null)
+  const statusFilter = shallowRef<VacancyStatusFilter>('open')
+  const searchQuery = shallowRef('')
+  const sortKey = shallowRef<VacancySortKey | null>(null)
+  const sortDirection = shallowRef<SortDirection>('asc')
   let editRequestToken = 0
 
   const loading = computed(() => vacancies.value === null && loadError.value === null)
@@ -37,9 +67,51 @@ export function useVacancies() {
     return (vacancies.value ?? []).length === 0 ? 'empty' : 'ready'
   })
 
-  const openCount = computed(
-    () => (vacancies.value ?? []).filter((v) => v.status === 'open').length,
-  )
+  const statusCounts = computed(() => {
+    const all = vacancies.value ?? []
+    return {
+      open: all.filter((v) => v.status === 'open').length,
+      closed: all.filter((v) => v.status === 'closed').length,
+    }
+  })
+
+  const filteredVacancies = computed<VacancySummary[]>(() => {
+    const query = searchQuery.value.trim().toLowerCase()
+    return (vacancies.value ?? []).filter((v) => {
+      if (statusFilter.value !== 'all' && v.status !== statusFilter.value) {
+        return false
+      }
+      return query === '' || v.title.toLowerCase().includes(query)
+    })
+  })
+
+  function clearFilters() {
+    statusFilter.value = 'all'
+    searchQuery.value = ''
+  }
+
+  /** Three-state header cycle: asc → desc → back to the default server order. */
+  function toggleSort(key: VacancySortKey) {
+    if (sortKey.value !== key) {
+      sortKey.value = key
+      sortDirection.value = 'asc'
+      return
+    }
+    if (sortDirection.value === 'asc') {
+      sortDirection.value = 'desc'
+      return
+    }
+    sortKey.value = null
+  }
+
+  const sortedVacancies = computed<VacancySummary[]>(() => {
+    const key = sortKey.value
+    if (key === null) {
+      return filteredVacancies.value
+    }
+    const direction = sortDirection.value === 'asc' ? 1 : -1
+    return [...filteredVacancies.value].sort((a, b) => compareBy(key, a, b) * direction)
+  })
 
   const cvsToSort = computed(() =>
     (vacancies.value ?? []).reduce(
@@ -118,7 +190,7 @@ export function useVacancies() {
     removing.value = true
     try {
       await deleteVacancy(vacancy.id)
-      toast.add({ title: `Vacancy "${vacancy.title}" deleted successfully`, color: 'success' })
+      toast.add({ title: `Vacancy "${vacancy.title}" purged successfully`, color: 'success' })
       await load()
     } catch (error) {
       const message = problemMessage(error, 'Something went wrong')
@@ -138,8 +210,16 @@ export function useVacancies() {
     loadError,
     loading,
     viewState,
-    openCount,
     cvsToSort,
+    statusFilter,
+    searchQuery,
+    statusCounts,
+    filteredVacancies,
+    clearFilters,
+    sortKey,
+    sortDirection,
+    toggleSort,
+    sortedVacancies,
     saving,
     removing,
     editingDetails,

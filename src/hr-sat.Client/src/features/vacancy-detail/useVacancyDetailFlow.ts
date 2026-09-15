@@ -14,6 +14,7 @@ import type { VacancyRound } from '@/features/vacancies/api'
 import { progressPercent } from '@/features/vacancies/format'
 import { hiringShortage } from '@/features/vacancies/hiring'
 import { problemMessage, problemMessageText } from '@/shared/problem-details'
+import { useCloseVacancy } from './useCloseVacancy'
 import { useVacancyDetail } from './useVacancyDetail'
 
 export function useVacancyDetailFlow(
@@ -70,6 +71,8 @@ export function useVacancyDetailFlow(
   const candidatesReadonly = computed(() => isClosed.value || selectedRoundClosed.value)
   const canImport = computed(() => !candidatesReadonly.value && activeRound.value !== null)
   const canOpenRound = computed(() => !isClosed.value && canCreateRound.value)
+
+  const { closing: closingVacancy, close: closeVacancyAction } = useCloseVacancy(vacancy, load)
 
   const {
     candidates,
@@ -234,6 +237,9 @@ export function useVacancyDetailFlow(
       load,
       progress,
       vacancyRequirements,
+      isClosed,
+      closingVacancy,
+      closeVacancy: closeVacancyAction,
     },
     rounds: {
       rounds,

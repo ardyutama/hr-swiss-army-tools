@@ -17,6 +17,7 @@ import PreparedMessageListDialog from '@/features/prepared-messages/components/P
 import { candidateFilterQuery, candidateFilterStateFromQuery } from '@/features/candidates/filter'
 import { useActionDialog } from '@/shared/useActionDialog'
 import { useVacancyDetailFlow } from '@/features/vacancy-detail/useVacancyDetailFlow'
+import CloseVacancyDialog from '@/features/vacancy-detail/components/CloseVacancyDialog.vue'
 import { formatDate } from '@/features/vacancies/format'
 import type { CandidateSummary } from '@/features/candidates/api'
 import type { VacancyRound } from '@/features/vacancies/api'
@@ -37,6 +38,9 @@ const {
     load,
     progress,
     vacancyRequirements,
+    isClosed,
+    closingVacancy,
+    closeVacancy,
   },
   rounds: {
     rounds,
@@ -133,6 +137,11 @@ const {
   request: requestCloseRoundDialog,
   confirm: confirmCloseRound,
 } = useActionDialog<VacancyRound>()
+const {
+  open: closeVacancyOpen,
+  request: requestCloseVacancy,
+  confirm: confirmCloseVacancy,
+} = useActionDialog()
 
 function openReviewFromPrepared(candidate: CandidateSummary) {
   preparedOpen.value = false
@@ -157,6 +166,10 @@ async function onCreateRoundSubmit(payload: { name: string | null }) {
 
 function requestCloseRound(round: VacancyRound) {
   requestCloseRoundDialog(round)
+}
+
+async function confirmCloseVacancyDialog() {
+  await confirmCloseVacancy(() => closeVacancy())
 }
 
 async function confirmCloseRoundDialog() {
@@ -260,6 +273,15 @@ function openReview(candidate: CandidateSummary) {
               @click="openPrepared()"
             >
               Send email to all candidates
+            </UButton>
+            <UButton
+              v-if="!isClosed"
+              color="error"
+              variant="ghost"
+              icon="i-lucide-lock"
+              @click="requestCloseVacancy()"
+            >
+              Close vacancy
             </UButton>
           </div>
         </div>
@@ -430,6 +452,12 @@ function openReview(candidate: CandidateSummary) {
       :shortage="roundShortage"
       :closing="closingRound"
       @confirm="confirmCloseRoundDialog"
+    />
+    <CloseVacancyDialog
+      v-model:open="closeVacancyOpen"
+      :vacancy="vacancy"
+      :closing="closingVacancy"
+      @confirm="confirmCloseVacancyDialog"
     />
     <PromoteCandidatesDialog
       v-model:open="promoteOpen"

@@ -19,6 +19,15 @@ internal static class VacancyProgress
                     candidate.ReviewStatus == CandidateReviewStatus.Shortlisted ||
                     candidate.ReviewStatus == CandidateReviewStatus.Rejected),
                 vacancy.Rounds.SelectMany(round => round.Candidates).Count()),
+            new VacancyReviewCountsResponse(
+                vacancy.Rounds.SelectMany(round => round.Candidates).Count(candidate =>
+                    candidate.ReviewStatus == CandidateReviewStatus.New),
+                vacancy.Rounds.SelectMany(round => round.Candidates).Count(candidate =>
+                    candidate.ReviewStatus == CandidateReviewStatus.Flagged),
+                vacancy.Rounds.SelectMany(round => round.Candidates).Count(candidate =>
+                    candidate.ReviewStatus == CandidateReviewStatus.Shortlisted),
+                vacancy.Rounds.SelectMany(round => round.Candidates).Count(candidate =>
+                    candidate.ReviewStatus == CandidateReviewStatus.Rejected)),
             vacancy.NeededHires.HasValue
                 ? new VacancyHiringResponse(
                     vacancy.NeededHires.Value,

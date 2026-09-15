@@ -29,6 +29,13 @@ const emptySentence = computed(
 )
 
 const confirmingDelete = shallowRef(false)
+const selectedSourceId = shallowRef<number | null>(null)
+const copyItems = computed(() =>
+  (props.sources ?? []).map((source) => ({
+    label: `${source.vacancyTitle} — ${formatDate(source.openedOn)}`,
+    value: source.vacancyId,
+  })),
+)
 
 // A successful delete flips the template to null — leave the confirm state with it.
 watch(
@@ -38,10 +45,13 @@ watch(
   },
 )
 
-function onCopyPick(event: Event) {
-  const select = event.target as HTMLSelectElement
-  const source = props.sources?.find((candidate) => String(candidate.vacancyId) === select.value)
-  select.value = ''
+function onCopyPick(sourceId: number | undefined) {
+  if (sourceId === undefined) {
+    return
+  }
+
+  const source = props.sources?.find((candidate) => candidate.vacancyId === sourceId)
+  selectedSourceId.value = null
   if (source) {
     emit('copy', source)
   }
@@ -145,15 +155,16 @@ function onCopyPick(event: Event) {
 
       <label v-else class="flex items-center gap-2">
         <span class="shrink-0 text-xs font-medium text-muted">Copy from a previous vacancy</span>
-        <select
-          class="min-h-10 min-w-0 flex-1 rounded-xl border border-default bg-default px-3 py-2 text-sm text-highlighted outline-none focus:border-primary"
-          @change="onCopyPick"
-        >
-          <option value="" disabled selected>Choose a vacancy…</option>
-          <option v-for="source in props.sources ?? []" :key="source.vacancyId" :value="source.vacancyId">
-            {{ source.vacancyTitle }} — {{ formatDate(source.openedOn) }}
-          </option>
-        </select>
+        <USelect
+          :model-value="selectedSourceId ?? undefined"
+          :items="copyItems"
+          value-key="value"
+          label-key="label"
+          placeholder="Choose a vacancy…"
+          aria-label="Copy from a previous vacancy"
+          class="min-w-0 flex-1"
+          @update:model-value="onCopyPick"
+        />
       </label>
     </div>
   </section>
