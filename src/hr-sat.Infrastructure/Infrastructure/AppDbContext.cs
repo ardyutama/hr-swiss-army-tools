@@ -24,6 +24,7 @@ public sealed class AppDbContext(
     public DbSet<CvDocument> CvDocuments => Set<CvDocument>();
     public DbSet<PendingFileDeletion> PendingFileDeletions => Set<PendingFileDeletion>();
     public DbSet<EmailTemplate> EmailTemplates => Set<EmailTemplate>();
+    public DbSet<FormLayout> FormLayouts => Set<FormLayout>();
 
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken) =>
         Database.BeginTransactionAsync(cancellationToken);
@@ -84,5 +85,6 @@ public sealed class AppDbContext(
         modelBuilder.Entity<CandidateRequirementReview>().Ignore(item => item.DomainEvents);
         modelBuilder.Entity<CvDocument>().Ignore(item => item.DomainEvents);
         modelBuilder.Entity<EmailTemplate>().Ignore(item => item.DomainEvents);
+        modelBuilder.Entity<FormLayout>().Ignore(item => item.DomainEvents);
     }
 }

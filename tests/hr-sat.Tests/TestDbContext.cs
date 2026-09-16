@@ -30,6 +30,7 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
     public DbSet<CvDocument> CvDocuments => Set<CvDocument>();
     public DbSet<PendingFileDeletion> PendingFileDeletions => Set<PendingFileDeletion>();
     public DbSet<EmailTemplate> EmailTemplates => Set<EmailTemplate>();
+    public DbSet<FormLayout> FormLayouts => Set<FormLayout>();
 
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken) =>
         Database.BeginTransactionAsync(cancellationToken);
@@ -183,6 +184,20 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
                 .HasForeignKey(template => template.VacancyId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+
+            modelBuilder.Entity<FormLayout>(entity =>
+            {
+                entity.HasKey(layout => layout.Id);
+                entity.Property(layout => layout.Id).ValueGeneratedOnAdd();
+                entity.Property(layout => layout.HeaderSnapshot)
+                .HasConversion(
+                    headers => JsonSerializer.Serialize(headers),
+                    json => JsonSerializer.Deserialize<string[]>(json) ?? Array.Empty<string>());
+                entity.HasOne<Vacancy>()
+                .WithOne(vacancy => vacancy.FormLayout)
+                .HasForeignKey<FormLayout>(layout => layout.VacancyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            });
     }
 
     public override async ValueTask DisposeAsync()

@@ -57,6 +57,19 @@ internal sealed class ImportFormCommandHandler(
         IntakeRound round,
         CancellationToken cancellationToken)
     {
+        var hasValidFormLayout = await dbContext.FormLayouts
+            .AsNoTracking()
+            .AnyAsync(
+                layout => layout.VacancyId == command.VacancyId &&
+                    layout.NameColumnOrdinal.HasValue &&
+                    layout.ContactEmailColumnOrdinal.HasValue,
+                cancellationToken);
+        if (!hasValidFormLayout)
+        {
+            return Result<ImportFormResponse>.Failure(
+                CandidateErrors.FormLayoutRequired(command.VacancyId));
+        }
+
         ParsedFormCsv parsedCsv;
         try
         {
@@ -75,26 +88,37 @@ internal sealed class ImportFormCommandHandler(
                 CandidateErrors.InvalidFormCsv("The CSV could not be read."));
         }
 
-        var currentResponses = await (
+        var currentRoundResponses = await (
             from response in dbContext.CandidateFormResponses
             join candidate in dbContext.Candidates
                 on response.CandidateId equals candidate.Id
-            join candidateRound in dbContext.IntakeRounds
-                on candidate.IntakeRoundId equals candidateRound.Id
-            where candidateRound.VacancyId == command.VacancyId && response.IsCurrent
-            select new CurrentFormResponse(response, candidate, candidateRound.Id))
+            where candidate.IntakeRoundId == round.Id && response.IsCurrent
+            select new CurrentFormResponse(response, candidate))
             .ToListAsync(cancellationToken);
-        var currentResponsesByKey = currentResponses
-            .Where(item => item.RoundId == round.Id)
+        var currentResponsesByKey = currentRoundResponses
             .Where(item => item.Response.IdentityKey is not null)
             .GroupBy(item => item.Response.IdentityKey!, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Single(), StringComparer.Ordinal);
-        var formEmailCandidateIdsByKey = currentResponses
-            .Where(item => CandidateFormIdentity.IsEmailKey(item.Response.IdentityKey))
-            .GroupBy(item => item.Response.IdentityKey!, StringComparer.Ordinal)
+        var vacancyFormEmailIdentities = await (
+            from response in dbContext.CandidateFormResponses.AsNoTracking()
+            join candidate in dbContext.Candidates.AsNoTracking()
+                on response.CandidateId equals candidate.Id
+            join candidateRound in dbContext.IntakeRounds.AsNoTracking()
+                on candidate.IntakeRoundId equals candidateRound.Id
+            where candidateRound.VacancyId == command.VacancyId &&
+                response.IsCurrent && response.IdentityKey != null
+            select new
+            {
+                response.IdentityKey,
+                CandidateId = candidate.Id
+            })
+            .ToListAsync(cancellationToken);
+        var formEmailCandidateIdsByKey = vacancyFormEmailIdentities
+            .Where(item => CandidateFormIdentity.IsEmailKey(item.IdentityKey))
+            .GroupBy(item => item.IdentityKey!, StringComparer.Ordinal)
             .ToDictionary(
                 group => group.Key,
-                group => group.Select(item => item.Candidate.Id).ToHashSet(),
+                group => group.Select(item => item.CandidateId).ToHashSet(),
                 StringComparer.Ordinal);
         var emailCandidateKeys = (await (
                 from candidate in dbContext.Candidates
@@ -350,6 +374,5 @@ internal sealed class ImportFormCommandHandler(
 
     private sealed record CurrentFormResponse(
         CandidateFormResponse Response,
-        Candidate Candidate,
-        long RoundId);
+        Candidate Candidate);
 }

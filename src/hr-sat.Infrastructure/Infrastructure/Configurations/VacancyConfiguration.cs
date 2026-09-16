@@ -73,5 +73,9 @@ internal sealed class VacancyConfiguration : IEntityTypeConfiguration<Vacancy>
             .OnDelete(DeleteBehavior.Cascade);
         entity.Navigation(vacancy => vacancy.EmailTemplates)
             .UsePropertyAccessMode(PropertyAccessMode.Field);
+        entity.HasOne(vacancy => vacancy.FormLayout)
+            .WithOne()
+            .HasForeignKey<FormLayout>(layout => layout.VacancyId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

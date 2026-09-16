@@ -35,6 +35,5 @@ public sealed record CandidateFormResponseResponse(
     IReadOnlyList<string> Cells,
     string FormTimestampRaw,
     DateTimeOffset? FormTimestampParsed,
-    string? IdentityKey,
     bool IsCurrent,
     DateTimeOffset ImportedAt);

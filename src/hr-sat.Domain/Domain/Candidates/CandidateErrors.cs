@@ -20,6 +20,10 @@ public static class CandidateErrors
                 ["file"] = [message]
             });
 
+    public static Error FormLayoutRequired(long vacancyId) => Error.Conflict(
+        "Candidates.FormLayoutRequired",
+        $"Vacancy '{vacancyId}' must have a valid Form Layout with Name and Contact Email bindings before form responses can be imported.");
+
     public static Error SourceEmailAlreadyInRound(IEnumerable<long> candidateIds) => Error.Conflict(
         "Candidates.SourceEmailAlreadyInRound",
         $"The source email for candidate id(s) '{string.Join(", ", candidateIds)}' already exists in the target round.");

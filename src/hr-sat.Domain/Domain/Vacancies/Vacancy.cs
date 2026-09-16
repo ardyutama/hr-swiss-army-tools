@@ -10,6 +10,7 @@ public sealed class Vacancy : Entity
     private readonly List<VacancyRequirement> _requirements = [];
     private readonly List<IntakeRound> _rounds = [];
     private readonly List<EmailTemplate> _emailTemplates = [];
+    private FormLayout? _formLayout;
 
     private Vacancy()
     {
@@ -32,6 +33,7 @@ public sealed class Vacancy : Entity
     public IReadOnlyList<VacancyRequirement> Requirements => _requirements;
     public IReadOnlyList<IntakeRound> Rounds => _rounds;
     public IReadOnlyList<EmailTemplate> EmailTemplates => _emailTemplates;
+    public FormLayout? FormLayout => _formLayout;
     public IntakeRound? ActiveRound => _rounds.SingleOrDefault(round => round.IsOpen);
 
     public Result<IntakeRound> CreateRound(string? name)
@@ -102,6 +104,34 @@ public sealed class Vacancy : Entity
         NeededHires = neededHires;
         ReplaceRequirements(requirementList.Value);
         return Result.Success();
+    }
+
+    public Result<FormLayout> UpsertFormLayout(FormLayoutDefinition definition)
+    {
+        var openResult = VacancyLifecycleRules.EnsureOpen(
+            Status,
+            "A closed vacancy must be reopened before its Form Layout can be changed.");
+        if (openResult.IsFailure)
+        {
+            return Result<FormLayout>.Failure(openResult.Error);
+        }
+
+        if (_formLayout is null)
+        {
+            var createResult = FormLayout.Create(Id, definition);
+            if (createResult.IsFailure)
+            {
+                return createResult;
+            }
+
+            _formLayout = createResult.Value;
+            return createResult.Value;
+        }
+
+        var replaceResult = _formLayout.Replace(definition);
+        return replaceResult.IsFailure
+            ? Result<FormLayout>.Failure(replaceResult.Error)
+            : _formLayout;
     }
 
     public Result Close(DateTimeOffset closedAt)

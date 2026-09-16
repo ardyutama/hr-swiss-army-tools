@@ -66,7 +66,7 @@ public sealed class CandidateDetailsHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ShouldExcludeMatchingCandidatesInTheSameRound() // domain: Prior Application Notice
+    public async Task Handle_ShouldIncludeMatchingCandidatesInTheSameRound() // domain: Prior Application Notice
     {
         await using var dbContext = new TestDbContext();
         var (vacancy, _, currentRound) = await CreateTwoRoundsAsync(dbContext);
@@ -74,16 +74,45 @@ public sealed class CandidateDetailsHandlerTests
             currentRound.Id,
             "person@example.com",
             1);
+        currentCandidate.ApplyReview(CandidateReviewStatus.Flagged, null).IsSuccess.ShouldBeTrue();
         var sameRoundCandidate = CandidateTestData.CreateCandidateWithSenderEmail(
             currentRound.Id,
             " PERSON@EXAMPLE.COM ",
-            2);
+            2,
+            new DateTimeOffset(2026, 8, 20, 10, 0, 0, TimeSpan.Zero));
         dbContext.Candidates.AddRange(currentCandidate, sameRoundCandidate);
         await dbContext.SaveChangesAsync(CancellationToken.None);
 
         var details = await ReadDetailsAsync(dbContext, vacancy, currentRound, currentCandidate);
 
-        details.PriorApplications.ShouldBeEmpty();
+        details.PriorApplications.ShouldBe([
+            new CandidatePriorApplicationResponse(2, "Current wave", "new")]);
+    }
+
+    [Fact]
+    public async Task Handle_ShouldIncludeMatchingFormCandidatesInTheSameRound() // domain: Prior Application Notice
+    {
+        await using var dbContext = new TestDbContext();
+        var vacancy = CandidateTestData.CreateVacancy();
+        dbContext.Vacancies.Add(vacancy);
+        await dbContext.SaveChangesAsync(CancellationToken.None);
+        var round = vacancy.Rounds.Single();
+        var currentCandidate = CreateFormCandidate(
+            round.Id,
+            "person@example.com",
+            new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero));
+        currentCandidate.ApplyReview(CandidateReviewStatus.Flagged, null).IsSuccess.ShouldBeTrue();
+        var sameRoundCandidate = CreateFormCandidate(
+            round.Id,
+            "person@example.com",
+            new DateTimeOffset(2026, 8, 20, 10, 0, 0, TimeSpan.Zero));
+        dbContext.Candidates.AddRange(currentCandidate, sameRoundCandidate);
+        await dbContext.SaveChangesAsync(CancellationToken.None);
+
+        var details = await ReadDetailsAsync(dbContext, vacancy, round, currentCandidate);
+
+        details.PriorApplications.ShouldBe([
+            new CandidatePriorApplicationResponse(1, null, "new")]);
     }
 
     [Fact]
@@ -181,6 +210,26 @@ public sealed class CandidateDetailsHandlerTests
 
         result.IsSuccess.ShouldBeTrue();
         return result.Value;
+    }
+
+    private static Candidate CreateFormCandidate(
+        long roundId,
+        string identityKey,
+        DateTimeOffset importedAt)
+    {
+        var candidateResult = Candidate.ImportForm(new CandidateFormImportData(roundId, importedAt));
+        candidateResult.IsSuccess.ShouldBeTrue();
+        var responseResult = candidateResult.Value.AddFormResponse(
+            new CandidateFormResponseData(
+                ["timestamp", "Applicant", identityKey],
+                "2026-08-20T10:00:00Z",
+                importedAt,
+                identityKey,
+                importedAt),
+            currentResponse: null,
+            isResubmitted: false);
+        responseResult.IsSuccess.ShouldBeTrue();
+        return candidateResult.Value;
     }
 
     private static async Task<(Vacancy Vacancy, IntakeRound PriorRound, IntakeRound CurrentRound)> CreateTwoRoundsAsync(

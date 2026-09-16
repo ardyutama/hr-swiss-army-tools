@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 using hr_sat.Application.Features.Candidates;
 using hr_sat.Application.Features.Candidates.ImportForm;
 using Xunit;
@@ -37,8 +38,54 @@ public sealed class ImportFormTests(ApiFactory factory) : IClassFixture<ApiFacto
         Assert.Equal(
             new[] { "2026-09-16T10:00:00Z", "Alice\nApplicant", " Alice@EXAMPLE.com " },
             response.Cells);
-        Assert.Equal("alice@example.com", response.IdentityKey);
         Assert.True(response.IsCurrent);
+
+        using var detailsResponse = await client.GetAsync(
+            CandidatePath(vacancyLocation, roundId, candidate.Id));
+        detailsResponse.EnsureSuccessStatusCode();
+        using var detailsJson = JsonDocument.Parse(
+            await detailsResponse.Content.ReadAsStringAsync());
+        var formResponseJson =
+            detailsJson.RootElement.GetProperty("formResponses")[0];
+        Assert.False(formResponseJson.TryGetProperty("identityKey", out _));
+    }
+
+    [Fact]
+    public async Task Importing_csv_without_a_valid_form_layout_returns_a_conflict_problem() // domain: Form Layout is required before form response import
+    {
+        using var client = factory.CreateClient();
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client, configureLayout: false);
+
+        using var response = await ImportFormAsync(
+            client,
+            vacancyLocation,
+            roundId,
+            Csv("\"2026-09-16T10:00:00Z\",\"Applicant\",\"person@example.com\""));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        await AssertProblemAsync(response, "Candidates.FormLayoutRequired");
+    }
+
+    [Fact]
+    public async Task Saving_a_form_layout_without_name_and_email_returns_a_validation_problem() // domain: a Form Layout is invalid without Name and Contact Email bindings
+    {
+        using var client = factory.CreateClient();
+        var (vacancyLocation, _) = await CreateVacancyAsync(client, configureLayout: false);
+
+        using var response = await client.PutAsJsonAsync(
+            $"{vacancyLocation}/form-layout",
+            new
+            {
+                headerSnapshot = new[] { "Timestamp", "Name", "Email" },
+                nameColumnOrdinal = 1
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblemResponse>();
+        Assert.NotNull(problem);
+        Assert.Contains(
+            problem.Errors["ContactEmailColumnOrdinal"],
+            message => message.Contains("bound", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -256,7 +303,9 @@ public sealed class ImportFormTests(ApiFactory factory) : IClassFixture<ApiFacto
         Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
     }
 
-    private static async Task<(string Location, long RoundId)> CreateVacancyAsync(HttpClient client)
+    private static async Task<(string Location, long RoundId)> CreateVacancyAsync(
+        HttpClient client,
+        bool configureLayout = true)
     {
         using var response = await client.PostAsJsonAsync("/api/vacancies", new
         {
@@ -268,6 +317,19 @@ public sealed class ImportFormTests(ApiFactory factory) : IClassFixture<ApiFacto
         var location = response.Headers.Location!.OriginalString;
         var vacancy = await response.Content.ReadFromJsonAsync<VacancyResponse>();
         Assert.NotNull(vacancy);
+        if (configureLayout)
+        {
+            using var layoutResponse = await client.PutAsJsonAsync(
+                $"{location}/form-layout",
+                new
+                {
+                    headerSnapshot = new[] { "Timestamp", "Name", "Email" },
+                    nameColumnOrdinal = 1,
+                    contactEmailColumnOrdinal = 2
+                });
+            Assert.Equal(HttpStatusCode.OK, layoutResponse.StatusCode);
+        }
+
         return (location, Assert.Single(vacancy.Rounds).Id);
     }
 

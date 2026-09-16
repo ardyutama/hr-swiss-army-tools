@@ -338,6 +338,12 @@ public sealed class ImportFormHandlerTests
         var vacancy = CandidateTestData.CreateVacancy();
         dbContext.Vacancies.Add(vacancy);
         await dbContext.SaveChangesAsync(CancellationToken.None);
+        var layoutResult = FormLayout.Create(
+            vacancy.Id,
+            new FormLayoutDefinition(["Timestamp", "Name", "Email"], 1, 2, null, null));
+        layoutResult.IsSuccess.ShouldBeTrue();
+        dbContext.FormLayouts.Add(layoutResult.Value);
+        await dbContext.SaveChangesAsync(CancellationToken.None);
         return vacancy;
     }
 

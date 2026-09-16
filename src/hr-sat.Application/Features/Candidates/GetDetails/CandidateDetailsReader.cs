@@ -61,7 +61,6 @@ internal static class CandidateDetailsReader
                         response.Cells,
                         response.FormTimestampRaw,
                         response.FormTimestampParsed,
-                        response.IdentityKey,
                         response.IsCurrent,
                         response.ImportedAt))
                     .ToList()))
@@ -101,7 +100,7 @@ internal static class CandidateDetailsReader
                 })
             .Where(prior =>
                 prior.Round.VacancyId == vacancyId &&
-                prior.Candidate.IntakeRoundId != roundId &&
+                prior.Candidate.Id != candidateId &&
                 prior.Candidate.SourceSenderEmail != null &&
                 prior.Candidate.SourceSenderEmail!.Trim().ToLower() == normalizedSenderEmail)
             .OrderByDescending(prior => prior.Round.RoundNumber)
@@ -140,7 +139,7 @@ internal static class CandidateDetailsReader
                 })
             .Where(prior =>
                 prior.Round.VacancyId == vacancyId &&
-                prior.Candidate.IntakeRoundId != roundId &&
+                prior.Candidate.Id != candidateId &&
                 prior.Response.IsCurrent &&
                 prior.Response.IdentityKey == normalizedSenderEmail)
             .OrderByDescending(prior => prior.Round.RoundNumber)

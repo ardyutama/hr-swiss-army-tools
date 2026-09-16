@@ -18,6 +18,7 @@ public interface IApplicationDbContext
     DbSet<CvDocument> CvDocuments { get; }
     DbSet<PendingFileDeletion> PendingFileDeletions { get; }
     DbSet<EmailTemplate> EmailTemplates { get; }
+    DbSet<FormLayout> FormLayouts { get; }
 
     Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken);
 
