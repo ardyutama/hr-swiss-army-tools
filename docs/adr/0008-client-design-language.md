@@ -42,6 +42,14 @@ discipline only — not hero/bento/marquee rules.
    content width because source CVs are design-heavy and extraction is imperfect; the
    data column (requirements, candidate details, email, notes) is the supporting
    checklist at ~40–45%.
+   **Amendment (2026-09-16, form-intake grill)**: for a **form-sourced** candidate (ADR-0013)
+   there is no local PDF — the evidence is the form answers. The dominant area becomes the
+   **Form Answers** panel (the vacancy's picked columns, in column order), and the CV is a
+   Google Drive *link* exposed as a header button plus keyboard shortcut **C** that opens
+   it in a new tab (no iframe — permission-gated Drive links fail silently in an embed).
+   The data column (requirements, details, notes, action bar) is unchanged. This is an
+   *evidence-dominant* variant of the PDF-dominant rule: whatever is the candidate's real
+   evidence takes the ~55–60% area.
 8. **Review action bar**: mouse-first buttons with visible keyboard hints (`kbd` chips:
    `←`/`→` navigate, `S`/`F`/`R` decide). Hit targets ≥40px on this bar. Power users
    grow into shortcuts; nobody needs a tutorial.

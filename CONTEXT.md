@@ -69,16 +69,48 @@ Moving a new, flagged, or shortlisted-without-outcome candidate from a closed ro
 _Avoid_: Copy candidate, re-import
 
 **Prior Application Notice**:
-A display-only indicator that a candidate's source sender email also appears in another round of the same vacancy; it is person-intuition, not person-proof, and never blocks import or affects review status.
+A display-only indicator that a candidate's identifying email (Source Sender, or the Form Response's Contact Email) appears on more than one candidate of the same vacancy — any round, including the current one; it is person-intuition, not person-proof, and never blocks import or affects review status.
 _Avoid_: Duplicate block, global person history
 
 **Candidate**:
-One person's submission to one intake round, created from one source email; the same person submitted to another round or vacancy is a different candidate.
+One person's submission to one intake round, created from one intake source; the same person submitted to another round or vacancy is a different candidate.
 _Avoid_: Talent, shared person, global candidate
+
+**Intake Source**:
+The channel one candidate was imported from: a Source Email (.eml upload) or a Form Response (Google Forms CSV upload). One intake round may mix both; the review workspace renders whichever evidence exists.
+_Avoid_: Application channel, import type
 
 **Source Email**:
 The immutable exported email from which exactly one candidate is imported and whose original content is retained.
 _Avoid_: Candidate email, live mailbox message
+
+**Form Response**:
+One row of a Google Forms CSV export from which exactly one candidate is imported; the raw row's cells are stored verbatim and never edited. Identity is the normalized response email, falling back to digits-only phone, falling back to no key (always a new candidate). Each response carries a form Timestamp column used to resolve duplicates: within one vacancy, the same email key keeps only the latest response as its Form Response, with earlier ones retained as hidden prior submissions.
+_Avoid_: Spreadsheet row, form entry
+
+**Form Layout**:
+A vacancy's mapping of its Google Form's CSV columns onto the review workspace. Columns are identified by **ordinal position** (never header text), with a read-only header snapshot kept for display and Header Drift detection. Four special roles — Name, Contact Email, Contact Phone, CV Link — each bind to at most one column and pre-fill the editable Candidate Details at import; every other picked column is a display-only form answer shown in column order, capped at 12 per vacancy.
+_Avoid_: Column config, field mapping, table layout
+
+**Header Drift**:
+The detected mismatch when a newly uploaded CSV's header at a mapped ordinal differs from the Form Layout's snapshot. Import pauses behind a drift dialog listing every changed ordinal (old header → new header); HR either confirms the mapping still holds or re-maps before the import proceeds. Already-imported candidates keep their stored Form Responses untouched.
+_Avoid_: Schema change, column mismatch
+
+**Column Label**:
+HR's display-only short name for a form column picked in the Form Layout, bound to the column's ordinal position. The original header snapshot is always retained verbatim and shown beside the label; the label never identifies a column (ordinals do), never affects Header Drift detection, is never written by import, and is discarded if the column is un-picked. A drift confirmation re-verifies the label; labels are layout configuration, not review data, so they never Settle.
+_Avoid_: Renamed column, column alias, mapped name
+
+**Screening Rule**:
+A vacancy-owned condition over one form column (`equals`, `not-equals`, `is-empty`, `not-empty`, `contains` — text only, no type parsing), AND-combined with the vacancy's other rules, evaluated against stored raw Form Responses. Rules never screen Source Email candidates (they have no form columns). Editable while the vacancy is open; re-evaluated live so reclassification is free.
+_Avoid_: Knockout filter, auto-reject, validation rule
+
+**Screened Out**:
+The computed import disposition of a Form Response candidate failing at least one Screening Rule. Screened-out candidates are imported and stored, excluded from the default candidate list (with a count badge and a toggle to reveal them), never deletable, and reclassifiable only by changing rules. Screening status settles at round closure like all review data.
+_Avoid_: Filtered, deleted, auto-rejected
+
+**Resubmitted**:
+The display indicator on a candidate whose stored Form Response was replaced by a newer row for the same identity key on a later upload. The review page flags the refresh; review status, notes, requirement reviews, and typed details are never altered by a re-upload.
+_Avoid_: Updated, overwritten
 
 **Source Sender**:
 The sender recorded by the source email, who may differ from the candidate.
@@ -117,7 +149,7 @@ A candidate HR has decided not to advance and may contact using the rejected tem
 _Avoid_: Deleted candidate
 
 **Candidate Details**:
-The editable candidate name and contact email for this submission. In V1 these fields start empty and are entered manually from the source email or other review evidence; PDF extraction is deferred to V3.
+The editable candidate name, contact email, and contact phone for this submission. For form-sourced candidates the Form Layout's special roles pre-fill them at import (HR can always correct them — a form field is a convenience, not truth); for email-sourced candidates they start empty and are entered manually from review evidence.
 _Avoid_: Source sender, master person profile
 
 **Manual Requirement Review**:
