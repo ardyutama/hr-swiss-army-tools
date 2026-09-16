@@ -15,6 +15,12 @@ candidate per form row, preserving the **raw row verbatim**.
 
 - Accept a `.csv` upload into a vacancy's **active round** (reuses the round-scoped
   import authorization; lifecycle conflicts stay amber).
+- **Hard layout gate (issue 02):** if the vacancy has no valid Form Layout (Name +
+  Contact Email bound), the import is refused (409) and the client routes the first
+  upload into the guided layout panel; the import completes there. Identity detection
+  below applies to every import — all imports run under a valid layout, but identity is
+  **never** derived from the layout's bound roles (roles are manual; identity is
+  mechanical).
 - Parse the Google Forms export (first row = headers; quoted multi-line cells are normal).
 - Store on each candidate: an Intake Source discriminator (`form`), the **raw row's
   cells** (verbatim, ordered), the form Timestamp, and the detected identity key.
@@ -43,11 +49,13 @@ Backend:
   `IdentityKey string null`, `IsCurrent bool`, `ImportedAt`; unique partial index on
   `(CandidateId) WHERE IsCurrent`. JSONB keeps ordinal addressing (`cells ->> n`) for
   issue 03's screening.
-- **Identity detection (no layout yet):** Timestamp = ordinal 0, always (Google Forms
-  fixes the position; only the header text localizes). Email = first email-shaped cell
-  (trimmed, lowercased). Phone fallback = first cell with ≥8 digits, only when no
-  email-shaped cell exists. Else no key → always a new candidate. The key is stamped at
-  import and immutable; HR's later Candidate Details edits never rewrite it.
+- **Identity detection (independent of the layout):** Timestamp = ordinal 0, always
+  (Google Forms fixes the position; only the header text localizes). Email = first
+  email-shaped cell (trimmed, lowercased). Phone fallback = first cell with ≥8 digits,
+  only when no email-shaped cell exists. Else no key → always a new candidate. Identity
+  is heuristic **by design** — a mechanical storage key never shown to HR and never
+  derived from the manually bound roles — and is stamped at import and immutable; HR's
+  later Candidate Details edits never rewrite it.
 - **Dedupe ladder** (vacancy scope, lifecycle-respecting): (1) same email key twice in
   one CSV → latest form Timestamp wins, earlier row retained as hidden prior; (2)
   re-upload newer row → stored response replaced + Resubmitted, old current becomes a
@@ -85,7 +93,8 @@ Client:
 - **Result:** a summary line in the staying-open dialog — "214 rows read · 198 new · 12
   updated (resubmitted) · 4 skipped (outdated) · 9 prior applications noticed". Malformed
   → red inline alert naming the row position; closed round → amber alert with lifecycle
-  re-expression copy.
+  re-expression copy; no valid layout → route into the guided layout panel (issue 02)
+  instead of a plain error.
 - **Resubmitted badge:** neutral `UBadge` stacked with the existing review-status badges
   in `CandidateList.vue` (reuses the established badge pattern; the review page itself is
   issue 04).
@@ -113,6 +122,8 @@ Server (`tests/hr-sat.Tests/Candidates/`, handler-level, Testcontainers Postgres
   `priorApplications`.
 - Closed round → 409 conflict; malformed CSV → 400 naming the row position; zero data
   rows → 400.
+- Vacancy with no valid layout → 409 (hard gate); client routes the first upload into
+  the guided layout panel.
 
 Client (`VacancyDetailView.spec.ts` pattern — mount the view, stub fetch, assert visible
 outcomes):

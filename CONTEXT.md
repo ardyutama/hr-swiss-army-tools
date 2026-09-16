@@ -89,7 +89,7 @@ One row of a Google Forms CSV export from which exactly one candidate is importe
 _Avoid_: Spreadsheet row, form entry
 
 **Form Layout**:
-A vacancy's mapping of its Google Form's CSV columns onto the review workspace. Columns are identified by **ordinal position** (never header text), with a read-only header snapshot kept for display and Header Drift detection. Four special roles — Name, Contact Email, Contact Phone, CV Link — each bind to at most one column and pre-fill the editable Candidate Details at import; every other picked column is a display-only form answer shown in column order, capped at 12 per vacancy.
+A vacancy's mapping of its Google Form's CSV columns onto the review workspace. Columns are identified by **ordinal position** (never header text), with a read-only header snapshot kept for display and Header Drift detection. Four special roles — Name, Contact Email, Contact Phone, CV Link — each bind to at most one column and pre-fill the editable Candidate Details at import; roles are always **bound manually by HR, never auto-detected**, and Name and Contact Email must be bound for a valid layout. Every other picked column is a display-only form answer shown in column order. A vacancy picks at most 8 columns in total, roles included. The form Timestamp is never a picked column: it is system data read from ordinal 0 by Google Forms convention and stored on the Form Response. A vacancy **cannot import form responses until it has a valid layout**: the first upload routes into the guided layout panel and the import completes there; layout edits re-project over stored raw rows, pre-filling Candidate Details except where HR already typed values.
 _Avoid_: Column config, field mapping, table layout
 
 **Header Drift**:

@@ -35,15 +35,27 @@ by HR mid-vacancy.
 4. **Four special roles, everything else display-only.** Name, Contact Email, Contact
    Phone, CV Link each bind to at most one column and *pre-fill* the editable Candidate
    Details at import (HR can still correct them — a form field is a convenience, not
-   truth). All other picked columns are display-only form answers, shown in column order,
-   capped at 12 per vacancy.
+   truth). Roles are always **bound manually by HR, never auto-detected**. All other
+   picked columns are display-only form answers, shown in column order. A vacancy picks
+   at most **8 columns in total, roles included** (amended 2026-09-16 — was 12
+   display-only columns on top of the roles), and a layout is invalid without Name +
+   Contact Email bound. The form Timestamp is never a picked column: it is system data
+   read from ordinal 0 by Google Forms convention and stored on the Form Response.
+   **Import is hard-gated on a valid layout** (amended 2026-09-16): a vacancy cannot
+   import form responses until a valid layout exists; the first CSV upload routes into
+   the guided layout panel and the import completes there, so every imported row is
+   already projected through the roles. Layout edits re-project over stored raw rows,
+   pre-filling Candidate Details except where HR already typed values.
 5. **Identity and duplicates.** A response's identity key is the normalized email, falling
-   back to digits-only phone, falling back to no key (always a new candidate). Within one
-   vacancy, the same email key keeps only the latest response (form Timestamp wins) as its
-   Form Response; earlier ones are retained as hidden prior submissions. A re-upload of a
-   fresher export into the active round is **additive**: new keys become candidates, known
-   keys update the stored Form Response and raise the **Resubmitted** indicator, and review
-   status / notes / requirement reviews / typed details are never altered by a re-upload.
+   back to digits-only phone, falling back to no key (always a new candidate). Identity
+   detection stays **heuristic** (first email-shaped cell → phone) — it is a mechanical
+   storage key, never shown to HR, and never derived from the manually bound roles;
+   the key is stamped at import and immutable. Within one vacancy, the same email key
+   keeps only the latest response (form Timestamp wins) as its Form Response; earlier
+   ones are retained as hidden prior submissions. A re-upload of a fresher export into
+   the active round is **additive**: new keys become candidates, known keys update the
+   stored Form Response and raise the **Resubmitted** indicator, and review status /
+   notes / requirement reviews / typed details are never altered by a re-upload.
 6. **CV is a link, not a fetch.** The CV Link column is stored as a URL. The review page
    exposes it as a header button and keyboard shortcut **C** that opens the link in a new
    tab. We deliberately do **not** fetch or OCR Drive files (permission-gated links fail

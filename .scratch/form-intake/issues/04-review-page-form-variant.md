@@ -22,6 +22,9 @@ is no local PDF, so the dominant area shows the form evidence instead of the CV 
   disabled with a "No CV link" label — never hidden, so HR sees the gap.
 - **Resubmitted flag:** if the stored Form Response was refreshed by a later upload,
   surface the indicator on the review page.
+- **Form timestamp as system data:** the stored form Timestamp (issue 01's system data,
+  never a picked column) is surfaced on the review page — it does not appear in the
+  Form Answers panel.
 - **Data column unchanged:** requirements, editable Candidate Details (pre-filled by the
   layout's roles), notes, and the action bar (S/F/R, ←/→) behave exactly as today.
 - **Email candidates** keep the existing PDF-dominant layout untouched.
@@ -30,8 +33,9 @@ is no local PDF, so the dominant area shows the form evidence instead of the CV 
 
 ## Out of scope
 
-The candidate-list table (it stays name/email/phone/status — the picked columns live only
-on the review page); screening chips on the list (issue 03).
+The candidate-list table (it stays Candidate | Received | CV | Notes | Review status |
+Actions — the picked columns live only on the review page); screening chips on the list
+(issue 03).
 
 ## Seam tests
 

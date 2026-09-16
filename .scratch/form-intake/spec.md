@@ -22,8 +22,13 @@ The shape, settled in a 3-round grill session (2026-09-16):
   Layout and screening are read-time projections over that stored raw data.
 - **Ordinal-keyed Form Layout.** The vacancy maps CSV columns by **ordinal position**
   (never header text). Four special roles — Name, Contact Email, Contact Phone, CV Link —
-  pre-fill editable Candidate Details; up to 12 more picked columns are display-only form
-  answers on the review page, shown in column order.
+  are **bound manually by HR, never auto-detected**, and pre-fill editable Candidate
+  Details (Name + Contact Email required); the other picked columns are display-only
+  form answers on the review page, shown in column order — at most **8 picked columns in
+  total, roles included**. The form Timestamp is never a picked column: it is system data
+  read from ordinal 0. **Import is hard-gated on a valid layout** — a vacancy cannot
+  import form responses until one exists; the first upload routes into the guided layout
+  panel and the import completes there.
 - **Header Drift gate.** A re-upload whose headers differ at a mapped ordinal pauses
   behind a drift dialog (old → new) until HR confirms or re-maps.
 - **Dedupe & Resubmitted.** Identity = normalized email → digits-only phone → no key.
