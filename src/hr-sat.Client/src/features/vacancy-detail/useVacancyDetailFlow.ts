@@ -4,26 +4,19 @@ import type { CandidateFilterState } from '@/features/candidates/filter'
 import { useCandidateFilter } from '@/features/candidates/useCandidateFilter'
 import { useCandidateImport } from '@/features/candidates/useCandidateImport'
 import { useCandidates } from '@/features/candidates/useCandidates'
-import { useIntakeRounds } from '@/features/intake-rounds/useIntakeRounds'
+import { useIntakeRounds, roundDisplayName } from '@/features/intake-rounds/useIntakeRounds'
+import { sendScope } from '@/features/prepared-messages/format'
+import { useEmailTemplates } from '@/features/email-templates/useEmailTemplates'
+import { useTemplateSources } from '@/features/email-templates/useTemplateSources'
+import { usePreparedMessages } from '@/features/prepared-messages/usePreparedMessages'
 import { usePromoteCandidates } from '@/features/promote-candidates/usePromoteCandidates'
 import type { VacancyRound } from '@/features/vacancies/api'
 import { progressPercent } from '@/features/vacancies/format'
 import { hiringShortage } from '@/features/vacancies/hiring'
 import { problemMessage, problemMessageText } from '@/shared/problem-details'
+import { useCloseVacancy } from './useCloseVacancy'
 import { useVacancyDetail } from './useVacancyDetail'
 
-/**
- * The vacancy-detail flow behind one interface: the vacancy rollup, round
- * selection and lifecycle, the candidate list, .eml import, and the
- * permissibility rules that decide what HR may do from this page (a Closed
- * Vacancy or a closed Intake Round freezes candidate edits; a new round can
- * only open while none is active and the vacancy is open).
- *
- * The route view stays a composition surface: it connects this flow to the
- * router and renders the returned state. Refresh coordination lives here too —
- * imports and deletions change both the vacancy rollup (progress, round counts)
- * and the candidate list, so both reload together.
- */
 export function useVacancyDetailFlow(
   vacancyId: Ref<string>,
   initialCandidateFilters: Partial<CandidateFilterState> = {},
@@ -50,10 +43,6 @@ export function useVacancyDetailFlow(
     close: closeRoundAction,
   } = useIntakeRounds(rounds, vacancyId, load)
 
-  // The selected round drives the candidate list. Default to the active round;
-  // a vacancy with no active round shows no candidates (imports are rejected).
-  // Round ids are JSON numbers; they are stringified only at the route-param/URL
-  // boundary (the round-scoped candidate APIs take route-param-shaped strings).
   const selectedRoundId = shallowRef<number | null>(null)
   const selectedRound = computed(
     () => rounds.value.find((round) => round.id === selectedRoundId.value) ?? null,
@@ -62,8 +51,6 @@ export function useVacancyDetailFlow(
     selectedRoundId.value === null ? '' : String(selectedRoundId.value),
   )
 
-  // Keep the selection pinned to the active round whenever the vacancy reloads,
-  // unless the user deliberately opened a different (closed) round that still exists.
   watch(
     rounds,
     (current) => {
@@ -79,13 +66,13 @@ export function useVacancyDetailFlow(
     { immediate: true },
   )
 
-  // Permissibility rules, derived from the vacancy status and the selected
-  // round's lifecycle: what HR may do from this page right now.
   const isClosed = computed(() => vacancy.value?.status === 'closed')
   const selectedRoundClosed = computed(() => selectedRound.value?.status === 'closed')
   const candidatesReadonly = computed(() => isClosed.value || selectedRoundClosed.value)
   const canImport = computed(() => !candidatesReadonly.value && activeRound.value !== null)
   const canOpenRound = computed(() => !isClosed.value && canCreateRound.value)
+
+  const { closing: closingVacancy, close: closeVacancyAction } = useCloseVacancy(vacancy, load)
 
   const {
     candidates,
@@ -95,7 +82,7 @@ export function useVacancyDetailFlow(
     load: loadCandidates,
     remove,
   } = useCandidates(vacancyId, selectedRoundParam)
-  const refreshAfterImport = async () => {
+  const refreshVacancyAndCandidates = async () => {
     await Promise.all([load(), loadCandidates()])
   }
   const {
@@ -104,7 +91,7 @@ export function useVacancyDetailFlow(
     results,
     importFiles: importCandidateFiles,
     clearError,
-  } = useCandidateImport(vacancyId, selectedRoundParam, refreshAfterImport)
+  } = useCandidateImport(vacancyId, selectedRoundParam, refreshVacancyAndCandidates)
   const {
     status: statusFilter,
     outcome: outcomeFilter,
@@ -157,7 +144,7 @@ export function useVacancyDetailFlow(
       return false
     }
     // Refresh so the vacancy progress, round counts, and the candidate list reflect the import.
-    await Promise.all([load(), loadCandidates()])
+    await refreshVacancyAndCandidates()
     return true
   }
 
@@ -174,7 +161,6 @@ export function useVacancyDetailFlow(
     if (!created) {
       return false
     }
-    // Opening a round moves the workspace into it.
     selectedRoundId.value = created.id
     return true
   }
@@ -186,20 +172,15 @@ export function useVacancyDetailFlow(
   async function deleteCandidate(candidate: CandidateSummary): Promise<string | null> {
     try {
       await remove(candidate)
-      // Progress and round counts include candidates, so refresh the vacancy too.
-      await load()
+      await refreshVacancyAndCandidates()
       return null
     } catch (error) {
       const message = problemMessage(error, 'Something went wrong')
       if (message.kind !== 'failure') {
-        await Promise.all([load(), loadCandidates()])
+        await refreshVacancyAndCandidates()
       }
       return problemMessageText(message)
     }
-  }
-
-  async function refreshAfterPromotion() {
-    await Promise.all([load(), loadCandidates()])
   }
 
   const promotion = usePromoteCandidates(
@@ -207,8 +188,46 @@ export function useVacancyDetailFlow(
     activeRound,
     closedRounds,
     canPromote,
-    refreshAfterPromotion,
+    refreshVacancyAndCandidates,
   )
+
+  const preparedOpen = shallowRef(false)
+  const preparedCandidate = shallowRef<CandidateSummary | null>(null)
+  const emailTemplatesOpen = shallowRef(false)
+  const templatesRevision = shallowRef(0)
+
+  watch(emailTemplatesOpen, (isOpen, wasOpen) => {
+    if (wasOpen && !isOpen) {
+      templatesRevision.value += 1
+    }
+  })
+
+  const sendCandidates = computed(() =>
+    sendScope(preparedCandidate.value, candidates.value ?? []),
+  )
+  const sendRoundName = computed(() => {
+    const round = selectedRound.value
+    return round ? roundDisplayName(round) : 'the selected round'
+  })
+
+  const messages = usePreparedMessages(
+    vacancyId,
+    sendCandidates,
+    preparedOpen,
+    templatesRevision,
+  )
+
+  const emailTemplates = useEmailTemplates(vacancyId)
+  const templateSources = useTemplateSources(vacancyId)
+
+  function openPrepared(candidate?: CandidateSummary) {
+    preparedCandidate.value = candidate ?? null
+    preparedOpen.value = true
+  }
+
+  function openEmailTemplates() {
+    emailTemplatesOpen.value = true
+  }
 
   return {
     vacancy: {
@@ -218,6 +237,9 @@ export function useVacancyDetailFlow(
       load,
       progress,
       vacancyRequirements,
+      isClosed,
+      closingVacancy,
+      closeVacancy: closeVacancyAction,
     },
     rounds: {
       rounds,
@@ -268,6 +290,17 @@ export function useVacancyDetailFlow(
       canSubmit: promotion.canSubmit,
       openDialog: promotion.openDialog,
       submit: promotion.submit,
+    },
+    prepared: {
+      preparedOpen,
+      emailTemplatesOpen,
+      sendCandidates,
+      sendRoundName,
+      openPrepared,
+      openEmailTemplates,
+      messages,
+      emailTemplates,
+      templateSources,
     },
     import: {
       importing,

@@ -39,13 +39,13 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.MapScalarApiReference();
-}
 
-using (var scope = app.Services.CreateScope())
-{
+    using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var fileStorage = scope.ServiceProvider.GetRequiredService<IPrivateFileStorage>();
+    var timeProvider = scope.ServiceProvider.GetRequiredService<TimeProvider>();
     await dbContext.Database.MigrateAsync();
-    await dbContext.SeedAsync();
+    await dbContext.SeedAsync(fileStorage, timeProvider);
 }
 
 app.MapEndpoints();

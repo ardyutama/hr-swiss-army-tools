@@ -5,6 +5,7 @@ import {
   type CandidateSummary,
 } from '@/features/candidates/api'
 import { fieldErrorsOf, firstNonFieldError } from '@/shared/validation'
+import { useActionDialog } from '@/shared/useActionDialog'
 import type { VacancyRound } from '@/features/vacancies/api'
 import { roundDisplayName } from '@/features/intake-rounds/useIntakeRounds'
 import { problemMessage, problemMessageText } from '@/shared/problem-details'
@@ -18,14 +19,24 @@ export function usePromoteCandidates(
   onChanged: () => Promise<void>,
 ) {
   const toast = useToast()
-  const open = shallowRef(false)
   const sourceRoundId = shallowRef<number | null>(null)
   const sourceCandidates = shallowRef<CandidateSummary[] | null>(null)
   const sourceLoading = shallowRef(false)
   const sourceError = shallowRef<string | null>(null)
   const selectedCandidateIds = shallowRef<number[]>([])
   const submitting = shallowRef(false)
-  const submitError = shallowRef<string | null>(null)
+  const {
+    open,
+    error: submitError,
+    request,
+    confirm,
+  } = useActionDialog({
+    onReset() {
+      sourceCandidates.value = null
+      sourceError.value = null
+      selectedCandidateIds.value = []
+    },
+  })
   let sourceRequestToken = 0
 
   const promotableCandidates = computed(() =>
@@ -54,7 +65,6 @@ export function usePromoteCandidates(
     sourceCandidates.value = null
     sourceError.value = null
     selectedCandidateIds.value = []
-    submitError.value = null
   }
 
   async function loadSourceCandidates(roundId: number) {
@@ -94,21 +104,12 @@ export function usePromoteCandidates(
     }
   })
 
-  watch(open, (isOpen) => {
-    if (!isOpen) {
-      sourceCandidates.value = null
-      sourceError.value = null
-      submitError.value = null
-      selectedCandidateIds.value = []
-    }
-  })
-
   function openDialog() {
     if (!enabled.value) {
       return
     }
     resetDialog()
-    open.value = true
+    request()
   }
 
   async function submit(): Promise<boolean> {
@@ -119,32 +120,33 @@ export function usePromoteCandidates(
     }
 
     submitting.value = true
-    submitError.value = null
     try {
-      const moved = await promoteCandidates(vacancyId.value, targetRound.id, {
-        sourceRoundId: sourceId,
-        candidateIds: selectedCandidateIds.value,
+      const result = await confirm(async () => {
+        try {
+          const moved = await promoteCandidates(vacancyId.value, targetRound.id, {
+            sourceRoundId: sourceId,
+            candidateIds: selectedCandidateIds.value,
+          })
+          await onChanged()
+          const label = moved.length === 1 ? 'candidate' : 'candidates'
+          toast.add({ title: `${moved.length} ${label} promoted successfully`, color: 'success' })
+          return true
+        } catch (error) {
+          const fieldErrors = fieldErrorsOf(error)
+          if (fieldErrors) {
+            return firstNonFieldError(fieldErrors, new Set()) ?? 'Something went wrong'
+          }
+          const sourceRound = closedRounds.value.find((round) => round.id === sourceId)
+          const message = problemMessage(error, 'Something went wrong', {
+            round: sourceRound ? roundDisplayName(sourceRound) : undefined,
+          })
+          if (message.kind !== 'failure') {
+            await onChanged()
+          }
+          return problemMessageText(message)
+        }
       })
-      await onChanged()
-      const label = moved.length === 1 ? 'candidate' : 'candidates'
-      toast.add({ title: `${moved.length} ${label} promoted successfully`, color: 'success' })
-      open.value = false
-      return true
-    } catch (error) {
-      const fieldErrors = fieldErrorsOf(error)
-      if (fieldErrors) {
-        submitError.value = firstNonFieldError(fieldErrors, new Set()) ?? 'Something went wrong'
-        return false
-      }
-      const sourceRound = closedRounds.value.find((round) => round.id === sourceId)
-      const message = problemMessage(error, 'Something went wrong', {
-        round: sourceRound ? roundDisplayName(sourceRound) : undefined,
-      })
-      if (message.kind !== 'failure') {
-        await onChanged()
-      }
-      submitError.value = problemMessageText(message)
-      return false
+      return result === true
     } finally {
       submitting.value = false
     }

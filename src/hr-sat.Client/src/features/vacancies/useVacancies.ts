@@ -16,6 +16,43 @@ import { vacancyFormFieldKeys } from './validation'
 
 export type VacanciesViewState = 'loading' | 'error' | 'empty' | 'ready'
 
+export type VacancyStatusFilter = 'open' | 'closed' | 'all'
+
+export type VacancySortKey = 'title' | 'opened' | 'progress'
+
+export type SortDirection = 'asc' | 'desc'
+
+/** Processed ratio used for progress sorting; a vacancy with no candidates always ranks last. */
+function progressRatio(vacancy: VacancySummary): number | null {
+  const { processedCandidates, totalCandidates } = vacancy.progress
+  return totalCandidates <= 0 ? null : processedCandidates / totalCandidates
+}
+
+function compareBy(
+  key: VacancySortKey,
+  left: VacancySummary,
+  right: VacancySummary,
+  direction: number,
+): number {
+  switch (key) {
+    case 'title':
+      return left.title.localeCompare(right.title) * direction
+    case 'opened':
+      return left.openedOn.localeCompare(right.openedOn) * direction
+    case 'progress': {
+      const leftRatio = progressRatio(left)
+      const rightRatio = progressRatio(right)
+      if (leftRatio === null) {
+        return rightRatio === null ? 0 : 1
+      }
+      if (rightRatio === null) {
+        return -1
+      }
+      return (leftRatio - rightRatio) * direction
+    }
+  }
+}
+
 export function useVacancies() {
   const toast = useToast()
   const vacancies = shallowRef<VacancySummary[] | null>(null)
@@ -23,6 +60,10 @@ export function useVacancies() {
   const saving = shallowRef(false)
   const removing = shallowRef(false)
   const editingDetails = shallowRef<VacancyDetails | null>(null)
+  const statusFilter = shallowRef<VacancyStatusFilter>('open')
+  const searchQuery = shallowRef('')
+  const sortKey = shallowRef<VacancySortKey | null>(null)
+  const sortDirection = shallowRef<SortDirection>('asc')
   let editRequestToken = 0
 
   const loading = computed(() => vacancies.value === null && loadError.value === null)
@@ -37,9 +78,53 @@ export function useVacancies() {
     return (vacancies.value ?? []).length === 0 ? 'empty' : 'ready'
   })
 
-  const openCount = computed(
-    () => (vacancies.value ?? []).filter((v) => v.status === 'open').length,
-  )
+  const statusCounts = computed(() => {
+    const all = vacancies.value ?? []
+    return {
+      open: all.filter((v) => v.status === 'open').length,
+      closed: all.filter((v) => v.status === 'closed').length,
+    }
+  })
+
+  const filteredVacancies = computed<VacancySummary[]>(() => {
+    const query = searchQuery.value.trim().toLowerCase()
+    return (vacancies.value ?? []).filter((v) => {
+      if (statusFilter.value !== 'all' && v.status !== statusFilter.value) {
+        return false
+      }
+      return query === '' || v.title.toLowerCase().includes(query)
+    })
+  })
+
+  function clearFilters() {
+    statusFilter.value = 'all'
+    searchQuery.value = ''
+  }
+
+  /** Three-state header cycle: asc → desc → back to the default server order. */
+  function toggleSort(key: VacancySortKey) {
+    if (sortKey.value !== key) {
+      sortKey.value = key
+      sortDirection.value = 'asc'
+      return
+    }
+    if (sortDirection.value === 'asc') {
+      sortDirection.value = 'desc'
+      return
+    }
+    sortKey.value = null
+  }
+
+  const sortedVacancies = computed<VacancySummary[]>(() => {
+    const key = sortKey.value
+    if (key === null) {
+      return filteredVacancies.value
+    }
+    const direction = sortDirection.value === 'asc' ? 1 : -1
+    return [...filteredVacancies.value].sort((left, right) =>
+      compareBy(key, left, right, direction),
+    )
+  })
 
   const cvsToSort = computed(() =>
     (vacancies.value ?? []).reduce(
@@ -57,11 +142,6 @@ export function useVacancies() {
     }
   }
 
-  /**
-   * Starts an edit prefill for the form dialog (`null` cancels a pending one).
-   * Details are best-effort: when the fetch fails, the summary-backed form stays
-   * editable. The latest call wins, so a stale response never fills the form.
-   */
   function beginEdit(vacancy: VacancySummary | null) {
     const token = ++editRequestToken
     editingDetails.value = null
@@ -79,11 +159,6 @@ export function useVacancies() {
       })
   }
 
-  /**
-   * Creates or updates a vacancy, then reloads the list so it cannot drift from
-   * the server. Re-throws failures so the view can route server field errors
-   * back into the form dialog.
-   */
   async function save(payload: VacancyWritePayload, editingId: string | null): Promise<void> {
     saving.value = true
     try {
@@ -124,15 +199,11 @@ export function useVacancies() {
     }
   }
 
-  /**
-   * Deletes a vacancy, then reloads the list. Re-throws failures without a toast
-   * so the confirm dialog can keep the failure visible inline.
-   */
   async function remove(vacancy: VacancySummary): Promise<void> {
     removing.value = true
     try {
       await deleteVacancy(vacancy.id)
-      toast.add({ title: `Vacancy "${vacancy.title}" deleted successfully`, color: 'success' })
+      toast.add({ title: `Vacancy "${vacancy.title}" purged successfully`, color: 'success' })
       await load()
     } catch (error) {
       const message = problemMessage(error, 'Something went wrong')
@@ -152,8 +223,16 @@ export function useVacancies() {
     loadError,
     loading,
     viewState,
-    openCount,
     cvsToSort,
+    statusFilter,
+    searchQuery,
+    statusCounts,
+    filteredVacancies,
+    clearFilters,
+    sortKey,
+    sortDirection,
+    toggleSort,
+    sortedVacancies,
     saving,
     removing,
     editingDetails,

@@ -5,7 +5,12 @@ import type {
   CandidateSummary,
 } from '../api'
 import type { ReceivedSort } from '../filter'
-import { candidateDisplayName, formatReceivedAt } from '../format'
+import {
+  candidateDisplayName,
+  contactability,
+  contactBlockReason,
+  formatReceivedAt,
+} from '../format'
 
 withDefaults(
   defineProps<{
@@ -21,8 +26,16 @@ withDefaults(
 const emit = defineEmits<{
   remove: [candidate: CandidateSummary]
   review: [candidate: CandidateSummary]
+  send: [candidate: CandidateSummary]
   toggleReceivedSort: []
 }>()
+
+function sendLabel(candidate: CandidateSummary): string {
+  const classification = contactability(candidate)
+  return classification.kind === 'contactable'
+    ? 'Send email'
+    : `Send email — ${contactBlockReason(classification)}`
+}
 
 const reviewStatusLabels: Record<CandidateReviewStatus, string> = {
   new: 'New',
@@ -174,10 +187,10 @@ const columnWidths = ['24%', '14%', '8%', '28%', '12%', '7.5rem']
                   icon="i-lucide-send"
                   color="neutral"
                   variant="ghost"
-                  aria-label="Send email - available once email templates exist"
-                  title="Send email - available once email templates exist"
-                  disabled
-                  @click.stop
+                  :aria-label="sendLabel(candidate)"
+                  :title="sendLabel(candidate)"
+                  :disabled="contactability(candidate).kind !== 'contactable'"
+                  @click.stop="emit('send', candidate)"
                 />
                 <UButton
                   icon="i-lucide-trash-2"

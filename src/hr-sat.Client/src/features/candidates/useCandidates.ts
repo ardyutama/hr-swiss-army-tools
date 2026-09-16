@@ -38,7 +38,6 @@ export function useCandidates(vacancyId: Ref<string>, roundId: Ref<string>) {
 
     try {
       const list = await listCandidates(vacancyId.value, roundId.value)
-      // Ignore stale responses when the route param changed meanwhile.
       if (token !== requestToken) {
         return
       }
@@ -52,7 +51,6 @@ export function useCandidates(vacancyId: Ref<string>, roundId: Ref<string>) {
     }
   }
 
-  // Reload when the vacancy or round route param changes without leaving the component.
   watch(
     [vacancyId, roundId],
     () => {
@@ -61,10 +59,6 @@ export function useCandidates(vacancyId: Ref<string>, roundId: Ref<string>) {
     { immediate: true },
   )
 
-  /**
-   * Deletes a candidate, then reloads the list. Re-throws failures without a
-   * toast so the confirm dialog can keep the failure visible inline.
-   */
   async function remove(candidate: CandidateSummary): Promise<void> {
     removing.value = true
     try {
@@ -73,7 +67,6 @@ export function useCandidates(vacancyId: Ref<string>, roundId: Ref<string>) {
         title: `Candidate "${candidateDisplayName(candidate)}" deleted successfully`,
         color: 'success',
       })
-      await load()
     } finally {
       removing.value = false
     }

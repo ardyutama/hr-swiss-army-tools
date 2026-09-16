@@ -498,6 +498,53 @@ describe('ReviewView', () => {
     wrapper.unmount()
   })
 
+  it('US-17: HR can switch between multiple CV documents', async () => {
+    stubApi({
+      details: {
+        1: candidateDetails(1, {
+          documents: [
+            {
+              id: 10,
+              originalFilename: 'cv-1.pdf',
+              sizeBytes: 2048,
+              isPrimary: true,
+              downloadUrl: '/cv-documents/10',
+            },
+            {
+              id: 11,
+              originalFilename: 'references.pdf',
+              sizeBytes: 1024,
+              isPrimary: false,
+              downloadUrl: '/cv-documents/11',
+            },
+          ],
+        }),
+      },
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    const viewer = wrapper.find('[aria-label="CV document pages"]')
+    await viewer.trigger('keydown', { key: 'ArrowRight', shiftKey: true })
+    expect(wrapper.find('[data-testid="pdf-page"]').attributes('data-page')).toBe('2')
+
+    const picker = wrapper.find('button[aria-label="Choose CV document"]')
+    expect(picker.text()).toContain('cv-1.pdf')
+    await picker.trigger('keydown', { key: 'ArrowDown' })
+    await flushPromises()
+
+    const option = Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).find(
+      (candidate) => candidate.textContent?.includes('references.pdf'),
+    )
+    expect(option).toBeDefined()
+    await new DOMWrapper(option as HTMLElement).trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+
+    expect(picker.text()).toContain('references.pdf')
+    expect(wrapper.find('[data-testid="pdf-page"]').attributes('data-page')).toBe('1')
+    wrapper.unmount()
+  })
+
   it('US-17: HR reviews the sorted, filtered candidate queue', async () => {
     stubApi({
       candidates: [

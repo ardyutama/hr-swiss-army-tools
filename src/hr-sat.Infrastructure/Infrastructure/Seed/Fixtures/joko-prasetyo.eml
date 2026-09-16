@@ -1,0 +1,23 @@
+From: Joko Prasetyo <joko.prasetyo@example.com>
+To: hiring@example.com
+Date: Tue, 01 Sep 2026 08:01:00 +0000
+Subject: Application for Field Technician - Surabaya
+Content-Type: multipart/mixed; boundary="seed-joko"
+
+--seed-joko
+Content-Type: text/plain; charset=utf-8
+
+Please find my CV documents attached.
+--seed-joko
+Content-Type: application/pdf; name="cv-a.pdf"
+Content-Disposition: attachment; filename="cv-a.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQK
+--seed-joko
+Content-Type: application/pdf; name="cv-b.pdf"
+Content-Disposition: attachment; filename="cv-b.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQK
+--seed-joko--

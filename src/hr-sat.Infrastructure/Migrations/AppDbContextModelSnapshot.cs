@@ -22,7 +22,7 @@ namespace hr_sat.Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.4")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -107,6 +107,14 @@ namespace hr_sat.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("notes");
 
+                    b.Property<DateTimeOffset?>("PromotedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("promoted_at");
+
+                    b.Property<int?>("PromotedFromRoundNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("promoted_from_round_number");
+
                     b.Property<string>("ReviewStatus")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -152,14 +160,6 @@ namespace hr_sat.Infrastructure.Migrations
                     b.Property<string>("SourceSubject")
                         .HasColumnType("text")
                         .HasColumnName("source_subject");
-
-                    b.Property<DateTimeOffset?>("PromotedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("promoted_at");
-
-                    b.Property<int?>("PromotedFromRoundNumber")
-                        .HasColumnType("integer")
-                        .HasColumnName("promoted_from_round_number");
 
                     b.HasKey("Id");
 
@@ -307,6 +307,50 @@ namespace hr_sat.Infrastructure.Migrations
                             t.HasCheckConstraint("cv_document_size_bytes_check", "size_bytes > 0");
 
                             t.HasCheckConstraint("cv_document_storage_key_check", "btrim(storage_key) <> ''");
+                        });
+                });
+
+            modelBuilder.Entity("hr_sat.Domain.EmailTemplates.EmailTemplate", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("body");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("subject");
+
+                    b.Property<long>("VacancyId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("vacancy_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VacancyId", "Kind")
+                        .IsUnique()
+                        .HasDatabaseName("email_template_vacancy_kind_key");
+
+                    b.ToTable("email_template", null, t =>
+                        {
+                            t.HasCheckConstraint("email_template_body_check", "btrim(body) <> ''");
+
+                            t.HasCheckConstraint("email_template_kind_check", "kind IN ('shortlisted', 'rejected')");
+
+                            t.HasCheckConstraint("email_template_subject_check", "char_length(btrim(subject)) BETWEEN 1 AND 998");
                         });
                 });
 
@@ -487,6 +531,15 @@ namespace hr_sat.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("hr_sat.Domain.EmailTemplates.EmailTemplate", b =>
+                {
+                    b.HasOne("hr_sat.Domain.Vacancies.Vacancy", null)
+                        .WithMany("EmailTemplates")
+                        .HasForeignKey("VacancyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("hr_sat.Domain.IntakeRounds.IntakeRound", b =>
                 {
                     b.HasOne("hr_sat.Domain.Vacancies.Vacancy", null)
@@ -519,6 +572,8 @@ namespace hr_sat.Infrastructure.Migrations
 
             modelBuilder.Entity("hr_sat.Domain.Vacancies.Vacancy", b =>
                 {
+                    b.Navigation("EmailTemplates");
+
                     b.Navigation("Requirements");
 
                     b.Navigation("Rounds");

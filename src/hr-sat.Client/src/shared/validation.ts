@@ -1,9 +1,5 @@
 import type { ApiError } from './http'
 
-/**
- * Field-level validation errors returned by the API as an ASP.NET
- * ValidationProblem (`errors: { [field]: string[] }`).
- */
 export type FieldErrors = Record<string, string[]>
 
 const validationCache = new WeakMap<ApiError, FieldErrors | null>()
@@ -27,10 +23,6 @@ export function formErrorsOnly(
   )
 }
 
-/**
- * Extracts field errors from an ApiError produced by a 400 ValidationProblem.
- * Returns null when the error is not a validation problem.
- */
 export function fieldErrorsOf(error: unknown): FieldErrors | null {
   if (!isApiError(error)) {
     return null

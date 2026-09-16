@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { CandidateSummary } from '@/features/candidates/api'
 import { candidateDisplayName } from '@/features/candidates/format'
 import type { VacancyRound } from '@/features/vacancies/api'
@@ -31,6 +32,17 @@ const emit = defineEmits<{
   submit: []
 }>()
 
+const roundItems = computed(() =>
+  props.rounds.map((round) => ({
+    label: roundDisplayName(round),
+    value: round.id,
+  })),
+)
+
+function onSourceRoundChange(roundId: number | undefined) {
+  sourceRoundId.value = roundId ?? null
+}
+
 function isSelected(candidateId: number): boolean {
   return selectedCandidateIds.value.includes(candidateId)
 }
@@ -56,16 +68,16 @@ function toggleCandidate(candidateId: number, selected: boolean) {
       <div class="flex flex-col gap-4">
         <label class="flex flex-col gap-1.5 text-sm">
           <span class="font-medium text-highlighted">Promote from</span>
-          <select
-            v-model.number="sourceRoundId"
+          <USelect
+            :model-value="sourceRoundId ?? undefined"
+            :items="roundItems"
+            value-key="value"
+            label-key="label"
             aria-label="Source round"
             :disabled="props.loading || props.submitting"
-            class="min-h-10 rounded-xl border border-default bg-default px-3 py-2 text-sm text-highlighted outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <option v-for="round in props.rounds" :key="round.id" :value="round.id">
-              {{ roundDisplayName(round) }}
-            </option>
-          </select>
+            class="w-full"
+            @update:model-value="onSourceRoundChange"
+          />
         </label>
 
         <p class="text-sm text-muted">

@@ -1,6 +1,6 @@
 namespace hr_sat.Domain.Candidates;
 
-internal sealed record StoredCvDocument(
+public sealed record StoredCvDocument(
     string OriginalFilename,
     string StorageKey,
     int Position,

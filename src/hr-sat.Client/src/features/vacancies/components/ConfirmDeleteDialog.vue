@@ -20,14 +20,14 @@ const emit = defineEmits<{
 <template>
   <UModal
     :open="open"
-    title="Delete vacancy"
+    title="Purge vacancy?"
     :dismissible="!deleting"
     @update:open="(value) => { if (!value) emit('close') }"
   >
     <template #body>
       <p class="text-base leading-relaxed">
-        Delete <strong class="font-semibold">{{ vacancy?.title }}</strong
-        >? This permanently removes the vacancy and can't be undone.
+        Purge <strong class="font-semibold">{{ vacancy?.title }}</strong
+        >? This permanently removes the vacancy together with all candidate information it owns and can't be undone.
       </p>
       <UAlert
         v-if="error"
@@ -46,7 +46,7 @@ const emit = defineEmits<{
           Cancel
         </UButton>
         <UButton color="error" :loading="deleting" @click="emit('confirm')">
-          Delete vacancy
+          Purge vacancy
         </UButton>
       </div>
     </template>

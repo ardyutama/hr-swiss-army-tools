@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { shallowRef, toRef, watch } from 'vue'
+import { computed, toRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusBadge from '@/features/vacancies/components/StatusBadge.vue'
 import HiringPlanSummary from '@/features/vacancies/components/HiringPlanSummary.vue'
@@ -12,11 +12,16 @@ import RoundList from '@/features/intake-rounds/components/RoundList.vue'
 import CreateRoundDialog from '@/features/intake-rounds/components/CreateRoundDialog.vue'
 import CloseRoundDialog from '@/features/intake-rounds/components/CloseRoundDialog.vue'
 import PromoteCandidatesDialog from '@/features/promote-candidates/components/PromoteCandidatesDialog.vue'
+import EmailTemplatesDialog from '@/features/email-templates/components/EmailTemplatesDialog.vue'
+import PreparedMessageListDialog from '@/features/prepared-messages/components/PreparedMessageListDialog.vue'
 import { candidateFilterQuery, candidateFilterStateFromQuery } from '@/features/candidates/filter'
+import { useActionDialog } from '@/shared/useActionDialog'
 import { useVacancyDetailFlow } from '@/features/vacancy-detail/useVacancyDetailFlow'
+import CloseVacancyDialog from '@/features/vacancy-detail/components/CloseVacancyDialog.vue'
 import { formatDate } from '@/features/vacancies/format'
 import type { CandidateSummary } from '@/features/candidates/api'
 import type { VacancyRound } from '@/features/vacancies/api'
+import CandidateListFallback from './CandidateListFallback.vue'
 
 const props = defineProps<{
   id: string
@@ -25,8 +30,6 @@ const props = defineProps<{
 const router = useRouter()
 const route = useRoute()
 
-// Composition surface only: the flow owns vacancy-detail state, rules, and
-// coordination; this view connects routing and renders the returned state.
 const {
   vacancy: {
     vacancy,
@@ -35,6 +38,9 @@ const {
     load,
     progress,
     vacancyRequirements,
+    isClosed,
+    closingVacancy,
+    closeVacancy,
   },
   rounds: {
     rounds,
@@ -65,6 +71,17 @@ const {
     canSubmit: canPromoteSubmit,
     openDialog: openPromoteDialog,
     submit: submitPromotions,
+  },
+  prepared: {
+    preparedOpen,
+    emailTemplatesOpen,
+    sendCandidates,
+    sendRoundName,
+    openPrepared,
+    openEmailTemplates,
+    messages: preparedMessages,
+    emailTemplates,
+    templateSources,
   },
   candidates: {
     candidates,
@@ -97,77 +114,74 @@ const {
   candidateFilterStateFromQuery(route.query),
 )
 
-const importOpen = shallowRef(false)
-const deleteOpen = shallowRef(false)
-const deletingCandidate = shallowRef<CandidateSummary | null>(null)
-const deleteError = shallowRef<string | null>(null)
-const createRoundOpen = shallowRef(false)
-const closeRoundOpen = shallowRef(false)
-const roundToClose = shallowRef<VacancyRound | null>(null)
+const {
+  open: importOpen,
+  request: requestImport,
+  confirm: confirmImport,
+} = useActionDialog({ onReset: clearError })
+const {
+  open: deleteOpen,
+  payload: deletingCandidate,
+  error: deleteError,
+  request: requestDelete,
+  confirm: confirmDelete,
+} = useActionDialog<CandidateSummary>()
+const {
+  open: createRoundOpen,
+  request: requestCreateRound,
+  confirm: confirmCreateRound,
+} = useActionDialog()
+const {
+  open: closeRoundOpen,
+  payload: roundToClose,
+  request: requestCloseRoundDialog,
+  confirm: confirmCloseRound,
+} = useActionDialog<VacancyRound>()
+const {
+  open: closeVacancyOpen,
+  request: requestCloseVacancy,
+  confirm: confirmCloseVacancy,
+} = useActionDialog()
 
-watch(importOpen, (open) => {
-  if (!open) {
-    clearError()
-  }
-})
-
-watch(deleteOpen, (open) => {
-  if (!open) {
-    deletingCandidate.value = null
-    deleteError.value = null
-  }
-})
-
-watch(closeRoundOpen, (open) => {
-  if (!open) {
-    roundToClose.value = null
-  }
-})
+function openReviewFromPrepared(candidate: CandidateSummary) {
+  preparedOpen.value = false
+  openReview(candidate)
+}
 
 function openImport() {
-  importOpen.value = true
+  requestImport()
 }
 
 async function onFiles(files: File[]) {
-  if (await importFiles(files)) {
-    importOpen.value = false
-  }
+  await confirmImport(() => importFiles(files))
 }
 
 function openCreateRound() {
-  createRoundOpen.value = true
+  requestCreateRound()
 }
 
 async function onCreateRoundSubmit(payload: { name: string | null }) {
-  if (await createRound(payload.name)) {
-    createRoundOpen.value = false
-  }
+  await confirmCreateRound(() => createRound(payload.name))
 }
 
 function requestCloseRound(round: VacancyRound) {
-  roundToClose.value = round
-  closeRoundOpen.value = true
+  requestCloseRoundDialog(round)
 }
 
-async function confirmCloseRound(round: VacancyRound) {
-  if (await closeRound(round)) {
-    closeRoundOpen.value = false
-  }
+async function confirmCloseVacancyDialog() {
+  await confirmCloseVacancy(() => closeVacancy())
+}
+
+async function confirmCloseRoundDialog() {
+  await confirmCloseRound(async (round) => (round ? closeRound(round) : false))
 }
 
 function requestDeleteCandidate(candidate: CandidateSummary) {
-  deletingCandidate.value = candidate
-  deleteError.value = null
-  deleteOpen.value = true
+  requestDelete(candidate)
 }
 
-async function confirmDeleteCandidate(candidate: CandidateSummary) {
-  const error = await deleteCandidate(candidate)
-  if (!error) {
-    deleteOpen.value = false
-  } else {
-    deleteError.value = error
-  }
+async function confirmDeleteCandidate() {
+  await confirmDelete(async (candidate) => (candidate ? deleteCandidate(candidate) : false))
 }
 
 function openReview(candidate: CandidateSummary) {
@@ -214,7 +228,6 @@ function openReview(candidate: CandidateSummary) {
       </div>
     </div>
 
-    <!-- Error -->
     <UAlert
       v-else-if="viewState === 'error'"
       color="error"
@@ -253,9 +266,23 @@ function openReview(candidate: CandidateSummary) {
             >
               Import .eml
             </UButton>
-            <span title="Available once email templates exist">
-              <UButton disabled>Send email to all candidates</UButton>
-            </span>
+            <UButton
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-mail"
+              @click="openPrepared()"
+            >
+              Send email to all candidates
+            </UButton>
+            <UButton
+              v-if="!isClosed"
+              color="error"
+              variant="ghost"
+              icon="i-lucide-lock"
+              @click="requestCloseVacancy()"
+            >
+              Close vacancy
+            </UButton>
           </div>
         </div>
       </header>
@@ -346,41 +373,14 @@ function openReview(candidate: CandidateSummary) {
           :actions="[{ label: 'Try again', color: 'error', variant: 'outline', onClick: loadCandidates }]"
         />
 
-        <template v-else-if="listState.kind === 'empty'">
-          <!-- Closed vacancy is read-only -->
-          <UEmpty
-            v-if="listState.reason === 'vacancy-closed'"
-            icon="i-lucide-lock-keyhole"
-            title="This vacancy is closed"
-            description="A closed vacancy is read-only and can't receive candidate imports."
-            class="min-h-48 px-6 py-10"
-          />
-          <!-- No active round: imports are rejected until a round is opened -->
-          <UEmpty
-            v-else-if="listState.reason === 'no-active-round'"
-            icon="i-lucide-archive"
-            title="No active round"
-            description="Open a new intake round before importing candidates."
-            class="min-h-48 px-6 py-10"
-            :actions="canOpenRound ? [{ label: 'Open a round', icon: 'i-lucide-plus', onClick: openCreateRound }] : []"
-          />
-          <!-- Selected round is closed (read-only) -->
-          <UEmpty
-            v-else-if="listState.reason === 'round-closed'"
-            icon="i-lucide-lock-keyhole"
-            title="This round is closed"
-            description="A closed round is read-only. Open a new round to keep importing."
-            class="min-h-48 px-6 py-10"
-          />
-          <UEmpty
-            v-else
-            icon="i-lucide-users"
-            title="No candidates yet"
-            description="Export the application emails as .eml files and drop them in to import each email as a candidate."
-            class="min-h-48 px-6 py-10"
-            :actions="[{ label: 'Import .eml files', icon: 'i-lucide-upload', onClick: openImport }]"
-          />
-        </template>
+        <CandidateListFallback
+          v-else-if="listState.kind === 'empty'"
+          :state="listState"
+          :can-open-round="canOpenRound"
+          @open-round="openCreateRound"
+          @import="openImport"
+          @clear-filters="clearFilters"
+        />
 
         <template v-else>
           <div class="border-b border-default px-5 py-3">
@@ -393,13 +393,13 @@ function openReview(candidate: CandidateSummary) {
               :total="(candidates ?? []).length"
             />
           </div>
-          <UEmpty
+          <CandidateListFallback
             v-if="filteredCandidates.length === 0"
-            icon="i-lucide-search-x"
-            title="No candidates match these filters"
-            description="Try a different search or clear the filters."
-            class="min-h-40 px-6 py-10"
-            :actions="[{ label: 'Clear filters', icon: 'i-lucide-x', onClick: clearFilters }]"
+            :state="listState"
+            :can-open-round="canOpenRound"
+            @open-round="openCreateRound"
+            @import="openImport"
+            @clear-filters="clearFilters"
           />
           <CandidateList
             v-else
@@ -410,6 +410,7 @@ function openReview(candidate: CandidateSummary) {
             :readonly="candidatesReadonly"
             @remove="requestDeleteCandidate"
             @review="openReview"
+            @send="openPrepared"
             @toggle-received-sort="toggleReceivedSort"
           />
         </template>
@@ -450,7 +451,13 @@ function openReview(candidate: CandidateSummary) {
       :round="roundToClose"
       :shortage="roundShortage"
       :closing="closingRound"
-      @confirm="confirmCloseRound"
+      @confirm="confirmCloseRoundDialog"
+    />
+    <CloseVacancyDialog
+      v-model:open="closeVacancyOpen"
+      :vacancy="vacancy"
+      :closing="closingVacancy"
+      @confirm="confirmCloseVacancyDialog"
     />
     <PromoteCandidatesDialog
       v-model:open="promoteOpen"
@@ -464,6 +471,44 @@ function openReview(candidate: CandidateSummary) {
       :submit-error="promoteSubmitError"
       :can-submit="canPromoteSubmit"
       @submit="submitPromotions"
+    />
+    <PreparedMessageListDialog
+      v-model:open="preparedOpen"
+      :candidate-count="sendCandidates.length"
+      :round-name="sendRoundName"
+      :view-state="preparedMessages.viewState.value"
+      :load-error="preparedMessages.loadError.value"
+      :rows="preparedMessages.rows.value"
+      :contactable-count="preparedMessages.contactableCount.value"
+      :missing-email="preparedMessages.missingEmail.value"
+      :excluded-undecided="preparedMessages.excludedUndecided.value"
+      :excluded-outcome="preparedMessages.excludedOutcome.value"
+      :missing-template-kinds="preparedMessages.missingTemplateKinds.value"
+      :copied-candidate-id="preparedMessages.copiedCandidateId.value"
+      @edit-templates="openEmailTemplates"
+      @open-review="openReviewFromPrepared"
+      @retry="preparedMessages.retry"
+      @copy="preparedMessages.copy"
+      @reload="preparedMessages.load"
+    />
+    <EmailTemplatesDialog
+      v-if="vacancy"
+      v-model:open="emailTemplatesOpen"
+      :vacancy-id="id"
+      :vacancy-title="vacancy.title"
+      :opened-on="vacancy.openedOn"
+      :status="vacancy.status"
+      :candidates="candidates ?? []"
+      :templates="emailTemplates.templates.value"
+      :load-error="emailTemplates.loadError.value"
+      :view-state="emailTemplates.viewState.value"
+      :saving="emailTemplates.saving.value"
+      :deleting="emailTemplates.deleting.value"
+      :sources="templateSources.sources.value"
+      :save="emailTemplates.save"
+      :remove="emailTemplates.remove"
+      @reload="emailTemplates.load"
+      @load-sources="templateSources.loadSources"
     />
   </div>
 </template>

@@ -57,8 +57,12 @@ The moment a record becomes read-only through its lifecycle: a round's review da
 _Avoid_: Locked, frozen
 
 **Lifecycle Conflict**:
-A refusal of an operation because the record's lifecycle state forbids it: either an attempt to change settled data (closed round, closed vacancy) or a failed lifecycle precondition (round already active, no active round, source round not yet closed). Lifecycle conflicts are expected and actionable: they surface as amber warnings whose copy tells HR how to re-express the intent through the lifecycle's own powers. Unknown conflicts and technical failures surface as red errors.
+A refusal of an operation because the record's lifecycle state forbids it: either an attempt to change settled data (closed round, closed vacancy) or a failed lifecycle precondition (round already active, no active round, source round not yet closed). Lifecycle conflicts are expected and actionable: they surface as amber warnings whose copy tells HR how to re-express the intent through the lifecycle's own powers. Unknown conflicts surface as red errors; unexpected faults that escape a flow's own handling are Technical Failures, never Lifecycle Conflicts.
 _Avoid_: settled-state error, validation failure
+
+**Technical Failure**:
+An unexpected fault that escapes a flow's own handling — a render error, an unhandled rejection, or a failed navigation. Technical failures surface as red errors: the app shell stays alive and HR can return to the Vacancy list or reload. Never used for Lifecycle Conflicts, which are expected and amber.
+_Avoid_: crash, exception, white screen
 
 **Promote**:
 Moving a new, flagged, or shortlisted-without-outcome candidate from a closed round into the active round, preserving review status, requirement reviews, and notes.
@@ -133,7 +137,7 @@ The number of shortlisted and rejected candidates compared with all candidates i
 _Avoid_: Flagged count, match score
 
 **Email Template**:
-Optional editable subject and body text owned by one vacancy for either shortlisted or rejected candidates; reuse creates an independent copy.
+Optional editable subject and body text owned by one vacancy for either shortlisted or rejected candidates; reuse creates an independent copy. The text may carry two placeholders — the candidate's name and the vacancy's title — that resolve per candidate when a Prepared Message is generated; a candidate with neither a typed name nor a source sender name reads as a neutral "there" in the resolved message.
 _Avoid_: Uploaded template file, shared template
 
 **Requirement Match** (deferred to V3):
@@ -147,6 +151,10 @@ _Avoid_: Match status, stored score
 **Prepared Message**:
 A personalized message generated from an email template for one candidate for HR to send using their email client.
 _Avoid_: Sent email, bulk email
+
+**Contactable Candidate**:
+A candidate eligible to receive a Prepared Message: a Rejected Candidate or a member of the Bench with a contact email recorded. New and flagged candidates, shortlisted candidates carrying a hire outcome, and candidates without a contact email are never contacted; the send flow names who was left out and why.
+_Avoid_: Recipient, send-list member
 
 **Needed Hires**:
 The number of people a vacancy must ultimately hire, recorded on the vacancy; the system never closes a vacancy automatically, so a filled vacancy stays open until HR closes it. Intake rounds carry no quota of their own.

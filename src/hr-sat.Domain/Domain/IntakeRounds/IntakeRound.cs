@@ -24,6 +24,12 @@ public sealed class IntakeRound : Entity
     public bool IsOpen => ClosedAt is null;
     public IReadOnlyList<Candidate> Candidates => _candidates;
 
+    internal void AddCandidate(Candidate candidate)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        _candidates.Add(candidate);
+    }
+
     internal static IntakeRound CreateDefault() => new(1, null);
 
     internal static Result<IntakeRound> Create(int roundNumber, string? name)

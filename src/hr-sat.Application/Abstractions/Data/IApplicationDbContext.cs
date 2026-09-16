@@ -1,4 +1,5 @@
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.EmailTemplates;
 using hr_sat.Domain.IntakeRounds;
 using hr_sat.Domain.Vacancies;
 using Microsoft.EntityFrameworkCore;
@@ -15,6 +16,7 @@ public interface IApplicationDbContext
     DbSet<CandidateRequirementReview> CandidateRequirementReviews { get; }
     DbSet<CvDocument> CvDocuments { get; }
     DbSet<PendingFileDeletion> PendingFileDeletions { get; }
+    DbSet<EmailTemplate> EmailTemplates { get; }
 
     Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken);
 

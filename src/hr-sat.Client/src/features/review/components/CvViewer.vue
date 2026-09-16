@@ -15,6 +15,12 @@ const selectedDocument = computed(
     props.documents[0] ??
     null,
 )
+const documentItems = computed(() =>
+  props.documents.map((document) => ({
+    label: document.originalFilename,
+    value: document.id,
+  })),
+)
 
 const page = shallowRef(1)
 const pageCount = shallowRef(0)
@@ -102,6 +108,7 @@ function isEditableElement(element: Element | null) {
       (element.tagName === 'TEXTAREA' ||
         element.tagName === 'INPUT' ||
         element.tagName === 'SELECT' ||
+        element.tagName === 'BUTTON' ||
         (element instanceof HTMLElement && element.isContentEditable)),
   )
 }
@@ -143,8 +150,8 @@ function zoomBy(delta: number) {
   zoom.value = Math.min(3, Math.max(0.5, Math.round((zoom.value + delta) * 100) / 100))
 }
 
-function selectDocument(id: number) {
-  if (id !== selectedDocument.value?.id) {
+function selectDocument(id: number | null) {
+  if (id !== null && id !== selectedDocument.value?.id) {
     selectedId.value = id
   }
 }
@@ -171,16 +178,15 @@ watch(
       >
         <!-- Document switcher only appears when the candidate has several CVs. -->
         <template v-if="documents.length > 1">
-          <select
-            :value="selectedDocument?.id"
+          <USelect
+            :model-value="selectedDocument?.id ?? null"
+            :items="documentItems"
+            value-key="value"
+            label-key="label"
             aria-label="Choose CV document"
-            class="min-h-10 min-w-0 max-w-64 flex-1 truncate rounded-xl border border-default bg-default px-3 py-2 text-sm text-highlighted"
-            @change="selectDocument(Number(($event.target as HTMLSelectElement).value))"
-          >
-            <option v-for="document in documents" :key="document.id" :value="document.id">
-              {{ document.originalFilename }}
-            </option>
-          </select>
+            class="min-w-0 max-w-64 flex-1"
+            @update:model-value="selectDocument"
+          />
           <UBadge v-if="selectedDocument?.isPrimary" color="primary" variant="subtle">
             Primary
           </UBadge>

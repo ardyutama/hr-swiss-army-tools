@@ -1,5 +1,6 @@
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.EmailTemplates;
 using hr_sat.Domain.IntakeRounds;
 
 namespace hr_sat.Domain.Vacancies;
@@ -8,6 +9,7 @@ public sealed class Vacancy : Entity
 {
     private readonly List<VacancyRequirement> _requirements = [];
     private readonly List<IntakeRound> _rounds = [];
+    private readonly List<EmailTemplate> _emailTemplates = [];
 
     private Vacancy()
     {
@@ -29,6 +31,7 @@ public sealed class Vacancy : Entity
     public DateTimeOffset CreatedAt { get; private set; }
     public IReadOnlyList<VacancyRequirement> Requirements => _requirements;
     public IReadOnlyList<IntakeRound> Rounds => _rounds;
+    public IReadOnlyList<EmailTemplate> EmailTemplates => _emailTemplates;
     public IntakeRound? ActiveRound => _rounds.SingleOrDefault(round => round.IsOpen);
 
     public Result<IntakeRound> CreateRound(string? name)
@@ -127,12 +130,92 @@ public sealed class Vacancy : Entity
         return Result.Success();
     }
 
+    public Result<EmailTemplate> UpsertEmailTemplate(
+        EmailTemplateKind kind,
+        string? subject,
+        string? body)
+    {
+        var openResult = VacancyLifecycleRules.EnsureCanMutateEmailTemplate(Status, Id);
+        if (openResult.IsFailure)
+        {
+            return Result<EmailTemplate>.Failure(openResult.Error);
+        }
+
+        var existing = _emailTemplates.SingleOrDefault(template => template.Kind == kind);
+        if (existing is null)
+        {
+            var createResult = EmailTemplate.Create(Id, kind, subject, body);
+            if (createResult.IsFailure)
+            {
+                return createResult;
+            }
+
+            _emailTemplates.Add(createResult.Value);
+            Raise(new EmailTemplateUpsertedDomainEvent(Id, kind));
+            return createResult.Value;
+        }
+
+        var replaceResult = existing.Replace(subject, body);
+        if (replaceResult.IsFailure)
+        {
+            return Result<EmailTemplate>.Failure(replaceResult.Error);
+        }
+
+        Raise(new EmailTemplateUpsertedDomainEvent(Id, kind));
+        return existing;
+    }
+
+    public Result DeleteEmailTemplate(EmailTemplateKind kind)
+    {
+        var kindResult = EmailTemplateRules.EnsureSupportedKind(kind);
+        if (kindResult.IsFailure)
+        {
+            return kindResult;
+        }
+
+        var openResult = VacancyLifecycleRules.EnsureCanMutateEmailTemplate(Status, Id);
+        if (openResult.IsFailure)
+        {
+            return openResult;
+        }
+
+        var existing = _emailTemplates.SingleOrDefault(template => template.Kind == kind);
+        if (existing is null)
+        {
+            return EmailTemplateErrors.NotFound(Id, kind);
+        }
+
+        _emailTemplates.Remove(existing);
+        Raise(new EmailTemplateDeletedDomainEvent(Id, kind));
+        return Result.Success();
+    }
+
     public Result<IntakeRound> EnsureCanReceiveCandidateImport(long roundId)
     {
         var openResult = VacancyLifecycleRules.EnsureCanReceiveCandidateImport(Status);
         return openResult.IsFailure
             ? Result<IntakeRound>.Failure(openResult.Error)
             : EnsureOpenRound(roundId, requireActive: true);
+    }
+
+    public Result<Candidate> ImportCandidate(CandidateImportData importData)
+    {
+        ArgumentNullException.ThrowIfNull(importData);
+
+        var roundResult = EnsureOpenRound(importData.IntakeRoundId, requireActive: false);
+        if (roundResult.IsFailure)
+        {
+            return Result<Candidate>.Failure(roundResult.Error);
+        }
+
+        var candidateResult = Candidate.Import(importData);
+        if (candidateResult.IsFailure)
+        {
+            return candidateResult;
+        }
+
+        roundResult.Value.AddCandidate(candidateResult.Value);
+        return candidateResult.Value;
     }
 
     public Result<IntakeRound> EnsureCanRemoveCandidate(long roundId)
