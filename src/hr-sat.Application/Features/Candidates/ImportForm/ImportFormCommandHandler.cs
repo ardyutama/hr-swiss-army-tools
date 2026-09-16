@@ -121,8 +121,8 @@ internal sealed class ImportFormCommandHandler(
                 group => group.Select(item => item.CandidateId).ToHashSet(),
                 StringComparer.Ordinal);
         var emailCandidateKeys = (await (
-                from candidate in dbContext.Candidates
-                join candidateRound in dbContext.IntakeRounds
+                from candidate in dbContext.Candidates.AsNoTracking()
+                join candidateRound in dbContext.IntakeRounds.AsNoTracking()
                     on candidate.IntakeRoundId equals candidateRound.Id
                 where candidateRound.VacancyId == command.VacancyId &&
                     candidate.SourceSenderEmail != null
