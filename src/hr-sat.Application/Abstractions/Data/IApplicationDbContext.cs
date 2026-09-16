@@ -12,6 +12,7 @@ public interface IApplicationDbContext
     DbSet<Vacancy> Vacancies { get; }
     DbSet<VacancyRequirement> VacancyRequirements { get; }
     DbSet<Candidate> Candidates { get; }
+    DbSet<CandidateFormResponse> CandidateFormResponses { get; }
     DbSet<IntakeRound> IntakeRounds { get; }
     DbSet<CandidateRequirementReview> CandidateRequirementReviews { get; }
     DbSet<CvDocument> CvDocuments { get; }

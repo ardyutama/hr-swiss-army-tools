@@ -51,6 +51,19 @@ internal static class CandidateDetailsReader
                         document.SizeBytes,
                         document.IsPrimary,
                         $"/api/vacancies/{vacancyId}/rounds/{roundId}/candidates/{candidateId}/cv-documents/{document.Id}"))
+                    .ToList(),
+                candidate.IntakeSource.ToString().ToLowerInvariant(),
+                candidate.IsResubmitted,
+                candidate.FormResponses
+                    .OrderByDescending(response => response.IsCurrent)
+                    .ThenBy(response => response.ImportedAt)
+                    .Select(response => new CandidateFormResponseResponse(
+                        response.Cells,
+                        response.FormTimestampRaw,
+                        response.FormTimestampParsed,
+                        response.IdentityKey,
+                        response.IsCurrent,
+                        response.ImportedAt))
                     .ToList()))
             .SingleOrDefaultAsync(cancellationToken);
 
@@ -60,14 +73,20 @@ internal static class CandidateDetailsReader
                 CandidateErrors.NotFound(candidateId));
         }
 
-        if (candidate.SourceSenderEmail is null)
+        var normalizedSenderEmail = candidate.SourceSenderEmail is not null
+            ? CandidateFormIdentity.NormalizeEmail(candidate.SourceSenderEmail)
+            : CandidateFormIdentity.NormalizeEmail(await dbContext.CandidateFormResponses
+                .AsNoTracking()
+                .Where(response =>
+                    response.CandidateId == candidateId &&
+                    response.IsCurrent &&
+                    response.IdentityKey != null)
+                .Select(response => response.IdentityKey)
+                .SingleOrDefaultAsync(cancellationToken));
+        if (normalizedSenderEmail is null)
         {
             return candidate;
         }
-
-        var normalizedSenderEmail = candidate.SourceSenderEmail
-            .Trim()
-            .ToLowerInvariant();
 
         var priorApplications = await dbContext.Candidates
             .AsNoTracking()
@@ -84,8 +103,7 @@ internal static class CandidateDetailsReader
                 prior.Round.VacancyId == vacancyId &&
                 prior.Candidate.IntakeRoundId != roundId &&
                 prior.Candidate.SourceSenderEmail != null &&
-                prior.Candidate.SourceSenderEmail!.Trim().ToLower() ==
-                normalizedSenderEmail)
+                prior.Candidate.SourceSenderEmail!.Trim().ToLower() == normalizedSenderEmail)
             .OrderByDescending(prior => prior.Round.RoundNumber)
             .ThenByDescending(prior => prior.Candidate.ImportedAt)
             .ThenByDescending(prior => prior.Candidate.Id)
@@ -99,9 +117,55 @@ internal static class CandidateDetailsReader
             })
             .ToListAsync(cancellationToken);
 
+        var formPriorApplications = await dbContext.CandidateFormResponses
+            .AsNoTracking()
+            .Join(
+                dbContext.Candidates.AsNoTracking(),
+                response => response.CandidateId,
+                priorCandidate => priorCandidate.Id,
+                (response, priorCandidate) => new
+                {
+                    Response = response,
+                    Candidate = priorCandidate
+                })
+            .Join(
+                dbContext.IntakeRounds.AsNoTracking(),
+                prior => prior.Candidate.IntakeRoundId,
+                priorRound => priorRound.Id,
+                (prior, priorRound) => new
+                {
+                    prior.Response,
+                    prior.Candidate,
+                    Round = priorRound
+                })
+            .Where(prior =>
+                prior.Round.VacancyId == vacancyId &&
+                prior.Candidate.IntakeRoundId != roundId &&
+                prior.Response.IsCurrent &&
+                prior.Response.IdentityKey == normalizedSenderEmail)
+            .OrderByDescending(prior => prior.Round.RoundNumber)
+            .ThenByDescending(prior => prior.Candidate.ImportedAt)
+            .ThenByDescending(prior => prior.Candidate.Id)
+            .Select(prior => new
+            {
+                prior.Round.RoundNumber,
+                RoundName = prior.Round.Name,
+                ReviewStatus = prior.Candidate.ReviewStatus.ToString().ToLowerInvariant(),
+                prior.Candidate.ImportedAt,
+                CandidateId = prior.Candidate.Id
+            })
+            .ToListAsync(cancellationToken);
+
+        var allPriorApplications = priorApplications
+            .Concat(formPriorApplications)
+            .OrderByDescending(prior => prior.RoundNumber)
+            .ThenByDescending(prior => prior.ImportedAt)
+            .ThenByDescending(prior => prior.CandidateId)
+            .ToList();
+
         return candidate with
         {
-            PriorApplications = priorApplications
+            PriorApplications = allPriorApplications
                 .GroupBy(prior => prior.RoundNumber)
                 .Select(group => group.First())
                 .Select(prior => new CandidatePriorApplicationResponse(

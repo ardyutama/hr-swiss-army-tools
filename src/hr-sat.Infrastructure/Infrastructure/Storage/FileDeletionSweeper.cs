@@ -78,7 +78,8 @@ public sealed class FileDeletionSweeper(
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         var referencedKeys = (await dbContext.Candidates
-                .Select(candidate => candidate.SourceStorageKey)
+            .Where(candidate => candidate.SourceStorageKey != null)
+                .Select(candidate => candidate.SourceStorageKey!)
                 .ToListAsync(cancellationToken))
             .Concat(await dbContext.CvDocuments
                 .Select(document => document.StorageKey)

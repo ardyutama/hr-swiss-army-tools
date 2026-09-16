@@ -32,9 +32,10 @@ internal sealed class ImportCandidatesCommandHandler(
                 {
                     var existingHashKeys = (await dbContext.Candidates
                             .Where(candidate => candidate.IntakeRoundId == round.Id)
+                                .Where(candidate => candidate.SourceSha256 != null)
                             .Select(candidate => candidate.SourceSha256)
                             .ToListAsync(cancellationToken))
-                        .Select(Convert.ToHexString)
+                        .Select(hash => Convert.ToHexString(hash!))
                         .ToHashSet(StringComparer.Ordinal);
                     filePreparer = new ImportFilePreparer(
                         round.Id,

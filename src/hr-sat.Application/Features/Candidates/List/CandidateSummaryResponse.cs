@@ -11,4 +11,6 @@ internal sealed record CandidateSummaryResponse(
     string? SourceSenderEmail,
     string? SourceSubject,
     DateTimeOffset? SourceSentAt,
-    int CvDocumentCount);
+    int CvDocumentCount,
+    string IntakeSource,
+    bool IsResubmitted);

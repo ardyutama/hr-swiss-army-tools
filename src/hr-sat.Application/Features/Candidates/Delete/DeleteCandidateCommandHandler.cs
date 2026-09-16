@@ -23,13 +23,17 @@ internal sealed class DeleteCandidateCommandHandler(
             (vacancy, targetRoundId) => vacancy.EnsureCanRemoveCandidate(targetRoundId),
             async (_, _) =>
             {
-                var sourceStorageKey = await dbContext.Candidates
+                var candidate = await dbContext.Candidates
                     .Where(candidate =>
                         candidate.Id == command.CandidateId &&
                         candidate.IntakeRoundId == command.RoundId)
-                    .Select(candidate => candidate.SourceStorageKey)
+                    .Select(candidate => new
+                    {
+                        candidate.Id,
+                        candidate.SourceStorageKey
+                    })
                     .SingleOrDefaultAsync(cancellationToken);
-                if (sourceStorageKey is null)
+                if (candidate is null)
                 {
                     return Result<bool>.Failure(CandidateErrors.NotFound(command.CandidateId));
                 }
@@ -44,7 +48,13 @@ internal sealed class DeleteCandidateCommandHandler(
                     .ExecuteDeleteAsync(cancellationToken);
 
                 var enqueuedAt = timeProvider.GetUtcNow();
-                foreach (var storageKey in documentStorageKeys.Prepend(sourceStorageKey))
+                var storageKeys = documentStorageKeys.AsEnumerable();
+                if (candidate.SourceStorageKey is not null)
+                {
+                    storageKeys = storageKeys.Prepend(candidate.SourceStorageKey);
+                }
+
+                foreach (var storageKey in storageKeys)
                 {
                     dbContext.PendingFileDeletions.Add(new PendingFileDeletion
                     {

@@ -24,8 +24,9 @@ internal sealed class PurgeVacancyCommandHandler(
 
         var sourceStorageKeys = await dbContext.Candidates
             .Where(candidate => dbContext.IntakeRounds.Any(round =>
-                round.Id == candidate.IntakeRoundId && round.VacancyId == command.Id))
-            .Select(candidate => candidate.SourceStorageKey)
+                round.Id == candidate.IntakeRoundId && round.VacancyId == command.Id) &&
+                candidate.SourceStorageKey != null)
+            .Select(candidate => candidate.SourceStorageKey!)
             .ToListAsync(cancellationToken);
         var documentStorageKeys = await dbContext.CvDocuments
             .Where(document => dbContext.Candidates.Any(candidate =>

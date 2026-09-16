@@ -218,6 +218,26 @@ public sealed class Vacancy : Entity
         return candidateResult.Value;
     }
 
+    public Result<Candidate> ImportFormCandidate(CandidateFormImportData importData)
+    {
+        ArgumentNullException.ThrowIfNull(importData);
+
+        var roundResult = EnsureOpenRound(importData.IntakeRoundId, requireActive: false);
+        if (roundResult.IsFailure)
+        {
+            return Result<Candidate>.Failure(roundResult.Error);
+        }
+
+        var candidateResult = Candidate.ImportForm(importData);
+        if (candidateResult.IsFailure)
+        {
+            return candidateResult;
+        }
+
+        roundResult.Value.AddCandidate(candidateResult.Value);
+        return candidateResult.Value;
+    }
+
     public Result<IntakeRound> EnsureCanRemoveCandidate(long roundId)
     {
         var openResult = VacancyLifecycleRules.EnsureCanRemoveCandidate(Status);

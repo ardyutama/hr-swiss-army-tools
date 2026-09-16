@@ -10,7 +10,7 @@ public sealed record CandidateImportResponse(
     string? SourceSubject,
     string? SourceBodyText,
     DateTimeOffset? SourceSentAt,
-    string SourceOriginalFilename,
+    string? SourceOriginalFilename,
     IReadOnlyList<CvDocumentResponse> Documents)
 {
     public static CandidateImportResponse From(long vacancyId, long roundId, Candidate candidate) => new(

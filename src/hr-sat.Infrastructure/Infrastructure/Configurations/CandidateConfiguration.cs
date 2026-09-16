@@ -28,6 +28,9 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
                 "candidate_contact_email_check",
                 "contact_email IS NULL OR char_length(btrim(contact_email)) BETWEEN 1 AND 320");
             table.HasCheckConstraint(
+                "candidate_intake_source_check",
+                "intake_source IN ('email', 'form')");
+            table.HasCheckConstraint(
                 "candidate_contact_phone_check",
                 "contact_phone IS NULL OR char_length(btrim(contact_phone)) BETWEEN 1 AND 100");
             table.HasCheckConstraint(
@@ -38,16 +41,16 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
                 "source_sender_email IS NULL OR char_length(btrim(source_sender_email)) BETWEEN 1 AND 320");
             table.HasCheckConstraint(
                 "candidate_source_original_filename_check",
-                "btrim(source_original_filename) <> ''");
+                "intake_source = 'form' OR (source_original_filename IS NOT NULL AND btrim(source_original_filename) <> '')");
             table.HasCheckConstraint(
                 "candidate_source_storage_key_check",
-                "btrim(source_storage_key) <> ''");
+                "intake_source = 'form' OR (source_storage_key IS NOT NULL AND btrim(source_storage_key) <> '')");
             table.HasCheckConstraint(
                 "candidate_source_size_bytes_check",
-                "source_size_bytes > 0");
+                "intake_source = 'form' OR (source_size_bytes IS NOT NULL AND source_size_bytes > 0)");
             table.HasCheckConstraint(
                 "candidate_source_sha256_check",
-                "octet_length(source_sha256) = 32");
+                "intake_source = 'form' OR (source_sha256 IS NOT NULL AND octet_length(source_sha256) = 32)");
         });
 
         entity.HasKey(candidate => candidate.Id);
@@ -56,6 +59,18 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
             .UseIdentityAlwaysColumn();
         entity.Property(candidate => candidate.IntakeRoundId)
             .HasColumnName("intake_round_id")
+            .IsRequired();
+        entity.Property(candidate => candidate.IntakeSource)
+            .HasColumnName("intake_source")
+            .HasColumnType("text")
+            .HasConversion(
+                source => ToDatabaseValue(source),
+                value => FromDatabaseValue<CandidateIntakeSource>(value))
+            .HasDefaultValue(CandidateIntakeSource.Email)
+            .IsRequired();
+        entity.Property(candidate => candidate.IsResubmitted)
+            .HasColumnName("is_resubmitted")
+            .HasDefaultValue(false)
             .IsRequired();
         entity.Property(candidate => candidate.PromotedFromRoundNumber)
             .HasColumnName("promoted_from_round_number");
@@ -113,19 +128,15 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
             .HasColumnName("source_sent_at");
         entity.Property(candidate => candidate.SourceOriginalFilename)
             .HasColumnName("source_original_filename")
-            .HasColumnType("text")
-            .IsRequired();
+            .HasColumnType("text");
         entity.Property(candidate => candidate.SourceStorageKey)
             .HasColumnName("source_storage_key")
-            .HasColumnType("text")
-            .IsRequired();
+            .HasColumnType("text");
         entity.Property(candidate => candidate.SourceSizeBytes)
-            .HasColumnName("source_size_bytes")
-            .IsRequired();
+            .HasColumnName("source_size_bytes");
         entity.Property(candidate => candidate.SourceSha256)
             .HasColumnName("source_sha256")
-            .HasColumnType("bytea")
-            .IsRequired();
+            .HasColumnType("bytea");
         entity.Property(candidate => candidate.ImportedAt)
             .HasColumnName("imported_at")
             .HasDefaultValueSql("now()")
@@ -148,9 +159,16 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
             .UsePropertyAccessMode(PropertyAccessMode.Field);
         entity.Navigation(candidate => candidate.RequirementReviews)
             .UsePropertyAccessMode(PropertyAccessMode.Field);
+        entity.HasMany(candidate => candidate.FormResponses)
+            .WithOne()
+            .HasForeignKey(response => response.CandidateId)
+            .OnDelete(DeleteBehavior.Cascade);
+        entity.Navigation(candidate => candidate.FormResponses)
+            .UsePropertyAccessMode(PropertyAccessMode.Field);
 
         entity.HasIndex(candidate => candidate.SourceStorageKey)
             .IsUnique()
+            .HasFilter("source_storage_key IS NOT NULL")
             .HasDatabaseName("candidate_source_storage_key_key");
         entity.HasIndex(candidate => new { candidate.IntakeRoundId, candidate.SourceSha256 })
             .IsUnique()

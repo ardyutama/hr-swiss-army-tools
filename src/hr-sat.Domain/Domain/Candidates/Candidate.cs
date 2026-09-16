@@ -6,6 +6,7 @@ public sealed class Candidate : Entity
 {
     private readonly List<CvDocument> _cvDocuments = [];
     private readonly List<CandidateRequirementReview> _requirementReviews = [];
+    private readonly List<CandidateFormResponse> _formResponses = [];
 
     private Candidate()
     {
@@ -15,6 +16,7 @@ public sealed class Candidate : Entity
         CandidateImportData importData)
     {
         IntakeRoundId = importData.IntakeRoundId;
+        IntakeSource = CandidateIntakeSource.Email;
         ReviewStatus = CandidateReviewStatus.New;
         HireOutcome = CandidateHireOutcome.None;
         ExtractionStatus = CandidateExtractionStatus.Pending;
@@ -30,7 +32,19 @@ public sealed class Candidate : Entity
         ImportedAt = importData.ImportedAt;
     }
 
+    private Candidate(CandidateFormImportData importData)
+    {
+        IntakeRoundId = importData.IntakeRoundId;
+        IntakeSource = CandidateIntakeSource.Form;
+        ReviewStatus = CandidateReviewStatus.New;
+        HireOutcome = CandidateHireOutcome.None;
+        ExtractionStatus = CandidateExtractionStatus.Pending;
+        ImportedAt = importData.ImportedAt;
+    }
+
     public long IntakeRoundId { get; private set; }
+    public CandidateIntakeSource IntakeSource { get; private set; }
+    public bool IsResubmitted { get; private set; }
     public int? PromotedFromRoundNumber { get; private set; }
     public DateTimeOffset? PromotedAt { get; private set; }
     public CandidateReviewStatus ReviewStatus { get; private set; }
@@ -45,13 +59,14 @@ public sealed class Candidate : Entity
     public string? SourceSubject { get; private set; }
     public string? SourceBodyText { get; private set; }
     public DateTimeOffset? SourceSentAt { get; private set; }
-    public string SourceOriginalFilename { get; private set; } = string.Empty;
-    public string SourceStorageKey { get; private set; } = string.Empty;
-    public long SourceSizeBytes { get; private set; }
-    public byte[] SourceSha256 { get; private set; } = [];
+    public string? SourceOriginalFilename { get; private set; }
+    public string? SourceStorageKey { get; private set; }
+    public long? SourceSizeBytes { get; private set; }
+    public byte[]? SourceSha256 { get; private set; }
     public DateTimeOffset ImportedAt { get; private set; }
     public IReadOnlyList<CvDocument> CvDocuments => _cvDocuments;
     public IReadOnlyList<CandidateRequirementReview> RequirementReviews => _requirementReviews;
+    public IReadOnlyList<CandidateFormResponse> FormResponses => _formResponses;
 
     internal Result UpdateDetails(string? fullName, string? contactEmail)
     {
@@ -205,5 +220,43 @@ public sealed class Candidate : Entity
         }
 
         return candidate;
+    }
+
+    internal static Result<Candidate> ImportForm(CandidateFormImportData importData)
+    {
+        if (importData.IntakeRoundId <= 0)
+        {
+            return Result<Candidate>.Failure(CandidateErrors.Invalid(new Dictionary<string, string[]>
+            {
+                ["intakeRoundId"] = ["Intake round is required."]
+            }));
+        }
+
+        if (importData.ImportedAt == default)
+        {
+            return Result<Candidate>.Failure(CandidateErrors.Invalid(new Dictionary<string, string[]>
+            {
+                ["importedAt"] = ["The candidate import timestamp is required."]
+            }));
+        }
+
+        return new Candidate(importData);
+    }
+
+    internal Result<CandidateFormResponse> AddFormResponse(
+        CandidateFormResponseData responseData,
+        CandidateFormResponse? currentResponse,
+        bool isResubmitted)
+    {
+        var responseResult = CandidateFormResponse.Create(responseData);
+        if (responseResult.IsFailure)
+        {
+            return responseResult;
+        }
+
+        currentResponse?.MarkPrior();
+        _formResponses.Add(responseResult.Value);
+        IsResubmitted |= isResubmitted;
+        return responseResult.Value;
     }
 }

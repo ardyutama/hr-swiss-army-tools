@@ -82,6 +82,8 @@ internal static class VacancyPromotionRules
 
         var duplicateSourceCandidateIds = candidates
             .Where(candidate => activeRound.Candidates.Any(existing =>
+                existing.SourceSha256 is not null &&
+                candidate.SourceSha256 is not null &&
                 existing.SourceSha256.SequenceEqual(candidate.SourceSha256)))
             .Select(candidate => candidate.Id)
             .ToArray();

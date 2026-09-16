@@ -91,7 +91,9 @@ internal sealed class PromoteCandidatesCommandHandler(
                 candidate.SourceSenderEmail,
                 candidate.SourceSubject,
                 candidate.SourceSentAt,
-                candidate.CvDocuments.Count))
+                candidate.CvDocuments.Count,
+                candidate.IntakeSource.ToString().ToLowerInvariant(),
+                candidate.IsResubmitted))
             .ToListAsync(cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);

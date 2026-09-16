@@ -16,8 +16,11 @@ public sealed record CandidateDetailsResponse(
     string? SourceSubject,
     string? SourceBodyText,
     DateTimeOffset? SourceSentAt,
-    string SourceOriginalFilename,
-    IReadOnlyList<CandidateDocumentResponse> Documents);
+    string? SourceOriginalFilename,
+    IReadOnlyList<CandidateDocumentResponse> Documents,
+    string IntakeSource,
+    bool IsResubmitted,
+    IReadOnlyList<CandidateFormResponseResponse> FormResponses);
 
 public sealed record CandidateRequirementReviewResponse(long RequirementId, bool Confirmed);
 
@@ -27,3 +30,11 @@ public sealed record CandidateDocumentResponse(
     long SizeBytes,
     bool IsPrimary,
     string DownloadUrl);
+
+public sealed record CandidateFormResponseResponse(
+    IReadOnlyList<string> Cells,
+    string FormTimestampRaw,
+    DateTimeOffset? FormTimestampParsed,
+    string? IdentityKey,
+    bool IsCurrent,
+    DateTimeOffset ImportedAt);

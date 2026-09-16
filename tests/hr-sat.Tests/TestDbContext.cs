@@ -1,3 +1,4 @@
+using System.Text.Json;
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Domain.Candidates;
 using hr_sat.Domain.EmailTemplates;
@@ -24,6 +25,7 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
     public DbSet<VacancyRequirement> VacancyRequirements => Set<VacancyRequirement>();
     public DbSet<IntakeRound> IntakeRounds => Set<IntakeRound>();
     public DbSet<Candidate> Candidates => Set<Candidate>();
+    public DbSet<CandidateFormResponse> CandidateFormResponses => Set<CandidateFormResponse>();
     public DbSet<CandidateRequirementReview> CandidateRequirementReviews => Set<CandidateRequirementReview>();
     public DbSet<CvDocument> CvDocuments => Set<CvDocument>();
     public DbSet<PendingFileDeletion> PendingFileDeletions => Set<PendingFileDeletion>();
@@ -109,6 +111,8 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
             entity.Property(candidate => candidate.ReviewStatus).HasConversion<string>();
             entity.Property(candidate => candidate.HireOutcome).HasConversion<string>();
             entity.Property(candidate => candidate.ExtractionStatus).HasConversion<string>();
+            entity.Property(candidate => candidate.IntakeSource).HasConversion<string>();
+            entity.Property(candidate => candidate.IsResubmitted);
             entity.HasMany(candidate => candidate.CvDocuments)
                 .WithOne()
                 .HasForeignKey(document => document.CandidateId)
@@ -121,6 +125,30 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
                 .UsePropertyAccessMode(PropertyAccessMode.Field);
             entity.Navigation(candidate => candidate.RequirementReviews)
                 .UsePropertyAccessMode(PropertyAccessMode.Field);
+            entity.HasMany(candidate => candidate.FormResponses)
+                .WithOne()
+                .HasForeignKey(response => response.CandidateId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.Navigation(candidate => candidate.FormResponses)
+                .UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        modelBuilder.Entity<CandidateFormResponse>(entity =>
+        {
+            entity.HasKey(response => response.Id);
+            entity.Property(response => response.Id).ValueGeneratedOnAdd();
+            entity.Property(response => response.Cells)
+                .HasConversion(
+                    cells => JsonSerializer.Serialize(cells),
+                    json => JsonSerializer.Deserialize<string[]>(json) ?? Array.Empty<string>());
+            entity.Property(response => response.FormTimestampParsed)
+                .HasConversion(nullableDateTimeOffsetConverter);
+            entity.Property(response => response.ImportedAt)
+                .HasConversion(dateTimeOffsetConverter);
+            entity.HasOne<Candidate>()
+                .WithMany(candidate => candidate.FormResponses)
+                .HasForeignKey(response => response.CandidateId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<CandidateRequirementReview>(entity =>
