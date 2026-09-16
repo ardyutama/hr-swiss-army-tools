@@ -59,6 +59,7 @@ export interface CandidateSummary {
   notes: string | null
   reviewStatus: CandidateReviewStatus
   hireOutcome: CandidateHireOutcome
+  isResubmitted: boolean
   sourceSenderName: string | null
   sourceSenderEmail: string | null
   sourceSubject: string | null

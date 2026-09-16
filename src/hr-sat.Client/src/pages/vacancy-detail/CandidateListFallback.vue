@@ -52,9 +52,9 @@ const emit = defineEmits<{
       v-else
       icon="i-lucide-users"
       title="No candidates yet"
-      description="Export the application emails as .eml files and drop them in to import each email as a candidate."
+      description="Drop in the exported application emails (.eml) or a Google Forms .csv export — each email or row becomes a candidate."
       class="min-h-48 px-6 py-10"
-      :actions="[{ label: 'Import .eml files', icon: 'i-lucide-upload', onClick: () => emit('import') }]"
+      :actions="[{ label: 'Import candidates', icon: 'i-lucide-upload', onClick: () => emit('import') }]"
     />
   </template>
 </template>

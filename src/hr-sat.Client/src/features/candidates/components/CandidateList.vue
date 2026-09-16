@@ -177,6 +177,9 @@ const columnWidths = ['24%', '14%', '8%', '28%', '12%', '7.5rem']
               >
                 {{ hireOutcomeLabels[candidate.hireOutcome] }}
               </UBadge>
+              <UBadge v-if="candidate.isResubmitted" color="neutral" variant="subtle">
+                Resubmitted
+              </UBadge>
             </div>
           </td>
 

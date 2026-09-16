@@ -99,6 +99,7 @@ function candidateSummary(id: number, overrides: Partial<Record<string, unknown>
     notes: null,
     reviewStatus: 'new',
     hireOutcome: 'none',
+    isResubmitted: false,
     sourceSenderName: 'Alice Applicant',
     sourceSenderEmail: 'alice@example.com',
     sourceSubject: 'Application for Welder',
@@ -188,8 +189,8 @@ function dialogButton(text: string): HTMLButtonElement | undefined {
 async function openImportDialog(wrapper: VueWrapper) {
   const button = wrapper
     .findAll('button')
-    .find((candidate) => candidate.text().includes('Import .eml'))
-  expect(button, 'an Import .eml button').toBeDefined()
+    .find((candidate) => candidate.text().includes('Import candidates'))
+  expect(button, 'an Import candidates button').toBeDefined()
   await button!.trigger('click')
   await flushPromises()
 }
@@ -371,6 +372,271 @@ describe('VacancyDetailView', () => {
     expect(document.body.textContent).toContain('At least one .eml file is required.')
     expect(document.body.querySelector('.dropzone')).not.toBeNull()
     expect(toastAdd).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('domain: HR drops a Google Forms .csv export and sees the Form Response import summary', async () => {
+    let imported = false
+    let sentFileName: string | undefined
+    stubFetch(
+      () =>
+        vacancyDetails({
+          progress: imported
+            ? { processedCandidates: 0, totalCandidates: 1 }
+            : { processedCandidates: 0, totalCandidates: 0 },
+        }),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/candidates/import-form')) {
+          imported = true
+          const form = init.body as FormData
+          sentFileName = (form.get('file') as File).name
+          return Promise.resolve(
+            jsonResponse({
+              rowsRead: 214,
+              created: 198,
+              updated: 12,
+              skippedOutdated: 4,
+              priorApplications: 9,
+            }),
+          )
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse(imported ? [candidateSummary(1)] : []))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await openImportDialog(wrapper)
+    await dropFiles([new File(['Timestamp,Email'], 'responses.csv', { type: 'text/csv' })])
+    await flushPromises()
+
+    // The single .csv is dispatched to the form import endpoint as one multipart file.
+    expect(sentFileName).toBe('responses.csv')
+
+    // The dialog stays open with the summary line visible…
+    expect(document.body.querySelector('.dropzone')).not.toBeNull()
+    expect(document.body.querySelector('[role="status"]')?.textContent).toContain(
+      '214 rows read · 198 new · 12 updated (resubmitted) · 4 skipped (outdated) · 9 prior applications noticed',
+    )
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title:
+          'Form import complete: 214 rows read · 198 new · 12 updated (resubmitted) · 4 skipped (outdated) · 9 prior applications noticed',
+        color: 'success',
+      }),
+    )
+
+    // …and the candidate list refreshes behind it.
+    expect(wrapper.text()).toContain('Alice Applicant')
+    wrapper.unmount()
+  })
+
+  it('domain: a mixed drop of .eml and .csv files is rejected inline and nothing uploads', async () => {
+    const posted: string[] = []
+    stubFetch(
+      () => vacancyDetails(),
+      (url, init) => {
+        if (init?.method === 'POST') {
+          posted.push(url)
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await openImportDialog(wrapper)
+    await dropFiles([
+      new File(['alice source'], 'alice.eml', { type: 'message/rfc822' }),
+      new File(['Timestamp,Email'], 'responses.csv', { type: 'text/csv' }),
+    ])
+    await flushPromises()
+
+    expect(posted).toEqual([])
+    expect(document.body.textContent).toContain('Nothing was uploaded')
+    expect(document.body.textContent).toContain('alice.eml')
+    expect(document.body.textContent).toContain('drop .eml files on their own')
+    expect(document.body.textContent).toContain('responses.csv')
+    expect(document.body.textContent).toContain('drop one .csv export on its own')
+    expect(toastAdd).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('domain: a wrong-type drop is rejected inline and nothing uploads', async () => {
+    const posted: string[] = []
+    stubFetch(
+      () => vacancyDetails(),
+      (url, init) => {
+        if (init?.method === 'POST') {
+          posted.push(url)
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await openImportDialog(wrapper)
+    await dropFiles([new File(['notes'], 'notes.txt', { type: 'text/plain' })])
+    await flushPromises()
+
+    expect(posted).toEqual([])
+    expect(document.body.textContent).toContain('Nothing was uploaded')
+    expect(document.body.textContent).toContain('notes.txt')
+    expect(document.body.textContent).toContain("isn't an .eml or a .csv export")
+    expect(toastAdd).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('domain: a malformed CSV shows a red alert naming the row position', async () => {
+    stubFetch(
+      () => vacancyDetails(),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/candidates/import-form')) {
+          return Promise.resolve(
+            jsonResponse({ errors: { file: ['Row 12 has 7 cells but the header has 9.'] } }, 400),
+          )
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await openImportDialog(wrapper)
+    await dropFiles([new File(['Timestamp,Email'], 'responses.csv', { type: 'text/csv' })])
+    await flushPromises()
+
+    // The dialog stays open with the malformed-CSV failure visible next to the drop zone.
+    const alert = bodyElement('[role="alert"]')
+    expect(alert.textContent).toContain("Couldn't read that CSV")
+    expect(alert.textContent).toContain('Row 12 has 7 cells but the header has 9.')
+    expect(alert.className).toContain('error')
+    expect(document.body.querySelector('.dropzone')).not.toBeNull()
+    expect(toastAdd).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('domain: importing into a closed round shows the amber lifecycle re-expression', async () => {
+    stubFetch(
+      () => vacancyDetails(),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/candidates/import-form')) {
+          return Promise.resolve(jsonResponse({ title: 'IntakeRounds.Closed' }, 409))
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await openImportDialog(wrapper)
+    await dropFiles([new File(['Timestamp,Email'], 'responses.csv', { type: 'text/csv' })])
+    await flushPromises()
+
+    const alert = bodyElement('[role="alert"]')
+    expect(alert.textContent).toContain('This round is closed')
+    expect(alert.textContent).toContain('Closed rounds are read-only')
+    expect(alert.className).toContain('warning')
+    expect(document.body.querySelector('.dropzone')).not.toBeNull()
+    expect(toastAdd).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('domain: importing a form export into a closed vacancy shows the amber lifecycle re-expression', async () => {
+    stubFetch(
+      () => vacancyDetails(),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/candidates/import-form')) {
+          return Promise.resolve(
+            jsonResponse(
+              { title: 'Candidates.FormImportLifecycleConflict', detail: 'The vacancy is invalid.' },
+              409,
+            ),
+          )
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await openImportDialog(wrapper)
+    await dropFiles([new File(['Timestamp,Email'], 'responses.csv', { type: 'text/csv' })])
+    await flushPromises()
+
+    const alert = bodyElement('[role="alert"]')
+    expect(alert.textContent).toContain('This vacancy is closed')
+    expect(alert.textContent).toContain('Reopen it to keep importing candidates.')
+    expect(alert.className).toContain('warning')
+    expect(toastAdd).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('domain: a re-uploaded export stacks the Resubmitted badge on the affected candidate', async () => {
+    let imported = false
+    stubFetch(
+      () => vacancyDetails(),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/candidates/import-form')) {
+          imported = true
+          return Promise.resolve(
+            jsonResponse({
+              rowsRead: 3,
+              created: 0,
+              updated: 3,
+              skippedOutdated: 0,
+              priorApplications: 0,
+            }),
+          )
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(
+            jsonResponse(imported ? [candidateSummary(1, { isResubmitted: true })] : []),
+          )
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await openImportDialog(wrapper)
+    await dropFiles([new File(['Timestamp,Email'], 'responses.csv', { type: 'text/csv' })])
+    await flushPromises()
+
+    // Zero-count segments drop out of the summary line.
+    expect(document.body.querySelector('[role="status"]')?.textContent).toContain(
+      '3 rows read · 3 updated (resubmitted)',
+    )
+
+    const aliceRow = wrapper.findAll('.crow').find((row) => row.text().includes('Alice Applicant'))
+    expect(aliceRow?.text()).toContain('Resubmitted')
     wrapper.unmount()
   })
 
@@ -1131,9 +1397,9 @@ describe('VacancyDetailView', () => {
       wrapper.findAll('button').some((button) => button.text().includes('Promote from')),
     ).toBe(false)
     // The V1 flow is otherwise untouched: import affordance and the round's candidates.
-    expect(wrapper.findAll('button').some((button) => button.text().includes('Import .eml'))).toBe(
-      true,
-    )
+    expect(
+      wrapper.findAll('button').some((button) => button.text().includes('Import candidates')),
+    ).toBe(true)
     expect(wrapper.text()).toContain('Alice Applicant')
     wrapper.unmount()
   })
@@ -1622,7 +1888,7 @@ describe('VacancyDetailView', () => {
     // Read-only: no delete or import affordances while the closed round is viewed.
     expect(wrapper.findAll('button[aria-label="Delete candidate"]')).toHaveLength(0)
     expect(
-      wrapper.findAll('button').filter((button) => button.text().includes('Import .eml')),
+      wrapper.findAll('button').filter((button) => button.text().includes('Import candidates')),
     ).toHaveLength(0)
     wrapper.unmount()
   })
@@ -1738,7 +2004,7 @@ describe('VacancyDetailView', () => {
     expect(wrapper.find('[aria-label="Intake rounds"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('No active round')
     expect(
-      wrapper.findAll('button').filter((button) => button.text().includes('Import .eml')),
+      wrapper.findAll('button').filter((button) => button.text().includes('Import candidates')),
     ).toHaveLength(0)
 
     const openRoundButton = wrapper
@@ -1764,7 +2030,7 @@ describe('VacancyDetailView', () => {
     expect(wrapper.find('[aria-current="true"]').text()).toContain('Round 2')
     expect(wrapper.text()).toContain('No candidates yet')
     expect(
-      wrapper.findAll('button').some((button) => button.text().includes('Import .eml')),
+      wrapper.findAll('button').some((button) => button.text().includes('Import candidates')),
     ).toBe(true)
     wrapper.unmount()
   })

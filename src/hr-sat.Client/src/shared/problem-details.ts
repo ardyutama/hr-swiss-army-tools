@@ -60,6 +60,15 @@ export function problemMessage(
     return lifecycleMessage('This vacancy is closed', 'Reopen the vacancy to record hire outcomes.')
   }
 
+  // Form-response import funnels a closed-vacancy refusal into this conflict
+  // code; the closed-round case keeps its own IntakeRounds.Closed code above.
+  if (code === 'Candidates.FormImportLifecycleConflict') {
+    return lifecycleMessage(
+      'This vacancy is closed',
+      'A closed vacancy is read-only. Reopen it to keep importing candidates.',
+    )
+  }
+
   // A 400 ValidationProblem the call site did not pre-handle is the server
   // refusing the change on rule grounds (a settled record or failed
   // precondition): surface its first field message verbatim as a warning.

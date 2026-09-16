@@ -82,7 +82,7 @@ function emitFiles(files: File[]) {
       'dropzone--busy border-solid': busy,
     }"
     role="region"
-    aria-label="Import .eml files"
+    aria-label="Import candidate files"
     @dragenter.prevent="onDragEnter"
     @dragover.prevent
     @dragleave.prevent="onDragLeave"
@@ -95,9 +95,12 @@ function emitFiles(files: File[]) {
     >
       <UIcon name="i-lucide-upload" class="size-7" />
     </span>
-    <p class="dropzone__title text-lg font-semibold text-highlighted">Drop eml export to import the data</p>
+    <p class="dropzone__title text-lg font-semibold text-highlighted">
+      Drop .eml files or a Google Forms .csv export
+    </p>
     <p class="dropzone__hint max-w-md text-sm text-muted">
-      Each email becomes a candidate of this vacancy; PDF attachments are kept as CV documents.
+      Each email becomes a candidate of this vacancy; a form export imports one candidate per
+      row, keeping the latest response.
     </p>
     <UButton
       color="neutral"
@@ -106,16 +109,16 @@ function emitFiles(files: File[]) {
       :loading="busy"
       @click="openFilePicker"
     >
-      {{ busy ? 'Importing…' : 'Choose .eml files' }}
+      {{ busy ? 'Importing…' : 'Choose .eml or .csv files' }}
     </UButton>
     <input
       ref="fileInput"
       type="file"
       class="sr-only"
-      accept=".eml"
+      accept=".eml,.csv"
       multiple
       :disabled="disabled || busy"
-      aria-label="Choose .eml files"
+      aria-label="Choose .eml or .csv files"
       @change="onInputChange"
     />
   </div>

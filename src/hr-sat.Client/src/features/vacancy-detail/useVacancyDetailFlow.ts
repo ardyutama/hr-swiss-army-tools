@@ -4,6 +4,7 @@ import type { CandidateFilterState } from '@/features/candidates/filter'
 import { useCandidateFilter } from '@/features/candidates/useCandidateFilter'
 import { useCandidateImport } from '@/features/candidates/useCandidateImport'
 import { useCandidates } from '@/features/candidates/useCandidates'
+import { useFormResponseImport } from '@/features/import-form/useFormResponseImport'
 import { useIntakeRounds, roundDisplayName } from '@/features/intake-rounds/useIntakeRounds'
 import { sendScope } from '@/features/prepared-messages/format'
 import { useEmailTemplates } from '@/features/email-templates/useEmailTemplates'
@@ -93,6 +94,13 @@ export function useVacancyDetailFlow(
     clearError,
   } = useCandidateImport(vacancyId, selectedRoundParam, refreshVacancyAndCandidates)
   const {
+    importing: formImporting,
+    importError: formImportError,
+    summaryLine: formSummaryLine,
+    importFile: importFormResponseFile,
+    clearResult: clearFormImportResult,
+  } = useFormResponseImport(vacancyId, selectedRoundParam, refreshVacancyAndCandidates)
+  const {
     status: statusFilter,
     outcome: outcomeFilter,
     query: searchQuery,
@@ -141,6 +149,16 @@ export function useVacancyDetailFlow(
   async function importFiles(files: File[]): Promise<boolean> {
     const response = await importCandidateFiles(files)
     if (!response) {
+      return false
+    }
+    // Refresh so the vacancy progress, round counts, and the candidate list reflect the import.
+    await refreshVacancyAndCandidates()
+    return true
+  }
+
+  async function importFormFile(file: File): Promise<boolean> {
+    const imported = await importFormResponseFile(file)
+    if (!imported) {
       return false
     }
     // Refresh so the vacancy progress, round counts, and the candidate list reflect the import.
@@ -309,6 +327,11 @@ export function useVacancyDetailFlow(
       clearError,
       canImport,
       importFiles,
+      formImporting,
+      formImportError,
+      formSummaryLine,
+      importFormFile,
+      clearFormImportResult,
     },
   }
 }

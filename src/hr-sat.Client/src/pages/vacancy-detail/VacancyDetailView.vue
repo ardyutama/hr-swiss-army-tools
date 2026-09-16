@@ -3,7 +3,7 @@ import { computed, toRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusBadge from '@/features/vacancies/components/StatusBadge.vue'
 import HiringPlanSummary from '@/features/vacancies/components/HiringPlanSummary.vue'
-import ImportCandidatesDialog from '@/features/candidates/components/ImportCandidatesDialog.vue'
+import ImportDialog from '@/features/import/components/ImportDialog.vue'
 import CandidateDeleteDialog from '@/features/candidates/components/CandidateDeleteDialog.vue'
 import ImportResultList from '@/features/candidates/components/ImportResultList.vue'
 import CandidateList from '@/features/candidates/components/CandidateList.vue'
@@ -108,6 +108,11 @@ const {
     clearError,
     canImport,
     importFiles,
+    formImporting,
+    formImportError,
+    formSummaryLine,
+    importFormFile,
+    clearFormImportResult,
   },
 } = useVacancyDetailFlow(
   toRef(props, 'id'),
@@ -118,7 +123,12 @@ const {
   open: importOpen,
   request: requestImport,
   confirm: confirmImport,
-} = useActionDialog({ onReset: clearError })
+} = useActionDialog({
+  onReset: () => {
+    clearError()
+    clearFormImportResult()
+  },
+})
 const {
   open: deleteOpen,
   payload: deletingCandidate,
@@ -152,8 +162,24 @@ function openImport() {
   requestImport()
 }
 
-async function onFiles(files: File[]) {
+// The dialog surfaces one alert at a time: the form flow's typed alert wins,
+// otherwise the .eml flow's message renders as a red inline alert as before.
+const importAlert = computed(() => {
+  if (formImportError.value) {
+    return formImportError.value
+  }
+  return importError.value ? { color: 'error' as const, title: importError.value } : null
+})
+
+async function onImportEmlFiles(files: File[]) {
+  clearFormImportResult()
   await confirmImport(() => importFiles(files))
+}
+
+async function onImportCsvFile(file: File) {
+  clearError()
+  // The dialog stays open so the summary line remains visible.
+  await importFormFile(file)
 }
 
 function openCreateRound() {
@@ -264,7 +290,7 @@ function openReview(candidate: CandidateSummary) {
               icon="i-lucide-upload"
               @click="openImport"
             >
-              Import .eml
+              Import candidates
             </UButton>
             <UButton
               color="neutral"
@@ -428,11 +454,13 @@ function openReview(candidate: CandidateSummary) {
       </section>
     </template>
 
-    <ImportCandidatesDialog
+    <ImportDialog
       v-model:open="importOpen"
-      :busy="importing"
-      :error="importError"
-      @files="onFiles"
+      :busy="importing || formImporting"
+      :alert="importAlert"
+      :summary="formSummaryLine"
+      @eml-files="onImportEmlFiles"
+      @csv-file="onImportCsvFile"
     />
     <CandidateDeleteDialog
       v-model:open="deleteOpen"

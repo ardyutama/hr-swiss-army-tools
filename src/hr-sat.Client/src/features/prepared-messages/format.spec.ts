@@ -10,6 +10,7 @@ function candidate(id: number): CandidateSummary {
     notes: null,
     reviewStatus: 'shortlisted',
     hireOutcome: 'none',
+    isResubmitted: false,
     sourceSenderName: null,
     sourceSenderEmail: null,
     sourceSubject: null,
