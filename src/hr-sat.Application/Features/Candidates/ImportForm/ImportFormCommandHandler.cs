@@ -92,11 +92,11 @@ internal sealed class ImportFormCommandHandler(
             from response in dbContext.CandidateFormResponses
             join candidate in dbContext.Candidates
                 on response.CandidateId equals candidate.Id
-            where candidate.IntakeRoundId == round.Id && response.IsCurrent
+            where candidate.IntakeRoundId == round.Id &&
+                response.IsCurrent && response.IdentityKey != null
             select new CurrentFormResponse(response, candidate))
             .ToListAsync(cancellationToken);
         var currentResponsesByKey = currentRoundResponses
-            .Where(item => item.Response.IdentityKey is not null)
             .GroupBy(item => item.Response.IdentityKey!, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Single(), StringComparer.Ordinal);
         var vacancyFormEmailIdentities = await (
