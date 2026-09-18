@@ -20,9 +20,10 @@ Known decision points:
 - `ValidationDecorator` behavior: collect all validator failures before the handler;
   how its 400 body maps to the current `ValidationProblem` dictionary so the seam
   stays byte-stable (PascalCase keys; the client lowercases).
-- `IApplicationDbContext` surface: `DbSet`s + `SaveChangesAsync`, and how raw SQL,
-  `ExecuteDeleteAsync`, and `FindVacancyForUpdateAsync` (FOR UPDATE) reach the
-  database through the interface.
+- `IApplicationDbContext` surface (**settled**): `DbSet`s + `SaveChangesAsync`, and how raw SQL,
+  `ExecuteDeleteAsync`, and `FindVacancyForUpdateAsync` (provider-specific `FOR UPDATE`/
+  transactional read) reach the database through the interface. Call it after
+  `BeginTransactionAsync`; the adapter owns concurrent-mutation exclusion.
 - `Entity` base + `IDomainEvent` + dispatch-on-save: machinery only, no events raised
   yet (settled in charting, Q8a).
 - `Result`/`Result<T>` + `Error` + `{Entity}Errors` code conventions

@@ -35,10 +35,17 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken) =>
         Database.BeginTransactionAsync(cancellationToken);
 
-    public Task<Vacancy?> LockVacancyAsync(
+    public async Task<Vacancy?> FindVacancyForUpdateAsync(
         long id,
-        CancellationToken cancellationToken) =>
-        Vacancies.SingleOrDefaultAsync(vacancy => vacancy.Id == id, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        if (Database.CurrentTransaction is null)
+        {
+            throw new InvalidOperationException("A transaction is required before reading a vacancy for update.");
+        }
+
+        return await Vacancies.SingleOrDefaultAsync(vacancy => vacancy.Id == id, cancellationToken);
+    }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.UseSqlite(connection);

@@ -13,35 +13,54 @@ internal static class VacancyWrite
         Func<Vacancy, Result> mutation,
         CancellationToken cancellationToken)
     {
+        return await ExecuteLockedAsync<Vacancy>(
+            id,
+            dbContext,
+            async vacancy =>
+            {
+                await dbContext.VacancyRequirements
+                    .Where(requirement => requirement.VacancyId == id)
+                    .LoadAsync(cancellationToken);
+                await dbContext.IntakeRounds
+                    .Where(round => round.VacancyId == id)
+                    .LoadAsync(cancellationToken);
+                await dbContext.EmailTemplates
+                    .Where(template => template.VacancyId == id)
+                    .LoadAsync(cancellationToken);
+
+                var mutationResult = mutation(vacancy);
+                if (mutationResult.IsFailure)
+                {
+                    return Result<Vacancy>.Failure(mutationResult.Error);
+                }
+
+                return vacancy;
+            },
+            cancellationToken);
+    }
+
+    public static async Task<Result<T>> ExecuteLockedAsync<T>(
+        long vacancyId,
+        IApplicationDbContext dbContext,
+        Func<Vacancy, Task<Result<T>>> mutation,
+        CancellationToken cancellationToken)
+    {
         await using var transaction = await dbContext.BeginTransactionAsync(cancellationToken);
-        var vacancy = await dbContext.LockVacancyAsync(id, cancellationToken);
+        var vacancy = await dbContext.FindVacancyForUpdateAsync(vacancyId, cancellationToken);
         if (vacancy is null)
         {
-            return Result<Vacancy>.Failure(VacancyErrors.NotFound(id));
+            return Result<T>.Failure(VacancyErrors.NotFound(vacancyId));
         }
 
-        await dbContext.VacancyRequirements
-            .Where(requirement => requirement.VacancyId == id)
-            .LoadAsync(cancellationToken);
-        await dbContext.IntakeRounds
-            .Where(round => round.VacancyId == id)
-            .LoadAsync(cancellationToken);
-        await dbContext.EmailTemplates
-            .Where(template => template.VacancyId == id)
-            .LoadAsync(cancellationToken);
-        await dbContext.FormLayouts
-            .Where(layout => layout.VacancyId == id)
-            .LoadAsync(cancellationToken);
-
-        var mutationResult = mutation(vacancy);
+        var mutationResult = await mutation(vacancy);
         if (mutationResult.IsFailure)
         {
-            return Result<Vacancy>.Failure(mutationResult.Error);
+            return Result<T>.Failure(mutationResult.Error);
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        return vacancy;
+        return mutationResult;
     }
 }

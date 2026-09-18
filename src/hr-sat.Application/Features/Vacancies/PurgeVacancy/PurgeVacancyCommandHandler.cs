@@ -1,5 +1,6 @@
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Messaging;
+using hr_sat.Application.Features.Shared;
 using hr_sat.Domain;
 using hr_sat.Domain.Vacancies;
 using Microsoft.EntityFrameworkCore;
@@ -15,48 +16,39 @@ internal sealed class PurgeVacancyCommandHandler(
         PurgeVacancyCommand command,
         CancellationToken cancellationToken)
     {
-        await using var transaction = await dbContext.BeginTransactionAsync(cancellationToken);
-        var vacancy = await dbContext.LockVacancyAsync(command.Id, cancellationToken);
-        if (vacancy is null)
-        {
-            return VacancyErrors.NotFound(command.Id);
-        }
-
-        var sourceStorageKeys = await dbContext.Candidates
-            .Where(candidate => dbContext.IntakeRounds.Any(round =>
-                round.Id == candidate.IntakeRoundId && round.VacancyId == command.Id) &&
-                candidate.SourceStorageKey != null)
-            .Select(candidate => candidate.SourceStorageKey!)
-            .ToListAsync(cancellationToken);
-        var documentStorageKeys = await dbContext.CvDocuments
-            .Where(document => dbContext.Candidates.Any(candidate =>
-                candidate.Id == document.CandidateId &&
-                dbContext.IntakeRounds.Any(round =>
-                    round.Id == candidate.IntakeRoundId && round.VacancyId == command.Id)))
-            .Select(document => document.StorageKey)
-            .ToListAsync(cancellationToken);
-        var deletedCount = await dbContext.Vacancies
-            .Where(vacancy => vacancy.Id == command.Id)
-            .ExecuteDeleteAsync(cancellationToken);
-
-        if (deletedCount == 0)
-        {
-            return VacancyErrors.NotFound(command.Id);
-        }
-
-        var enqueuedAt = timeProvider.GetUtcNow();
-        foreach (var storageKey in sourceStorageKeys.Concat(documentStorageKeys))
-        {
-            dbContext.PendingFileDeletions.Add(new PendingFileDeletion
+        return await VacancyWrite.ExecuteLockedAsync<object?>(
+            command.Id,
+            dbContext,
+            async vacancy =>
             {
-                StorageKey = storageKey,
-                EnqueuedAt = enqueuedAt
-            });
-        }
+                var sourceStorageKeys = await dbContext.Candidates
+                    .Where(candidate => dbContext.IntakeRounds.Any(round =>
+                        round.Id == candidate.IntakeRoundId && round.VacancyId == vacancy.Id))
+                    .Select(candidate => candidate.SourceStorageKey)
+                    .ToListAsync(cancellationToken);
+                var documentStorageKeys = await dbContext.CvDocuments
+                    .Where(document => dbContext.Candidates.Any(candidate =>
+                        candidate.Id == document.CandidateId &&
+                        dbContext.IntakeRounds.Any(round =>
+                            round.Id == candidate.IntakeRoundId && round.VacancyId == vacancy.Id)))
+                    .Select(document => document.StorageKey)
+                    .ToListAsync(cancellationToken);
+                await dbContext.Vacancies
+                    .Where(item => item.Id == vacancy.Id)
+                    .ExecuteDeleteAsync(cancellationToken);
 
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+                var enqueuedAt = timeProvider.GetUtcNow();
+                foreach (var storageKey in sourceStorageKeys.Concat(documentStorageKeys))
+                {
+                    dbContext.PendingFileDeletions.Add(new PendingFileDeletion
+                    {
+                        StorageKey = storageKey,
+                        EnqueuedAt = enqueuedAt
+                    });
+                }
 
-        return Result.Success();
+                return Result<object?>.Success(null);
+            },
+            cancellationToken);
     }
 }

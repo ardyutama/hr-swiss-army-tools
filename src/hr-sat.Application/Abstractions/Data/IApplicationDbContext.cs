@@ -22,7 +22,7 @@ public interface IApplicationDbContext
 
     Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken);
 
-    Task<Vacancy?> LockVacancyAsync(long id, CancellationToken cancellationToken);
+    Task<Vacancy?> FindVacancyForUpdateAsync(long id, CancellationToken cancellationToken);
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 }

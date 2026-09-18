@@ -16,7 +16,7 @@ internal static class RoundWrite
         Func<Vacancy, long, Result<T>> mutation,
         CancellationToken cancellationToken)
     {
-        return await ExecuteLockedAsync(
+        return await VacancyWrite.ExecuteLockedAsync(
             vacancyId,
             dbContext,
             async vacancy =>
@@ -46,7 +46,7 @@ internal static class RoundWrite
         Func<Vacancy, IntakeRound, Task<Result<T>>> mutation,
         CancellationToken cancellationToken)
     {
-        return await ExecuteLockedAsync(
+        return await VacancyWrite.ExecuteLockedAsync(
             vacancyId,
             dbContext,
             async vacancy =>
@@ -67,28 +67,4 @@ internal static class RoundWrite
             cancellationToken);
     }
 
-    private static async Task<Result<T>> ExecuteLockedAsync<T>(
-        long vacancyId,
-        IApplicationDbContext dbContext,
-        Func<Vacancy, Task<Result<T>>> mutation,
-        CancellationToken cancellationToken)
-    {
-        await using var transaction = await dbContext.BeginTransactionAsync(cancellationToken);
-        var vacancy = await dbContext.LockVacancyAsync(vacancyId, cancellationToken);
-        if (vacancy is null)
-        {
-            return Result<T>.Failure(VacancyErrors.NotFound(vacancyId));
-        }
-
-        var mutationResult = await mutation(vacancy);
-        if (mutationResult.IsFailure)
-        {
-            return Result<T>.Failure(mutationResult.Error);
-        }
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-
-        return mutationResult;
-    }
 }

@@ -29,18 +29,13 @@ public sealed class AppDbContext(
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken) =>
         Database.BeginTransactionAsync(cancellationToken);
 
-    public async Task<Vacancy?> LockVacancyAsync(
-        long id,
-        CancellationToken cancellationToken) =>
-        await LockVacancyRowAsync(id, cancellationToken);
-
-    private async Task<Vacancy?> LockVacancyRowAsync(
+    public async Task<Vacancy?> FindVacancyForUpdateAsync(
         long id,
         CancellationToken cancellationToken)
     {
         if (Database.CurrentTransaction is null)
         {
-            throw new InvalidOperationException("A transaction is required before locking a vacancy.");
+            throw new InvalidOperationException("A transaction is required before reading a vacancy for update.");
         }
 
         return await Vacancies
