@@ -18,6 +18,24 @@ internal sealed class ImportFormCommandHandler(
         ImportFormCommand command,
         CancellationToken cancellationToken)
     {
+        ParsedFormCsv parsedCsv;
+        try
+        {
+            parsedCsv = await FormCsvParser.ParseAsync(
+                command.File!.Content,
+                cancellationToken);
+        }
+        catch (FormCsvParseException exception)
+        {
+            return Result<ImportFormResponse>.Failure(
+                CandidateErrors.InvalidFormCsv(exception.Message));
+        }
+        catch (IOException)
+        {
+            return Result<ImportFormResponse>.Failure(
+                CandidateErrors.InvalidFormCsv("The CSV could not be read."));
+        }
+
         var writeResult = await RoundWrite.ExecuteAsync(
             command.VacancyId,
             command.RoundId,
@@ -27,6 +45,7 @@ internal sealed class ImportFormCommandHandler(
                 command,
                 vacancy,
                 round,
+                parsedCsv,
                 cancellationToken),
             cancellationToken);
 
@@ -55,37 +74,52 @@ internal sealed class ImportFormCommandHandler(
         ImportFormCommand command,
         Vacancy vacancy,
         IntakeRound round,
+        ParsedFormCsv parsedCsv,
         CancellationToken cancellationToken)
     {
-        var hasValidFormLayout = await dbContext.FormLayouts
-            .AsNoTracking()
-            .AnyAsync(
-                layout => layout.VacancyId == command.VacancyId &&
-                    layout.NameColumnOrdinal.HasValue &&
-                    layout.ContactEmailColumnOrdinal.HasValue,
-                cancellationToken);
-        if (!hasValidFormLayout)
+        FormLayout? layout;
+        if (command.Layout is not null)
         {
-            return Result<ImportFormResponse>.Failure(
-                CandidateErrors.FormLayoutRequired(command.VacancyId));
-        }
+            var layoutResult = await ApplyLayoutAsync(
+                command.Layout,
+                vacancy,
+                parsedCsv.Headers,
+                cancellationToken);
+            if (layoutResult.IsFailure)
+            {
+                return Result<ImportFormResponse>.Failure(layoutResult.Error);
+            }
 
-        ParsedFormCsv parsedCsv;
-        try
-        {
-            parsedCsv = await FormCsvParser.ParseAsync(
-                command.File!.Content,
-                cancellationToken);
+            layout = layoutResult.Value;
         }
-        catch (FormCsvParseException exception)
+        else
         {
-            return Result<ImportFormResponse>.Failure(
-                CandidateErrors.InvalidFormCsv(exception.Message));
-        }
-        catch (IOException)
-        {
-            return Result<ImportFormResponse>.Failure(
-                CandidateErrors.InvalidFormCsv("The CSV could not be read."));
+            layout = vacancy.FormLayout;
+            if (layout is null || !layout.IsValid)
+            {
+                return Result<ImportFormResponse>.Failure(
+                    CandidateErrors.FormLayoutRequired(
+                        command.VacancyId,
+                        parsedCsv.Headers));
+            }
+
+            var changes = layout.DetectDrift(parsedCsv.Headers);
+            if (changes.Count > 0 && !command.ConfirmDrift)
+            {
+                return Result<ImportFormResponse>.Failure(
+                    CandidateErrors.FormHeaderDrift(
+                        parsedCsv.Headers,
+                        changes));
+            }
+
+            if (command.ConfirmDrift)
+            {
+                var snapshotResult = layout.AdoptHeaderSnapshot(parsedCsv.Headers);
+                if (snapshotResult.IsFailure)
+                {
+                    return Result<ImportFormResponse>.Failure(snapshotResult.Error);
+                }
+            }
         }
 
         var currentRoundResponses = await (
@@ -150,6 +184,7 @@ internal sealed class ImportFormCommandHandler(
                     round,
                     rows,
                     importedAt,
+                    layout,
                     isResubmitted: false);
                 if (candidateResult.IsFailure)
                 {
@@ -167,6 +202,7 @@ internal sealed class ImportFormCommandHandler(
                     round,
                     rows,
                     importedAt,
+                    layout,
                     isResubmitted: false);
                 if (candidateResult.IsFailure)
                 {
@@ -222,6 +258,7 @@ internal sealed class ImportFormCommandHandler(
                 return Result<ImportFormResponse>.Failure(winnerResult.Error);
             }
 
+            candidate.PrefillDetailsFromLayout(layout);
             skippedOutdated += rows.Count - freshRows.Count;
             if (CandidateFormIdentity.IsEmailKey(identityKey) &&
                 HasPriorApplication(
@@ -244,11 +281,60 @@ internal sealed class ImportFormCommandHandler(
             priorApplications);
     }
 
+    private async Task<Result<FormLayout>> ApplyLayoutAsync(
+        FormLayoutDefinition definition,
+        Vacancy vacancy,
+        IReadOnlyList<string> headers,
+        CancellationToken cancellationToken)
+    {
+        var hadLayout = vacancy.FormLayout is not null;
+        var layoutResult = vacancy.UpsertFormLayout(definition, headers);
+        if (layoutResult.IsFailure)
+        {
+            return layoutResult;
+        }
+
+        if (!hadLayout)
+        {
+            dbContext.FormLayouts.Add(layoutResult.Value);
+        }
+
+        await ReprojectActiveCandidatesAsync(
+            vacancy,
+            layoutResult.Value,
+            cancellationToken);
+        return layoutResult.Value;
+    }
+
+    private async Task ReprojectActiveCandidatesAsync(
+        Vacancy vacancy,
+        FormLayout layout,
+        CancellationToken cancellationToken)
+    {
+        var activeRound = vacancy.ActiveRound;
+        if (activeRound is null)
+        {
+            return;
+        }
+
+        var candidates = await dbContext.Candidates
+            .Where(candidate =>
+                candidate.IntakeRoundId == activeRound.Id &&
+                candidate.IntakeSource == CandidateIntakeSource.Form)
+            .Include(candidate => candidate.FormResponses)
+            .ToListAsync(cancellationToken);
+        foreach (var candidate in candidates)
+        {
+            candidate.PrefillDetailsFromLayout(layout);
+        }
+    }
+
     private Result<Candidate> AddNewCandidate(
         Vacancy vacancy,
         IntakeRound round,
         IReadOnlyList<ParsedFormRow> rows,
         DateTimeOffset importedAt,
+        FormLayout layout,
         bool isResubmitted)
     {
         var candidateResult = vacancy.ImportFormCandidate(new CandidateFormImportData(
@@ -285,6 +371,7 @@ internal sealed class ImportFormCommandHandler(
             return Result<Candidate>.Failure(latestResult.Error);
         }
 
+        candidate.PrefillDetailsFromLayout(layout);
         dbContext.Candidates.Add(candidate);
         return candidate;
     }
@@ -357,11 +444,11 @@ internal sealed class ImportFormCommandHandler(
     private static CandidateFormResponseData ToResponseData(
         ParsedFormRow row,
         DateTimeOffset importedAt) => new(
-            row.Cells,
-            row.FormTimestampRaw,
-            row.FormTimestampParsed,
-            row.IdentityKey,
-            importedAt);
+        row.Cells,
+        row.FormTimestampRaw,
+        row.FormTimestampParsed,
+        row.IdentityKey,
+        importedAt);
 
     private static bool HasPriorApplication(
         string identityKey,

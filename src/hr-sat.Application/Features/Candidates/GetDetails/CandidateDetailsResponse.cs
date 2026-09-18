@@ -9,6 +9,7 @@ public sealed record CandidateDetailsResponse(
     IReadOnlyList<CandidatePriorApplicationResponse> PriorApplications,
     string? FullName,
     string? ContactEmail,
+    string? ContactPhone,
     string? Notes,
     IReadOnlyList<CandidateRequirementReviewResponse> RequirementReviews,
     string? SourceSenderName,

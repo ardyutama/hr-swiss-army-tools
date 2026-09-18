@@ -8,44 +8,106 @@ public sealed class FormLayout : Entity
     {
     }
 
-    private FormLayout(long vacancyId, FormLayoutDefinition definition)
+    private FormLayout(
+        long vacancyId,
+        IReadOnlyList<string> headerSnapshot,
+        FormLayoutDefinition definition)
     {
         VacancyId = vacancyId;
-        ReplaceValues(definition);
+        ReplaceValues(headerSnapshot, definition);
     }
 
     public long VacancyId { get; private set; }
     public string[] HeaderSnapshot { get; private set; } = [];
-    public int? NameColumnOrdinal { get; private set; }
-    public int? ContactEmailColumnOrdinal { get; private set; }
-    public int? ContactPhoneColumnOrdinal { get; private set; }
-    public int? CvLinkColumnOrdinal { get; private set; }
+    public IReadOnlyList<FormLayoutColumn> Columns { get; private set; } = [];
+    public int? NameColumnOrdinal => GetColumnOrdinal(FormLayoutRole.Name);
+    public int? ContactEmailColumnOrdinal => GetColumnOrdinal(FormLayoutRole.ContactEmail);
+    public int? ContactPhoneColumnOrdinal => GetColumnOrdinal(FormLayoutRole.ContactPhone);
+    public int? CvLinkColumnOrdinal => GetColumnOrdinal(FormLayoutRole.CvLink);
     public bool IsValid =>
-        NameColumnOrdinal.HasValue && ContactEmailColumnOrdinal.HasValue;
+        HeaderSnapshot.Length > 0 &&
+        NameColumnOrdinal.HasValue &&
+        ContactEmailColumnOrdinal.HasValue;
 
     internal static Result<FormLayout> Create(
         long vacancyId,
+        IReadOnlyList<string>? headerSnapshot,
         FormLayoutDefinition definition)
     {
-        var validationResult = Validate(vacancyId, definition);
+        var validationResult = Validate(vacancyId, headerSnapshot, definition);
         return validationResult.IsFailure
             ? Result<FormLayout>.Failure(validationResult.Error)
-            : new FormLayout(vacancyId, definition);
+            : new FormLayout(vacancyId, headerSnapshot!, definition);
     }
 
     internal Result Replace(FormLayoutDefinition definition)
     {
-        var validationResult = Validate(VacancyId, definition);
+        var validationResult = Validate(VacancyId, HeaderSnapshot, definition);
         if (validationResult.IsFailure)
         {
             return validationResult;
         }
 
-        ReplaceValues(definition);
+        ReplaceValues(HeaderSnapshot, definition);
         return Result.Success();
     }
 
-    private static Result Validate(long vacancyId, FormLayoutDefinition definition)
+    internal Result ReplaceFromImport(
+        FormLayoutDefinition definition,
+        IReadOnlyList<string>? headerSnapshot)
+    {
+        var validationResult = Validate(VacancyId, headerSnapshot, definition);
+        if (validationResult.IsFailure)
+        {
+            return validationResult;
+        }
+
+        ReplaceValues(headerSnapshot!, definition);
+        return Result.Success();
+    }
+
+    public IReadOnlyList<FormLayoutHeaderChange> DetectDrift(
+        IReadOnlyList<string>? newHeaders)
+    {
+        var headers = newHeaders ?? [];
+        return Columns
+            .OrderBy(column => column.Ordinal)
+            .Select(column =>
+            {
+                var now = column.Ordinal < headers.Count
+                    ? headers[column.Ordinal]
+                    : "column no longer present";
+                return new FormLayoutHeaderChange(
+                    column.Ordinal,
+                    HeaderSnapshot[column.Ordinal],
+                    now);
+            })
+            .Where(change => !string.Equals(change.Was, change.Now, StringComparison.Ordinal))
+            .ToArray();
+    }
+
+    internal Result AdoptHeaderSnapshot(IReadOnlyList<string>? headerSnapshot)
+    {
+        var validationResult = Validate(
+            VacancyId,
+            headerSnapshot,
+            new FormLayoutDefinition(Columns));
+        if (validationResult.IsFailure)
+        {
+            return validationResult;
+        }
+
+        HeaderSnapshot = headerSnapshot!.ToArray();
+        return Result.Success();
+    }
+
+    internal int? GetColumnOrdinal(FormLayoutRole role) =>
+        Columns.SingleOrDefault(column => column.Role == role)?.Ordinal;
+
+    private static Result Validate(
+        long vacancyId,
+        IReadOnlyList<string>? headerSnapshot,
+        FormLayoutDefinition definition)
     {
         ArgumentNullException.ThrowIfNull(definition);
 
@@ -55,87 +117,80 @@ public sealed class FormLayout : Entity
             errors[nameof(VacancyId)] = ["Vacancy is required."];
         }
 
-        if (definition.HeaderSnapshot is null || definition.HeaderSnapshot.Count == 0)
+        if (headerSnapshot is null || headerSnapshot.Count == 0)
         {
-            errors[nameof(FormLayoutDefinition.HeaderSnapshot)] =
+            errors[nameof(headerSnapshot)] =
                 ["The form header snapshot must contain at least one column."];
         }
-        else
+        if (definition.Columns is null)
         {
-            ValidateOrdinal(
-                definition.NameColumnOrdinal,
-                definition.HeaderSnapshot.Count,
-                nameof(FormLayoutDefinition.NameColumnOrdinal),
-                required: true,
-                errors);
-            ValidateOrdinal(
-                definition.ContactEmailColumnOrdinal,
-                definition.HeaderSnapshot.Count,
-                nameof(FormLayoutDefinition.ContactEmailColumnOrdinal),
-                required: true,
-                errors);
-            ValidateOrdinal(
-                definition.ContactPhoneColumnOrdinal,
-                definition.HeaderSnapshot.Count,
-                nameof(FormLayoutDefinition.ContactPhoneColumnOrdinal),
-                required: false,
-                errors);
-            ValidateOrdinal(
-                definition.CvLinkColumnOrdinal,
-                definition.HeaderSnapshot.Count,
-                nameof(FormLayoutDefinition.CvLinkColumnOrdinal),
-                required: false,
-                errors);
-
-            var boundOrdinals = new[]
+            errors[nameof(FormLayoutDefinition.Columns)] =
+                ["The Form Layout must contain at least the required column bindings."];
+        }
+        else if (headerSnapshot is not null && headerSnapshot.Count > 0)
+        {
+            if (definition.Columns.Count > 8)
             {
-                definition.NameColumnOrdinal,
-                definition.ContactEmailColumnOrdinal,
-                definition.ContactPhoneColumnOrdinal,
-                definition.CvLinkColumnOrdinal
+                errors[nameof(FormLayoutDefinition.Columns)] =
+                    ["A Form Layout can pick at most 8 columns, including role bindings."];
             }
-                .Where(ordinal => ordinal.HasValue)
-                .Select(ordinal => ordinal!.Value)
+
+            var duplicateOrdinals = definition.Columns
+                .GroupBy(column => column.Ordinal)
+                .Where(group => group.Count() > 1)
+                .Select(group => group.Key)
                 .ToArray();
-            if (boundOrdinals.Length != boundOrdinals.Distinct().Count())
+            if (duplicateOrdinals.Length > 0)
+            {
+                errors["ordinals"] = ["Each picked Form Layout column must use a different ordinal."];
+            }
+
+            var duplicateRoles = definition.Columns
+                .Where(column => column.Role.HasValue)
+                .GroupBy(column => column.Role!.Value)
+                .Where(group => group.Count() > 1)
+                .Select(group => group.Key)
+                .ToArray();
+            if (duplicateRoles.Length > 0)
             {
                 errors["roles"] = ["Each Form Layout role must use a different column."];
+            }
+
+            foreach (var column in definition.Columns)
+            {
+                if (column.Ordinal <= 0 || column.Ordinal >= headerSnapshot.Count)
+                {
+                    errors[$"columns[{column.Ordinal}]"] =
+                        ["A picked Form Layout column must use an ordinal from 1 through the last header ordinal; ordinal 0 is reserved for Timestamp."];
+                }
+            }
+
+            if (!definition.Columns.Any(column => column.Role == FormLayoutRole.Name))
+            {
+                errors["name"] = ["The Name role must be bound."];
+            }
+
+            if (!definition.Columns.Any(column => column.Role == FormLayoutRole.ContactEmail))
+            {
+                errors["contactEmail"] = ["The Contact Email role must be bound."];
             }
         }
 
         return errors.Count == 0 ? Result.Success() : FormLayoutErrors.Invalid(errors);
     }
 
-    private static void ValidateOrdinal(
-        int? ordinal,
-        int headerCount,
-        string propertyName,
-        bool required,
-        IDictionary<string, string[]> errors)
+    private void ReplaceValues(
+        IReadOnlyList<string> headerSnapshot,
+        FormLayoutDefinition definition)
     {
-        if (!ordinal.HasValue)
-        {
-            if (required)
+        HeaderSnapshot = headerSnapshot.ToArray();
+        Columns = definition.Columns!
+            .Select(column => column with
             {
-                errors[propertyName] = ["This Form Layout role must be bound."];
-            }
-
-            return;
-        }
-
-        if (ordinal.Value <= 0 || ordinal.Value >= headerCount)
-        {
-            errors[propertyName] =
-                ["The role must reference a non-timestamp column in the header snapshot."];
-        }
-    }
-
-    private void ReplaceValues(FormLayoutDefinition definition)
-    {
-        HeaderSnapshot = definition.HeaderSnapshot!.ToArray();
-        NameColumnOrdinal = definition.NameColumnOrdinal;
-        ContactEmailColumnOrdinal = definition.ContactEmailColumnOrdinal;
-        ContactPhoneColumnOrdinal = definition.ContactPhoneColumnOrdinal;
-        CvLinkColumnOrdinal = definition.CvLinkColumnOrdinal;
+                Label = string.IsNullOrWhiteSpace(column.Label)
+                    ? null
+                    : column.Label.Trim()
+            })
+            .ToArray();
     }
 }

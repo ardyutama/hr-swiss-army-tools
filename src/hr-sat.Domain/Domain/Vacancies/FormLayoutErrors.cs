@@ -4,6 +4,10 @@ namespace hr_sat.Domain.Vacancies;
 
 public static class FormLayoutErrors
 {
+    public static Error SnapshotRequired(long vacancyId) => Error.Conflict(
+        "FormLayouts.HeaderSnapshotRequired",
+        $"Vacancy '{vacancyId}' must import a form CSV before its Form Layout can be created.");
+
     public static Error NotFound(long vacancyId) => Error.NotFound(
         "FormLayouts.NotFound",
         $"Vacancy '{vacancyId}' does not have a Form Layout.");

@@ -8,4 +8,5 @@ public sealed record UpdateCandidateDetailsCommand(
     long RoundId,
     long CandidateId,
     string? FullName,
-    string? ContactEmail) : ICommand<CandidateDetailsResponse>;
+    string? ContactEmail,
+    string? ContactPhone = null) : ICommand<CandidateDetailsResponse>;

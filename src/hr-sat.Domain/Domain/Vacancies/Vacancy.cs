@@ -118,20 +118,52 @@ public sealed class Vacancy : Entity
 
         if (_formLayout is null)
         {
-            var createResult = FormLayout.Create(Id, definition);
+            return Result<FormLayout>.Failure(FormLayoutErrors.SnapshotRequired(Id));
+        }
+
+        var replaceResult = _formLayout.Replace(definition);
+        if (replaceResult.IsFailure)
+        {
+            return Result<FormLayout>.Failure(replaceResult.Error);
+        }
+
+        Raise(new FormLayoutUpsertedDomainEvent(Id));
+        return _formLayout;
+    }
+
+    internal Result<FormLayout> UpsertFormLayout(
+        FormLayoutDefinition definition,
+        IReadOnlyList<string> headerSnapshot)
+    {
+        var openResult = VacancyLifecycleRules.EnsureOpen(
+            Status,
+            "A closed vacancy must be reopened before its Form Layout can be changed.");
+        if (openResult.IsFailure)
+        {
+            return Result<FormLayout>.Failure(openResult.Error);
+        }
+
+        if (_formLayout is null)
+        {
+            var createResult = FormLayout.Create(Id, headerSnapshot, definition);
             if (createResult.IsFailure)
             {
                 return createResult;
             }
 
             _formLayout = createResult.Value;
+            Raise(new FormLayoutUpsertedDomainEvent(Id));
             return createResult.Value;
         }
 
-        var replaceResult = _formLayout.Replace(definition);
-        return replaceResult.IsFailure
-            ? Result<FormLayout>.Failure(replaceResult.Error)
-            : _formLayout;
+        var replaceResult = _formLayout.ReplaceFromImport(definition, headerSnapshot);
+        if (replaceResult.IsFailure)
+        {
+            return Result<FormLayout>.Failure(replaceResult.Error);
+        }
+
+        Raise(new FormLayoutUpsertedDomainEvent(Id));
+        return _formLayout;
     }
 
     public Result Close(DateTimeOffset closedAt)
@@ -302,12 +334,13 @@ public sealed class Vacancy : Entity
         long roundId,
         long candidateId,
         string? fullName,
-        string? contactEmail) =>
+        string? contactEmail,
+        string? contactPhone = null) =>
         MutateCandidate(
             roundId,
             candidateId,
             EnsureCanReviewCandidate,
-            candidate => candidate.UpdateDetails(fullName, contactEmail));
+            candidate => candidate.UpdateDetails(fullName, contactEmail, contactPhone));
 
     public Result<Candidate> UpdateCandidateNotes(
         long roundId,

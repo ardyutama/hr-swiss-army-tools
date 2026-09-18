@@ -34,6 +34,15 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
                 "candidate_contact_phone_check",
                 "contact_phone IS NULL OR char_length(btrim(contact_phone)) BETWEEN 1 AND 100");
             table.HasCheckConstraint(
+                "candidate_full_name_provenance_check",
+                "full_name_provenance IN ('none', 'formprefilled', 'typed')");
+            table.HasCheckConstraint(
+                "candidate_contact_email_provenance_check",
+                "contact_email_provenance IN ('none', 'formprefilled', 'typed')");
+            table.HasCheckConstraint(
+                "candidate_contact_phone_provenance_check",
+                "contact_phone_provenance IN ('none', 'formprefilled', 'typed')");
+            table.HasCheckConstraint(
                 "candidate_source_sender_name_check",
                 "source_sender_name IS NULL OR char_length(btrim(source_sender_name)) BETWEEN 1 AND 300");
             table.HasCheckConstraint(
@@ -109,6 +118,30 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
         entity.Property(candidate => candidate.ContactPhone)
             .HasColumnName("contact_phone")
             .HasColumnType("text");
+        entity.Property(candidate => candidate.FullNameProvenance)
+            .HasColumnName("full_name_provenance")
+            .HasColumnType("text")
+            .HasConversion(
+                provenance => ToDatabaseValue(provenance),
+                value => FromDatabaseValue<CandidateDetailProvenance>(value))
+            .HasDefaultValue(CandidateDetailProvenance.None)
+            .IsRequired();
+        entity.Property(candidate => candidate.ContactEmailProvenance)
+            .HasColumnName("contact_email_provenance")
+            .HasColumnType("text")
+            .HasConversion(
+                provenance => ToDatabaseValue(provenance),
+                value => FromDatabaseValue<CandidateDetailProvenance>(value))
+            .HasDefaultValue(CandidateDetailProvenance.None)
+            .IsRequired();
+        entity.Property(candidate => candidate.ContactPhoneProvenance)
+            .HasColumnName("contact_phone_provenance")
+            .HasColumnType("text")
+            .HasConversion(
+                provenance => ToDatabaseValue(provenance),
+                value => FromDatabaseValue<CandidateDetailProvenance>(value))
+            .HasDefaultValue(CandidateDetailProvenance.None)
+            .IsRequired();
         entity.Property(candidate => candidate.Notes)
             .HasColumnName("notes")
             .HasColumnType("text");

@@ -30,6 +30,7 @@ internal static class CandidateDetailsReader
                 Array.Empty<CandidatePriorApplicationResponse>(),
                 candidate.FullName,
                 candidate.ContactEmail,
+                candidate.ContactPhone,
                 candidate.Notes,
                 candidate.RequirementReviews
                     .OrderBy(review => review.VacancyRequirementId)

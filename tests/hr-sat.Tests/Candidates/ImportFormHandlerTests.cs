@@ -48,6 +48,113 @@ public sealed class ImportFormHandlerTests
     }
 
     [Fact]
+    public async Task Handle_Should_PrefillBoundRolesAndStampProvenance_WhenFormCandidateIsImported()
+    {
+        await using var dbContext = new TestDbContext();
+        var vacancy = await AddVacancyWithLayoutAsync(
+            dbContext,
+            ["Timestamp", "Applicant", "Email", "Phone"],
+            [
+                new FormLayoutColumn(1, FormLayoutRole.Name, null),
+                new FormLayoutColumn(2, FormLayoutRole.ContactEmail, null),
+                new FormLayoutColumn(3, FormLayoutRole.ContactPhone, null)
+            ]);
+
+        await ImportAsync(
+            dbContext,
+            vacancy,
+            FormCsvWithHeaders(
+                ["Timestamp", "Applicant", "Email", "Phone"],
+                "\"2026-09-16T10:00:00Z\",\" Alice Applicant \",\" alice@example.com \",\" +62 812 \""),
+            new DateTimeOffset(2026, 9, 16, 12, 0, 0, TimeSpan.Zero));
+
+        var candidate = await dbContext.Candidates.SingleAsync();
+        candidate.FullName.ShouldBe("Alice Applicant");
+        candidate.ContactEmail.ShouldBe("alice@example.com");
+        candidate.ContactPhone.ShouldBe("+62 812");
+        candidate.FullNameProvenance.ShouldBe(CandidateDetailProvenance.FormPrefilled);
+        candidate.ContactEmailProvenance.ShouldBe(CandidateDetailProvenance.FormPrefilled);
+        candidate.ContactPhoneProvenance.ShouldBe(CandidateDetailProvenance.FormPrefilled);
+    }
+
+    [Fact]
+    public async Task Handle_Should_LeaveInvalidPrefillFieldsEmpty_AndStillImportTheRow()
+    {
+        await using var dbContext = new TestDbContext();
+        var vacancy = await AddVacancyWithLayoutAsync(
+            dbContext,
+            ["Timestamp", "Applicant", "Email", "Phone"],
+            [
+                new FormLayoutColumn(1, FormLayoutRole.Name, null),
+                new FormLayoutColumn(2, FormLayoutRole.ContactEmail, null),
+                new FormLayoutColumn(3, FormLayoutRole.ContactPhone, null)
+            ]);
+        var tooLongName = new string('n', 301);
+        var tooLongPhone = new string('1', 101);
+
+        var result = await ImportAsync(
+            dbContext,
+            vacancy,
+            FormCsvWithHeaders(
+                ["Timestamp", "Applicant", "Email", "Phone"],
+                $"\"2026-09-16T10:00:00Z\",\"{tooLongName}\",\"person@example.com\",\"{tooLongPhone}\""),
+            new DateTimeOffset(2026, 9, 16, 12, 0, 0, TimeSpan.Zero));
+
+        result.Created.ShouldBe(1);
+        var candidate = await dbContext.Candidates.SingleAsync();
+        candidate.FullName.ShouldBeNull();
+        candidate.ContactEmail.ShouldBe("person@example.com");
+        candidate.ContactPhone.ShouldBeNull();
+        candidate.FullNameProvenance.ShouldBe(CandidateDetailProvenance.None);
+        candidate.ContactEmailProvenance.ShouldBe(CandidateDetailProvenance.FormPrefilled);
+        candidate.ContactPhoneProvenance.ShouldBe(CandidateDetailProvenance.None);
+    }
+
+    [Fact]
+    public async Task Handle_Should_KeepTypedDetails_WhenFreshFormResponseIsReuploaded()
+    {
+        await using var dbContext = new TestDbContext();
+        var vacancy = await AddVacancyWithLayoutAsync(
+            dbContext,
+            ["Timestamp", "Applicant", "Email", "Phone"],
+            [
+                new FormLayoutColumn(1, FormLayoutRole.Name, null),
+                new FormLayoutColumn(2, FormLayoutRole.ContactEmail, null),
+                new FormLayoutColumn(3, FormLayoutRole.ContactPhone, null)
+            ]);
+        string[] headers = ["Timestamp", "Applicant", "Email", "Phone"];
+        await ImportAsync(
+            dbContext,
+            vacancy,
+            FormCsvWithHeaders(
+                headers,
+                "\"2026-09-16T10:00:00Z\",\"Form Name\",\"form@example.com\",\"111\""),
+            new DateTimeOffset(2026, 9, 16, 10, 30, 0, TimeSpan.Zero));
+
+        var candidate = await dbContext.Candidates.SingleAsync();
+        candidate.UpdateDetails("Typed Name", "typed@example.com", "999")
+            .IsSuccess
+            .ShouldBeTrue();
+        await dbContext.SaveChangesAsync(CancellationToken.None);
+
+        var result = await ImportAsync(
+            dbContext,
+            vacancy,
+            FormCsvWithHeaders(
+                headers,
+                "\"2026-09-16T11:00:00Z\",\"New Form Name\",\"form@example.com\",\"222\""),
+            new DateTimeOffset(2026, 9, 16, 12, 0, 0, TimeSpan.Zero));
+
+        result.Updated.ShouldBe(1);
+        candidate.FullName.ShouldBe("Typed Name");
+        candidate.ContactEmail.ShouldBe("typed@example.com");
+        candidate.ContactPhone.ShouldBe("999");
+        candidate.FullNameProvenance.ShouldBe(CandidateDetailProvenance.Typed);
+        candidate.ContactEmailProvenance.ShouldBe(CandidateDetailProvenance.Typed);
+        candidate.ContactPhoneProvenance.ShouldBe(CandidateDetailProvenance.Typed);
+    }
+
+    [Fact]
     public async Task Handle_Should_RetainTheLatestRowAndPriorResponse_WhenAnIdentityIsDuplicatedInOneFile() // domain: Form Response keeps the latest Timestamp and retains earlier submissions
     {
         await using var dbContext = new TestDbContext();
@@ -334,13 +441,26 @@ public sealed class ImportFormHandlerTests
         new(dbContext, new FixedTimeProvider(importedAt));
 
     private static async Task<Vacancy> AddVacancyAsync(TestDbContext dbContext)
+        => await AddVacancyWithLayoutAsync(
+            dbContext,
+            ["Timestamp", "Name", "Email"],
+            [
+                new FormLayoutColumn(1, FormLayoutRole.Name, null),
+                new FormLayoutColumn(2, FormLayoutRole.ContactEmail, null)
+            ]);
+
+    private static async Task<Vacancy> AddVacancyWithLayoutAsync(
+        TestDbContext dbContext,
+        IReadOnlyList<string> headers,
+        IReadOnlyList<FormLayoutColumn> columns)
     {
         var vacancy = CandidateTestData.CreateVacancy();
         dbContext.Vacancies.Add(vacancy);
         await dbContext.SaveChangesAsync(CancellationToken.None);
         var layoutResult = FormLayout.Create(
             vacancy.Id,
-            new FormLayoutDefinition(["Timestamp", "Name", "Email"], 1, 2, null, null));
+            headers,
+            new FormLayoutDefinition(columns));
         layoutResult.IsSuccess.ShouldBeTrue();
         dbContext.FormLayouts.Add(layoutResult.Value);
         await dbContext.SaveChangesAsync(CancellationToken.None);
@@ -367,5 +487,10 @@ public sealed class ImportFormHandlerTests
     }
 
     private static string FormCsv(params string[] rows) =>
-        $"Timestamp,Name,Email\r\n{string.Join("\r\n", rows)}\r\n";
+        FormCsvWithHeaders(["Timestamp", "Name", "Email"], rows);
+
+    private static string FormCsvWithHeaders(
+        IReadOnlyList<string> headers,
+        params string[] rows) =>
+        $"{string.Join(",", headers)}\r\n{string.Join("\r\n", rows)}\r\n";
 }

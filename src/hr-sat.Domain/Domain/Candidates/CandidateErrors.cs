@@ -1,4 +1,5 @@
 using hr_sat.Domain;
+using hr_sat.Domain.Vacancies;
 
 namespace hr_sat.Domain.Candidates;
 
@@ -20,9 +21,26 @@ public static class CandidateErrors
                 ["file"] = [message]
             });
 
-    public static Error FormLayoutRequired(long vacancyId) => Error.Conflict(
+    public static Error FormLayoutRequired(
+        long vacancyId,
+        IReadOnlyList<string> headers) => Error.Conflict(
         "Candidates.FormLayoutRequired",
-        $"Vacancy '{vacancyId}' must have a valid Form Layout with Name and Contact Email bindings before form responses can be imported.");
+        $"Vacancy '{vacancyId}' must have a valid Form Layout with Name and Contact Email bindings before form responses can be imported.",
+        new Dictionary<string, object?>
+        {
+            ["headers"] = headers
+        });
+
+    public static Error FormHeaderDrift(
+        IReadOnlyList<string> headers,
+        IReadOnlyList<FormLayoutHeaderChange> changes) => Error.Conflict(
+        "Candidates.FormHeaderDrift",
+        "The uploaded form headers differ from the saved Form Layout.",
+        new Dictionary<string, object?>
+        {
+            ["headers"] = headers,
+            ["changes"] = changes
+        });
 
     public static Error SourceEmailAlreadyInRound(IEnumerable<long> candidateIds) => Error.Conflict(
         "Candidates.SourceEmailAlreadyInRound",

@@ -6,19 +6,31 @@ public sealed record FormLayoutResponse(
     long Id,
     long VacancyId,
     IReadOnlyList<string> HeaderSnapshot,
-    int? NameColumnOrdinal,
-    int? ContactEmailColumnOrdinal,
-    int? ContactPhoneColumnOrdinal,
-    int? CvLinkColumnOrdinal,
-    bool IsValid)
+    IReadOnlyList<FormLayoutColumnResponse> Columns,
+    bool IsValid,
+    int CandidatesUpdated = 0,
+    int TypedOverridesKept = 0)
 {
-    public static FormLayoutResponse From(FormLayout layout) => new(
+    public static FormLayoutResponse From(
+        FormLayout layout,
+        int candidatesUpdated = 0,
+        int typedOverridesKept = 0) => new(
         layout.Id,
         layout.VacancyId,
         layout.HeaderSnapshot,
-        layout.NameColumnOrdinal,
-        layout.ContactEmailColumnOrdinal,
-        layout.ContactPhoneColumnOrdinal,
-        layout.CvLinkColumnOrdinal,
-        layout.IsValid);
+        layout.Columns
+            .OrderBy(column => column.Ordinal)
+            .Select(column => new FormLayoutColumnResponse(
+                column.Ordinal,
+                column.Role?.ToString().ToLowerInvariant(),
+                column.Label))
+            .ToArray(),
+        layout.IsValid,
+        candidatesUpdated,
+        typedOverridesKept);
 }
+
+public sealed record FormLayoutColumnResponse(
+    int Ordinal,
+    string? Role,
+    string? Label);

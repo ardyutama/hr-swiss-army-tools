@@ -24,7 +24,12 @@ internal sealed class ImportForm : IEndpoint
 
                     await using var input = importRequest.Value;
                     var result = await handler.Handle(
-                        new ImportFormCommand(vacancyId, roundId, input.File),
+                        new ImportFormCommand(
+                            vacancyId,
+                            roundId,
+                            input.File,
+                            input.Layout,
+                            input.ConfirmDrift),
                         cancellationToken);
                     return result.Match<IResult>(
                         TypedResults.Ok,

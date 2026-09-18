@@ -19,11 +19,7 @@ internal sealed class Upsert : IEndpoint
                     var result = await handler.Handle(
                         new UpsertFormLayoutCommand(
                             vacancyId,
-                            request.HeaderSnapshot,
-                            request.NameColumnOrdinal,
-                            request.ContactEmailColumnOrdinal,
-                            request.ContactPhoneColumnOrdinal,
-                            request.CvLinkColumnOrdinal),
+                            request.Columns),
                         cancellationToken);
                     return result.Match<IResult>(TypedResults.Ok, CustomResults.Problem);
                 })

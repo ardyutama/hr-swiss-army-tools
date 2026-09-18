@@ -23,7 +23,8 @@ internal sealed class UpdateCandidateDetailsCommandHandler(IApplicationDbContext
                 command.RoundId,
                 candidateId,
                 command.FullName,
-                command.ContactEmail),
+                command.ContactEmail,
+                command.ContactPhone),
             cancellationToken);
         if (updateResult.IsFailure)
         {

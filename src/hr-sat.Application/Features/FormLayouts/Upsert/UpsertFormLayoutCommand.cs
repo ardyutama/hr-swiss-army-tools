@@ -1,12 +1,9 @@
 using hr_sat.Application.Abstractions.Messaging;
+using hr_sat.Domain.Vacancies;
 
 namespace hr_sat.Application.Features.FormLayouts.Upsert;
 
 public sealed record UpsertFormLayoutCommand(
     long VacancyId,
-    IReadOnlyList<string>? HeaderSnapshot,
-    int? NameColumnOrdinal,
-    int? ContactEmailColumnOrdinal,
-    int? ContactPhoneColumnOrdinal,
-    int? CvLinkColumnOrdinal)
+    IReadOnlyList<FormLayoutColumn>? Columns)
     : ICommand<FormLayoutResponse>;

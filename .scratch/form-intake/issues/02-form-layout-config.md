@@ -2,7 +2,7 @@
 
 **Blocked by:** 01-csv-form-response-import
 
-**Status:** ready-for-agent
+**Status:** in-progress — design settled by grill session (2026-09-18); implementation not started. Existing code: backend `FormLayouts` slice is roles-only (Get/Upsert, `FormLayout` with 4 ordinal scalars + `HeaderSnapshot`); import gate exists in `ImportFormCommandHandler` (409 `Candidates.FormLayoutRequired` before parsing); no client form-layout feature. UI shape pinned by `02-form-layout-config.layout.md` (Nuxt UI v4, ADR-0008 language; design-taste-frontend scoped out as landing-page rules).
 
 **Terms:** Form Layout, Header Drift, Column Label — [CONTEXT.md](../../../CONTEXT.md).
 **Decision:** [ADR-0013](../../../docs/adr/0013-form-response-intake-with-ordinal-keyed-form-layout.md).
@@ -48,6 +48,73 @@ the review workspace, edited from a **vacancy settings panel** ("Form Layout" se
   Name + Email (plus any optional roles / display fields), the header snapshot is taken
   from that file, and saving completes the import in the same flow.
 
+## Grill decisions (2026-09-18, confirmed by product owner — all recommended options accepted)
+
+Domain model:
+1. Unify picked columns into one `FormLayoutColumn` collection (`Ordinal`, `Role?`, `Label?`),
+   stored jsonb on the single per-vacancy layout row (mirrors `CandidateFormResponse.Cells`
+   precedent). Roles become computed projections; all invariants (≤8 picked total, Name+Email
+   bound, ordinal uniqueness, role/display exclusivity, in-range) live in one `Validate`.
+   Migration replaces the four ordinal columns + old snapshot shape; dev data sacrifice OK.
+2. Candidate Detail provenance: per-field enum `None | FormPrefilled | Typed` on
+   `FullName`/`ContactEmail`/`ContactPhone`. Import/re-projection writes only non-`Typed`
+   fields; `UpdateDetails` marks `Typed`. Rejected value-compare (silently wrong).
+3. Re-projection (layout save) applies to the **active round's** candidates only — never
+   crosses a settled round (CONTEXT.md Form Layout entry amended).
+4. `FormLayout.DetectDrift(newHeaders)` and the confirm-time snapshot adoption are domain
+   methods; `Candidate.PrefillDetailsFromLayout(layout)` reads its own current Form Response
+   cells. Handlers iterate candidates themselves (existing handler convention).
+5. Typed **Contact Phone** joins `UpdateDetails` in this issue (command → domain → validator
+   → response → existing details form input); review-page variant stays with issue 04.
+6. On **resubmit**, `FormPrefilled` fields re-project from the new current row; `Typed`
+   fields never move.
+7. Pre-fill is **best-effort per field**: trim cell; a value violating `CandidateDetailsRules`
+   is left empty and the row still imports (never a row-killer). Provenance stamps only on
+   actual writes. Typed path stays strict.
+8. Terms captured in CONTEXT.md: **Picked Column**, **Form Answer**; Form Layout + Header
+   Drift entries amended (settled-round clause, confirm-adopts-snapshot).
+
+API seam:
+9. `Error` gains an optional extensions dictionary flowed into RFC 7807 extension members by
+   `CustomResults.Problem` (mirrors `ValidationError.Errors`). Two refusal codes, no `kind`
+   field: `Candidates.FormLayoutRequired` (carries `headers`) and `Candidates.FormHeaderDrift`
+   (carries `headers` + `changes: [{ordinal, was, now}]`).
+10. Handler order flipped to **parse-then-gate**: headers come from `FormCsvParser`
+    (captures header row into `ParsedFormCsv`); the client never parses CSV (no client CSV
+    dependency; server handles quoted multi-line localized headers).
+11. Guided-mode (first upload) and drift re-map are one atomic call: `ImportFormCommand`
+    gains an optional layout payload + `confirmDrift` flag (mutually exclusive); layout
+    payload upserts the layout in the same transaction, stamps the snapshot from that file,
+    and skips the drift check (it *is* the re-map). Stateless — the client re-sends the
+    held file.
+12. **Header snapshot is purely server-stamped**: the `Upsert` command drops client-sent
+    `HeaderSnapshot` (breaking change to the young command); snapshots are written only by
+    import flows carrying a real file. Edit-mode saves never touch it.
+13. Drift confirm **adopts the new snapshot** (CONTEXT.md amended); otherwise the pause
+    would re-trigger forever.
+14. Column-count edge: out-of-range picked ordinal appears in the drift list as
+    "column no longer present"; **Confirm blocked** while any picked ordinal is out of range
+    (Re-map is the only resolution). Extra columns never count as drift — comparison at
+    picked ordinals only.
+15. `Upsert` response gains `candidatesUpdated` / `typedOverridesKept` so the save toast can
+    state the back-fill; import response contract unchanged.
+16. Validation split: FluentValidation holds format rules (label trimmed/single-line/≤40,
+    ordinals non-negative); domain holds structural invariants.
+
+Client:
+17. One `src/features/form-layout/` module per the layout doc's slice map; panel is a
+    `UModal` on `VacancyDetailView`, **no new route**. Empty state ships sentence-only in v1
+    (a layout is invalid without a snapshot, and no snapshot exists before the first file).
+18. Refusal ownership: `useFormResponseImport` gains `pendingRefusal` state
+    (`{ file, headers, changes? }`) set on the two refusal codes instead of alerting; the
+    held file lives in the composable (single owner, cleared by the existing vacancy/round
+    watcher); page watches it to open guided/drift. New `importWithLayout(mapping)` on the
+    same composable → same endpoint, layout serialized as one JSON multipart field
+    (server deserializes it); drift confirm re-sends with `confirmDrift`. All
+    import-endpoint calls stay in `import-form/api.ts`; `form-layout/api.ts` keeps GET/PUT.
+19. `problem-details.ts` must not route the two refusal codes through the generic 409 path;
+    drift UI is neutral (not amber — amber stays reserved for Flagged / Lifecycle Conflict).
+
 ## Out of scope
 
 Screening rules over mapped columns (issue 03), the review-page Form Answers rendering
@@ -78,4 +145,6 @@ Screening rules over mapped columns (issue 03), the review-page Form Answers ren
 - [ ] Layout edits re-project over stored rows; typed Candidate Details survive
 - [ ] Drift dialog on changed mapped headers; import pauses until resolved
 - [ ] ≤8 picked columns in total (roles included), Name + Email required
+- [ ] Typed Contact Phone supported in Candidate Details (existing UpdateDetails seam)
+- [ ] Per-field provenance (`None | FormPrefilled | Typed`) governs pre-fill and re-projection
 - [ ] Backend + frontend seam tests pass (written after implementation)

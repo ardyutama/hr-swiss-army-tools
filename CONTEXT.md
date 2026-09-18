@@ -89,16 +89,24 @@ One row of a Google Forms CSV export from which exactly one candidate is importe
 _Avoid_: Spreadsheet row, form entry
 
 **Form Layout**:
-A vacancy's mapping of its Google Form's CSV columns onto the review workspace. Columns are identified by **ordinal position** (never header text), with a read-only header snapshot kept for display and Header Drift detection. Four special roles — Name, Contact Email, Contact Phone, CV Link — each bind to at most one column and pre-fill the editable Candidate Details at import; roles are always **bound manually by HR, never auto-detected**, and Name and Contact Email must be bound for a valid layout. Every other picked column is a display-only form answer shown in column order. A vacancy picks at most 8 columns in total, roles included. The form Timestamp is never a picked column: it is system data read from ordinal 0 by Google Forms convention and stored on the Form Response. A vacancy **cannot import form responses until it has a valid layout**: the first upload routes into the guided layout panel and the import completes there; layout edits re-project over stored raw rows, pre-filling Candidate Details except where HR already typed values.
+A vacancy's mapping of its Google Form's CSV columns onto the review workspace. Columns are identified by **ordinal position** (never header text), with a read-only header snapshot kept for display and Header Drift detection. Four special roles — Name, Contact Email, Contact Phone, CV Link — each bind to at most one column and pre-fill the editable Candidate Details at import; roles are always **bound manually by HR, never auto-detected**, and Name and Contact Email must be bound for a valid layout. Every other Picked Column is a Form Answer, shown display-only in column order. A vacancy picks at most 8 columns in total, roles included. The form Timestamp is never a picked column: it is system data read from ordinal 0 by Google Forms convention and stored on the Form Response. A vacancy **cannot import form responses until it has a valid layout**: the first upload routes into the guided layout panel and the import completes there; layout edits re-project over stored raw rows, pre-filling Candidate Details except where HR already typed values; re-projection never crosses a settled round, so closed-round candidates keep their details untouched.
 _Avoid_: Column config, field mapping, table layout
 
 **Header Drift**:
-The detected mismatch when a newly uploaded CSV's header at a mapped ordinal differs from the Form Layout's snapshot. Import pauses behind a drift dialog listing every changed ordinal (old header → new header); HR either confirms the mapping still holds or re-maps before the import proceeds. Already-imported candidates keep their stored Form Responses untouched.
+The detected mismatch when a newly uploaded CSV's header at a mapped ordinal differs from the Form Layout's snapshot. Import pauses behind a drift dialog listing every changed ordinal (old header → new header); HR either confirms the mapping still holds or re-maps before the import proceeds. Confirming adopts the uploaded file's header text as the new snapshot baseline (the mapping has been re-verified) and Column Labels carry over; without it the snapshot stays and every later upload pauses again. Already-imported candidates keep their stored Form Responses untouched.
 _Avoid_: Schema change, column mismatch
 
 **Column Label**:
 HR's display-only short name for a form column picked in the Form Layout, bound to the column's ordinal position. The original header snapshot is always retained verbatim and shown beside the label; the label never identifies a column (ordinals do), never affects Header Drift detection, is never written by import, and is discarded if the column is un-picked. A drift confirmation re-verifies the label; labels are layout configuration, not review data, so they never Settle.
 _Avoid_: Renamed column, column alias, mapped name
+
+**Picked Column**:
+A form column chosen in the Form Layout — either bound to one of the four roles or kept as a Form Answer. A vacancy picks at most 8 columns in total, roles included; the form Timestamp is never picked. Un-picking a column discards its Column Label.
+_Avoid_: Mapped column, selected field
+
+**Form Answer**:
+A Picked Column bound to no role, rendered display-only on the review page in column order; it never pre-fills Candidate Details and never identifies a candidate.
+_Avoid_: Display field, extra column
 
 **Screening Rule**:
 A vacancy-owned condition over one form column (`equals`, `not-equals`, `is-empty`, `not-empty`, `contains` — text only, no type parsing), AND-combined with the vacancy's other rules, evaluated against stored raw Form Responses. Rules never screen Source Email candidates (they have no form columns). Editable while the vacancy is open; re-evaluated live so reclassification is free.

@@ -24,7 +24,8 @@ internal sealed class UpdateDetails : IEndpoint
                             roundId,
                             candidateId,
                             request.FullName,
-                            request.ContactEmail),
+                            request.ContactEmail,
+                            request.ContactPhone),
                         cancellationToken);
                     return result.Match<IResult>(
                         TypedResults.Ok,

@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using hr_sat.Application.Features.Candidates;
 using hr_sat.Application.Features.Candidates.ImportForm;
+using hr_sat.Application.Features.FormLayouts;
 using Xunit;
 
 namespace hr_sat.Tests.Candidates;
@@ -64,27 +65,70 @@ public sealed class ImportFormTests(ApiFactory factory) : IClassFixture<ApiFacto
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         await AssertProblemAsync(response, "Candidates.FormLayoutRequired");
+        using var problemJson = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(
+            new[] { "Timestamp", "Name", "Email" },
+            problemJson.RootElement
+                .GetProperty("headers")
+                .EnumerateArray()
+                .Select(header => header.GetString())
+                .ToArray());
+    }
+
+    [Fact]
+    public async Task First_upload_with_layout_completes_guided_setup_and_prefills_candidate_details()
+    {
+        using var client = factory.CreateClient();
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client, configureLayout: false);
+
+        using var response = await ImportFormAsync(
+            client,
+            vacancyLocation,
+            roundId,
+            Csv("\"2026-09-16T10:00:00Z\",\"Guided Applicant\",\"guided@example.com\""),
+            layout: LayoutJson());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var summary = await response.Content.ReadFromJsonAsync<ImportFormResponse>();
+        Assert.NotNull(summary);
+        Assert.Equal(new ImportFormResponse(1, 1, 0, 0, 0), summary);
+
+        using var layoutResponse = await client.GetAsync($"{vacancyLocation}/form-layout");
+        Assert.Equal(HttpStatusCode.OK, layoutResponse.StatusCode);
+        var layout = await layoutResponse.Content.ReadFromJsonAsync<FormLayoutResponse>();
+        Assert.NotNull(layout);
+        Assert.Equal(new[] { "Timestamp", "Name", "Email" }, layout.HeaderSnapshot);
+        Assert.True(layout.IsValid);
+
+        var candidate = await GetSingleCandidateAsync(client, vacancyLocation, roundId);
+        var details = await GetDetailsAsync(client, vacancyLocation, roundId, candidate.Id);
+        Assert.Equal("Guided Applicant", details.FullName);
+        Assert.Equal("guided@example.com", details.ContactEmail);
     }
 
     [Fact]
     public async Task Saving_a_form_layout_without_name_and_email_returns_a_validation_problem() // domain: a Form Layout is invalid without Name and Contact Email bindings
     {
         using var client = factory.CreateClient();
-        var (vacancyLocation, _) = await CreateVacancyAsync(client, configureLayout: false);
+        var (vacancyLocation, _) = await CreateVacancyAsync(client);
 
         using var response = await client.PutAsJsonAsync(
             $"{vacancyLocation}/form-layout",
             new
             {
-                headerSnapshot = new[] { "Timestamp", "Name", "Email" },
-                nameColumnOrdinal = 1
+                columns = new[]
+                {
+                    new { ordinal = 1, role = "name", label = (string?)null }
+                }
             });
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.True(
+            response.StatusCode == HttpStatusCode.BadRequest,
+            await response.Content.ReadAsStringAsync());
         var problem = await response.Content.ReadFromJsonAsync<ValidationProblemResponse>();
         Assert.NotNull(problem);
         Assert.Contains(
-            problem.Errors["ContactEmailColumnOrdinal"],
+            problem.Errors["contactEmail"],
             message => message.Contains("bound", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -106,7 +150,12 @@ public sealed class ImportFormTests(ApiFactory factory) : IClassFixture<ApiFacto
         var candidatePath = CandidatePath(vacancyLocation, roundId, candidate.Id);
         using var detailsResponse = await client.PutAsJsonAsync(
             $"{candidatePath}/details",
-            new { fullName = "Typed Name", contactEmail = "typed@example.com" });
+            new
+            {
+                fullName = "Typed Name",
+                contactEmail = "typed@example.com",
+                contactPhone = "555-0100"
+            });
         detailsResponse.EnsureSuccessStatusCode();
         using var reviewResponse = await client.PutAsJsonAsync(
             $"{candidatePath}/review",
@@ -127,6 +176,7 @@ public sealed class ImportFormTests(ApiFactory factory) : IClassFixture<ApiFacto
         var details = await GetDetailsAsync(client, vacancyLocation, roundId, candidate.Id);
         Assert.Equal("Typed Name", details.FullName);
         Assert.Equal("typed@example.com", details.ContactEmail);
+        Assert.Equal("555-0100", details.ContactPhone);
         Assert.Equal("flagged", details.ReviewStatus);
         Assert.Equal("Review note", details.Notes);
         Assert.True(details.IsResubmitted);
@@ -135,6 +185,107 @@ public sealed class ImportFormTests(ApiFactory factory) : IClassFixture<ApiFacto
             "Updated",
             Assert.Single(details.FormResponses, formResponse => formResponse.IsCurrent).Cells[1]);
         Assert.Contains(details.FormResponses, formResponse => !formResponse.IsCurrent);
+    }
+
+    [Fact]
+    public async Task Reuploading_changed_mapped_headers_returns_drift_and_confirm_adopts_snapshot()
+    {
+        using var client = factory.CreateClient();
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client);
+        using var saveLayoutResponse = await client.PutAsJsonAsync(
+            $"{vacancyLocation}/form-layout",
+            new
+            {
+                columns = new[]
+                {
+                    new { ordinal = 1, role = "name", label = "Candidate name" },
+                    new { ordinal = 2, role = "contactEmail", label = "Email address" }
+                }
+            });
+        Assert.Equal(HttpStatusCode.OK, saveLayoutResponse.StatusCode);
+
+        using var initialImport = await ImportFormAsync(
+            client,
+            vacancyLocation,
+            roundId,
+            Csv("\"2026-09-16T10:00:00Z\",\"Original\",\"person@example.com\""));
+        Assert.Equal(HttpStatusCode.OK, initialImport.StatusCode);
+
+        var changedCsv = CsvWithHeaders(
+            "Timestamp,Applicant name,Email",
+            "\"2026-09-16T11:00:00Z\",\"Updated\",\"person@example.com\"");
+        using var driftResponse = await ImportFormAsync(
+            client,
+            vacancyLocation,
+            roundId,
+            changedCsv);
+
+        Assert.Equal(HttpStatusCode.Conflict, driftResponse.StatusCode);
+        using var driftJson = JsonDocument.Parse(await driftResponse.Content.ReadAsStringAsync());
+        Assert.Equal("Candidates.FormHeaderDrift", driftJson.RootElement.GetProperty("title").GetString());
+        Assert.Equal(
+            new[] { "Timestamp", "Applicant name", "Email" },
+            driftJson.RootElement
+                .GetProperty("headers")
+                .EnumerateArray()
+                .Select(header => header.GetString())
+                .ToArray());
+        var change = Assert.Single(driftJson.RootElement.GetProperty("changes").EnumerateArray());
+        Assert.Equal(1, change.GetProperty("ordinal").GetInt32());
+        Assert.Equal("Name", change.GetProperty("was").GetString());
+        Assert.Equal("Applicant name", change.GetProperty("now").GetString());
+
+        using var confirmedResponse = await ImportFormAsync(
+            client,
+            vacancyLocation,
+            roundId,
+            changedCsv,
+            confirmDrift: true);
+        Assert.Equal(HttpStatusCode.OK, confirmedResponse.StatusCode);
+
+        using var layoutResponse = await client.GetAsync($"{vacancyLocation}/form-layout");
+        Assert.Equal(HttpStatusCode.OK, layoutResponse.StatusCode);
+        var layout = await layoutResponse.Content.ReadFromJsonAsync<FormLayoutResponse>();
+        Assert.NotNull(layout);
+        Assert.Equal(new[] { "Timestamp", "Applicant name", "Email" }, layout.HeaderSnapshot);
+        Assert.Equal("Candidate name", layout.Columns.Single(column => column.Ordinal == 1).Label);
+        Assert.Equal("Email address", layout.Columns.Single(column => column.Ordinal == 2).Label);
+    }
+
+    [Fact]
+    public async Task Confirming_drift_with_a_missing_picked_column_is_blocked()
+    {
+        using var client = factory.CreateClient();
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client);
+        var shortenedCsv = CsvWithHeaders(
+            "Timestamp,Name",
+            "\"2026-09-16T11:00:00Z\",\"Applicant\"");
+
+        using var driftResponse = await ImportFormAsync(
+            client,
+            vacancyLocation,
+            roundId,
+            shortenedCsv);
+        Assert.Equal(HttpStatusCode.Conflict, driftResponse.StatusCode);
+        using var driftJson = JsonDocument.Parse(await driftResponse.Content.ReadAsStringAsync());
+        var change = Assert.Single(driftJson.RootElement.GetProperty("changes").EnumerateArray());
+        Assert.Equal(2, change.GetProperty("ordinal").GetInt32());
+        Assert.Equal("Email", change.GetProperty("was").GetString());
+        Assert.Equal("column no longer present", change.GetProperty("now").GetString());
+
+        using var confirmedResponse = await ImportFormAsync(
+            client,
+            vacancyLocation,
+            roundId,
+            shortenedCsv,
+            confirmDrift: true);
+        Assert.Equal(HttpStatusCode.BadRequest, confirmedResponse.StatusCode);
+        await AssertProblemAsync(confirmedResponse, "FormLayouts.Invalid");
+
+        var candidates = await client.GetFromJsonAsync<IReadOnlyList<CandidateSummary>>(
+            $"{vacancyLocation}/rounds/{roundId}/candidates");
+        Assert.NotNull(candidates);
+        Assert.Empty(candidates);
     }
 
     [Fact]
@@ -319,15 +470,22 @@ public sealed class ImportFormTests(ApiFactory factory) : IClassFixture<ApiFacto
         Assert.NotNull(vacancy);
         if (configureLayout)
         {
-            using var layoutResponse = await client.PutAsJsonAsync(
-                $"{location}/form-layout",
-                new
-                {
-                    headerSnapshot = new[] { "Timestamp", "Name", "Email" },
-                    nameColumnOrdinal = 1,
-                    contactEmailColumnOrdinal = 2
-                });
-            Assert.Equal(HttpStatusCode.OK, layoutResponse.StatusCode);
+            using var layoutResponse = await ImportFormAsync(
+                client,
+                location,
+                Assert.Single(vacancy.Rounds).Id,
+                Csv("\"2026-09-16T09:00:00Z\",\"Setup applicant\",\"setup@example.com\""),
+                layout: LayoutJson());
+            Assert.True(
+                layoutResponse.StatusCode == HttpStatusCode.OK,
+                await layoutResponse.Content.ReadAsStringAsync());
+            var setupCandidate = await GetSingleCandidateAsync(
+                client,
+                location,
+                Assert.Single(vacancy.Rounds).Id);
+            using var deleteResponse = await client.DeleteAsync(
+                CandidatePath(location, Assert.Single(vacancy.Rounds).Id, setupCandidate.Id));
+            Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
         }
 
         return (location, Assert.Single(vacancy.Rounds).Id);
@@ -338,12 +496,24 @@ public sealed class ImportFormTests(ApiFactory factory) : IClassFixture<ApiFacto
         string vacancyLocation,
         long roundId,
         string csv,
-        string fileName = "responses.csv")
+        string fileName = "responses.csv",
+        string? layout = null,
+        bool confirmDrift = false)
     {
         using var form = new MultipartFormDataContent();
         var fileContent = new ByteArrayContent(Encoding.UTF8.GetBytes(csv));
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("text/csv");
         form.Add(fileContent, "file", fileName);
+        if (layout is not null)
+        {
+            form.Add(new StringContent(layout), "layout");
+        }
+
+        if (confirmDrift)
+        {
+            form.Add(new StringContent("true"), "confirmDrift");
+        }
+
         return await client.PostAsync(
             $"{vacancyLocation}/rounds/{roundId}/candidates/import-form",
             form);
@@ -396,6 +566,18 @@ public sealed class ImportFormTests(ApiFactory factory) : IClassFixture<ApiFacto
 
     private static string Csv(params string[] rows) =>
         $"Timestamp,Name,Email\r\n{string.Join("\r\n", rows)}\r\n";
+
+    private static string CsvWithHeaders(string headers, params string[] rows) =>
+        $"{headers}\r\n{string.Join("\r\n", rows)}\r\n";
+
+    private static string LayoutJson() => JsonSerializer.Serialize(new
+    {
+        columns = new[]
+        {
+            new { ordinal = 1, role = "name", label = (string?)null },
+            new { ordinal = 2, role = "contactEmail", label = (string?)null }
+        }
+    });
 
     private static byte[] CreateEml(string senderEmail)
     {

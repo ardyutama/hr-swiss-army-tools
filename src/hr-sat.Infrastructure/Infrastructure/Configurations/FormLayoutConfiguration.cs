@@ -37,14 +37,16 @@ internal sealed class FormLayoutConfiguration : IEntityTypeConfiguration<FormLay
                 (left, right) => left != null && right != null && left.SequenceEqual(right),
                 value => value.Aggregate(0, (hash, header) => HashCode.Combine(hash, header.GetHashCode())),
                 value => value.ToArray()));
-        entity.Property(layout => layout.NameColumnOrdinal)
-            .HasColumnName("name_column_ordinal");
-        entity.Property(layout => layout.ContactEmailColumnOrdinal)
-            .HasColumnName("contact_email_column_ordinal");
-        entity.Property(layout => layout.ContactPhoneColumnOrdinal)
-            .HasColumnName("contact_phone_column_ordinal");
-        entity.Property(layout => layout.CvLinkColumnOrdinal)
-            .HasColumnName("cv_link_column_ordinal");
+        entity.Property(layout => layout.Columns)
+            .HasColumnName("columns")
+            .HasColumnType("jsonb")
+            .HasConversion(
+                columns => JsonSerializer.Serialize(columns),
+                json => JsonSerializer.Deserialize<FormLayoutColumn[]>(json) ?? Array.Empty<FormLayoutColumn>())
+            .Metadata.SetValueComparer(new ValueComparer<IReadOnlyList<FormLayoutColumn>>(
+                (left, right) => left != null && right != null && left.SequenceEqual(right),
+                value => value.Aggregate(0, (hash, column) => HashCode.Combine(hash, column.GetHashCode())),
+                value => value.ToArray()));
 
         entity.HasOne<Vacancy>()
             .WithOne(vacancy => vacancy.FormLayout)

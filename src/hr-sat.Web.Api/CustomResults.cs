@@ -6,11 +6,16 @@ public static class CustomResults
 {
     public static IResult Problem(Error error) =>
         error is ValidationError validationError
-            ? TypedResults.ValidationProblem(validationError.Errors)
+            ? TypedResults.ValidationProblem(
+                validationError.Errors,
+                title: validationError.Code,
+                detail: validationError.Message,
+                extensions: validationError.Extensions)
             : TypedResults.Problem(
                 statusCode: GetStatusCode(error.Type),
                 title: error.Code,
-                detail: error.Message);
+                detail: error.Message,
+                extensions: error.Extensions);
 
     private static int GetStatusCode(ErrorType errorType) => errorType switch
     {

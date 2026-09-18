@@ -91,7 +91,7 @@ internal static class FormCsvParser
             throw new FormCsvParseException("The CSV must contain at least one data row.");
         }
 
-        return new ParsedFormCsv(rows);
+        return new ParsedFormCsv(header, rows);
     }
 
     private static DateTimeOffset? ParseTimestamp(string value) =>
@@ -106,7 +106,9 @@ internal static class FormCsvParser
             : null;
 }
 
-internal sealed record ParsedFormCsv(IReadOnlyList<ParsedFormRow> Rows);
+internal sealed record ParsedFormCsv(
+    IReadOnlyList<string> Headers,
+    IReadOnlyList<ParsedFormRow> Rows);
 
 internal sealed record ParsedFormRow(
     int RowPosition,

@@ -27,6 +27,9 @@ internal static class VacancyWrite
                 await dbContext.EmailTemplates
                     .Where(template => template.VacancyId == id)
                     .LoadAsync(cancellationToken);
+                await dbContext.FormLayouts
+                    .Where(layout => layout.VacancyId == id)
+                    .LoadAsync(cancellationToken);
 
                 var mutationResult = mutation(vacancy);
                 if (mutationResult.IsFailure)
@@ -51,6 +54,10 @@ internal static class VacancyWrite
         {
             return Result<T>.Failure(VacancyErrors.NotFound(vacancyId));
         }
+
+        await dbContext.FormLayouts
+            .Where(layout => layout.VacancyId == vacancyId)
+            .LoadAsync(cancellationToken);
 
         var mutationResult = await mutation(vacancy);
         if (mutationResult.IsFailure)

@@ -1,4 +1,5 @@
 using hr_sat.Domain;
+using hr_sat.Domain.Vacancies;
 
 namespace hr_sat.Domain.Candidates;
 
@@ -53,6 +54,9 @@ public sealed class Candidate : Entity
     public string? FullName { get; private set; }
     public string? ContactEmail { get; private set; }
     public string? ContactPhone { get; private set; }
+    public CandidateDetailProvenance FullNameProvenance { get; private set; }
+    public CandidateDetailProvenance ContactEmailProvenance { get; private set; }
+    public CandidateDetailProvenance ContactPhoneProvenance { get; private set; }
     public string? Notes { get; private set; }
     public string? SourceSenderName { get; private set; }
     public string? SourceSenderEmail { get; private set; }
@@ -68,9 +72,15 @@ public sealed class Candidate : Entity
     public IReadOnlyList<CandidateRequirementReview> RequirementReviews => _requirementReviews;
     public IReadOnlyList<CandidateFormResponse> FormResponses => _formResponses;
 
-    internal Result UpdateDetails(string? fullName, string? contactEmail)
+    internal Result UpdateDetails(
+        string? fullName,
+        string? contactEmail,
+        string? contactPhone = null)
     {
-        var detailsResult = CandidateDetailsRules.Validate(fullName, contactEmail);
+        var detailsResult = CandidateDetailsRules.Validate(
+            fullName,
+            contactEmail,
+            contactPhone);
         if (detailsResult.IsFailure)
         {
             return detailsResult;
@@ -78,7 +88,94 @@ public sealed class Candidate : Entity
 
         FullName = detailsResult.Value.FullName;
         ContactEmail = detailsResult.Value.ContactEmail;
+        ContactPhone = detailsResult.Value.ContactPhone;
+        FullNameProvenance = CandidateDetailProvenance.Typed;
+        ContactEmailProvenance = CandidateDetailProvenance.Typed;
+        ContactPhoneProvenance = CandidateDetailProvenance.Typed;
         return Result.Success();
+    }
+
+    internal CandidatePrefillResult PrefillDetailsFromLayout(FormLayout layout)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        if (IntakeSource != CandidateIntakeSource.Form)
+        {
+            return new CandidatePrefillResult(false, 0);
+        }
+
+        var currentResponse = _formResponses.SingleOrDefault(response => response.IsCurrent);
+        if (currentResponse is null)
+        {
+            return new CandidatePrefillResult(false, 0);
+        }
+
+        var updated = false;
+        var typedOverridesKept = 0;
+        if (FullNameProvenance == CandidateDetailProvenance.Typed)
+        {
+            typedOverridesKept++;
+        }
+        else
+        {
+            var value = ReadCell(currentResponse.Cells, layout.GetColumnOrdinal(FormLayoutRole.Name));
+            var normalized = CandidateDetailsRules.TryNormalizeFullName(value, out var fullName);
+            var nextValue = normalized ? fullName : null;
+            var nextProvenance = nextValue is null
+                ? CandidateDetailProvenance.None
+                : CandidateDetailProvenance.FormPrefilled;
+            if (FullName != nextValue || FullNameProvenance != nextProvenance)
+            {
+                FullName = nextValue;
+                FullNameProvenance = nextProvenance;
+                updated = true;
+            }
+        }
+
+        if (ContactEmailProvenance == CandidateDetailProvenance.Typed)
+        {
+            typedOverridesKept++;
+        }
+        else
+        {
+            var value = ReadCell(
+                currentResponse.Cells,
+                layout.GetColumnOrdinal(FormLayoutRole.ContactEmail));
+            var normalized = CandidateDetailsRules.TryNormalizeContactEmail(value, out var contactEmail);
+            var nextValue = normalized ? contactEmail : null;
+            var nextProvenance = nextValue is null
+                ? CandidateDetailProvenance.None
+                : CandidateDetailProvenance.FormPrefilled;
+            if (ContactEmail != nextValue || ContactEmailProvenance != nextProvenance)
+            {
+                ContactEmail = nextValue;
+                ContactEmailProvenance = nextProvenance;
+                updated = true;
+            }
+        }
+
+        if (ContactPhoneProvenance == CandidateDetailProvenance.Typed)
+        {
+            typedOverridesKept++;
+        }
+        else
+        {
+            var value = ReadCell(
+                currentResponse.Cells,
+                layout.GetColumnOrdinal(FormLayoutRole.ContactPhone));
+            var normalized = CandidateDetailsRules.TryNormalizeContactPhone(value, out var contactPhone);
+            var nextValue = normalized ? contactPhone : null;
+            var nextProvenance = nextValue is null
+                ? CandidateDetailProvenance.None
+                : CandidateDetailProvenance.FormPrefilled;
+            if (ContactPhone != nextValue || ContactPhoneProvenance != nextProvenance)
+            {
+                ContactPhone = nextValue;
+                ContactPhoneProvenance = nextProvenance;
+                updated = true;
+            }
+        }
+
+        return new CandidatePrefillResult(updated, typedOverridesKept);
     }
 
     internal Result UpdateNotes(string? notes)
@@ -259,4 +356,11 @@ public sealed class Candidate : Entity
         IsResubmitted |= isResubmitted;
         return responseResult.Value;
     }
+
+    private static string? ReadCell(
+        IReadOnlyList<string> cells,
+        int? ordinal) =>
+        ordinal.HasValue && ordinal.Value < cells.Count
+            ? cells[ordinal.Value]
+            : null;
 }

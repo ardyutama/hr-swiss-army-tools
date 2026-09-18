@@ -1,4 +1,5 @@
 using hr_sat.Application.Features.Candidates.ImportForm;
+using hr_sat.Domain.Vacancies;
 using Shouldly;
 using Xunit;
 
@@ -64,6 +65,43 @@ public sealed class ImportFormValidatorTests
         var result = ValidateFile("responses.CSV", "text/csv; charset=utf-8", 10);
 
         result.IsValid.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Validate_Should_RejectReservedTimestampOrdinalInLayoutPayload()
+    {
+        var result = new ImportFormCommandValidator().Validate(
+            new ImportFormCommand(
+                1,
+                1,
+                new ImportFormFile("responses.csv", "text/csv", 1, Stream.Null),
+                new FormLayoutDefinition([
+                    new FormLayoutColumn(0, FormLayoutRole.Name, null),
+                    new FormLayoutColumn(1, FormLayoutRole.ContactEmail, null)
+                ])));
+
+        result.IsValid.ShouldBeFalse();
+        result.Errors.Select(error => error.ErrorMessage)
+            .ShouldContain(message => message.Contains("Timestamp", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Validate_Should_RejectLayoutPayloadAndDriftConfirmationTogether()
+    {
+        var result = new ImportFormCommandValidator().Validate(
+            new ImportFormCommand(
+                1,
+                1,
+                new ImportFormFile("responses.csv", "text/csv", 1, Stream.Null),
+                new FormLayoutDefinition([
+                    new FormLayoutColumn(1, FormLayoutRole.Name, null),
+                    new FormLayoutColumn(2, FormLayoutRole.ContactEmail, null)
+                ]),
+                ConfirmDrift: true));
+
+        result.IsValid.ShouldBeFalse();
+        result.Errors.Select(error => error.ErrorMessage)
+            .ShouldContain(message => message.Contains("cannot be sent together", StringComparison.Ordinal));
     }
 
     private static FluentValidation.Results.ValidationResult ValidateFile(

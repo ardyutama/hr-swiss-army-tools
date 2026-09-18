@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using hr_sat.Application;
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Storage;
@@ -12,6 +14,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(
+        new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
 builder.Services.AddApplication();
 builder.Services.AddEndpoints();
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);

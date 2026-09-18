@@ -22,5 +22,9 @@ public sealed class UpdateCandidateDetailsCommandValidator
             .MaximumLength(320)
             .EmailAddress()
             .WithMessage("Email must be a valid email address.");
+        RuleFor(command => command.ContactPhone)
+            .MaximumLength(100)
+            .WithMessage("Phone must be 100 characters or fewer.")
+            .When(command => command.ContactPhone is not null);
     }
 }

@@ -120,6 +120,9 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
             entity.Property(candidate => candidate.HireOutcome).HasConversion<string>();
             entity.Property(candidate => candidate.ExtractionStatus).HasConversion<string>();
             entity.Property(candidate => candidate.IntakeSource).HasConversion<string>();
+            entity.Property(candidate => candidate.FullNameProvenance).HasConversion<string>();
+            entity.Property(candidate => candidate.ContactEmailProvenance).HasConversion<string>();
+            entity.Property(candidate => candidate.ContactPhoneProvenance).HasConversion<string>();
             entity.Property(candidate => candidate.IsResubmitted);
             entity.HasMany(candidate => candidate.CvDocuments)
                 .WithOne()
@@ -192,19 +195,23 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-            modelBuilder.Entity<FormLayout>(entity =>
-            {
-                entity.HasKey(layout => layout.Id);
-                entity.Property(layout => layout.Id).ValueGeneratedOnAdd();
-                entity.Property(layout => layout.HeaderSnapshot)
+        modelBuilder.Entity<FormLayout>(entity =>
+        {
+            entity.HasKey(layout => layout.Id);
+            entity.Property(layout => layout.Id).ValueGeneratedOnAdd();
+            entity.Property(layout => layout.HeaderSnapshot)
                 .HasConversion(
                     headers => JsonSerializer.Serialize(headers),
                     json => JsonSerializer.Deserialize<string[]>(json) ?? Array.Empty<string>());
-                entity.HasOne<Vacancy>()
+            entity.Property(layout => layout.Columns)
+                .HasConversion(
+                    columns => JsonSerializer.Serialize(columns),
+                    json => JsonSerializer.Deserialize<FormLayoutColumn[]>(json) ?? Array.Empty<FormLayoutColumn>());
+            entity.HasOne<Vacancy>()
                 .WithOne(vacancy => vacancy.FormLayout)
                 .HasForeignKey<FormLayout>(layout => layout.VacancyId)
                 .OnDelete(DeleteBehavior.Cascade);
-            });
+        });
     }
 
     public override async ValueTask DisposeAsync()
