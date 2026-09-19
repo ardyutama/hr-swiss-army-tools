@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, shallowRef, toRef, watch } from 'vue'
+import { computed, shallowRef, toRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusBadge from '@/features/vacancies/components/StatusBadge.vue'
 import HiringPlanSummary from '@/features/vacancies/components/HiringPlanSummary.vue'
 import ImportDialog from '@/features/import/components/ImportDialog.vue'
 import FormLayoutDialog from '@/features/form-layout/components/FormLayoutDialog.vue'
-import DriftDialog from '@/features/form-layout/components/DriftDialog.vue'
+import DriftDialog from '@/features/import-form/components/DriftDialog.vue'
 import FormLayoutSummary from '@/features/form-layout/components/FormLayoutSummary.vue'
 import type { FormLayoutColumn } from '@/features/form-layout/api'
 import CandidateDeleteDialog from '@/features/candidates/components/CandidateDeleteDialog.vue'
@@ -112,16 +112,7 @@ const {
     clearError,
     canImport,
     importFiles,
-    formImporting,
-    formImportError,
-    formSummaryLine,
-    importFormFile,
-    clearFormImportResult,
-    formImportRefusal,
-    formHeaderChanges,
-    importFormWithLayout,
-    confirmFormDrift,
-    cancelFormRefusal,
+    formImport,
   },
   formLayout: {
     layout: formLayoutMapping,
@@ -138,13 +129,13 @@ const {
 )
 
 const {
-  open: importOpen,
+  open: importRequested,
   request: requestImport,
   confirm: confirmImport,
 } = useActionDialog({
   onReset: () => {
     clearError()
-    clearFormImportResult()
+    formImport.clearResult()
   },
 })
 const {
@@ -171,6 +162,8 @@ const {
   confirm: confirmCloseVacancy,
 } = useActionDialog()
 
+const formImportStep = formImport.step
+
 function openReviewFromPrepared(candidate: CandidateSummary) {
   preparedOpen.value = false
   openReview(candidate)
@@ -183,109 +176,138 @@ function openImport() {
 // The dialog surfaces one alert at a time: the form flow's typed alert wins,
 // otherwise the .eml flow's message renders as a red inline alert as before.
 const importAlert = computed(() => {
-  if (formImportError.value) {
-    return formImportError.value
+  if (formImport.alert.value) {
+    return formImport.alert.value
   }
   return importError.value ? { color: 'error' as const, title: importError.value } : null
 })
 
 async function onImportEmlFiles(files: File[]) {
-  clearFormImportResult()
+  formImport.clearResult()
   await confirmImport(() => importFiles(files))
 }
 
 async function onImportCsvFile(file: File) {
   clearError()
-  // The dialog stays open so the summary line remains visible — unless the
-  // import is refused, when the refusal watcher swaps it for the guided panel
-  // or the drift dialog.
-  await importFormFile(file)
+  // The dialog stays open so the summary line remains visible — a refusal
+  // moves the step off idle, which swaps it for the guided panel or the drift
+  // dialog via the derived bindings below.
+  await formImport.importFile(file)
 }
 
-// --- Form layout panel + drift dialog --------------------------------------
+// --- Form layout panel + drift dialog (derived from the import step) -------
 
-const formLayoutPanelOpen = shallowRef(false)
-const formLayoutPanelMode = shallowRef<'edit' | 'guided'>('edit')
-const driftDialogOpen = shallowRef(false)
-
-// A refused form import holds its file in the composable; open the matching
-// resolution surface and close the import dialog.
-watch(formImportRefusal, (refusal) => {
-  if (refusal === null) {
-    return
-  }
-  importOpen.value = false
-  if (refusal.changes === null) {
-    formLayoutPanelMode.value = 'guided'
-    formLayoutPanelOpen.value = true
-  } else {
-    driftDialogOpen.value = true
-  }
+// Edit mode is view-owned UI state; it loses to any refusal step.
+const layoutEditRequested = shallowRef(false)
+const layoutEditing = computed({
+  get: () => layoutEditRequested.value && formImportStep.value.kind === 'idle',
+  set: (open: boolean) => {
+    layoutEditRequested.value = open
+  },
 })
+
+// The import dialog shows only while requested and the import sits at idle —
+// a refusal closes it; terminal success returns to idle so it reappears with
+// the summary line while still requested.
+const importDialogOpen = computed({
+  get: () => importRequested.value && formImportStep.value.kind === 'idle',
+  set: (open: boolean) => {
+    importRequested.value = open
+  },
+})
+
+const formLayoutDialogOpen = computed({
+  get: () => formImportStep.value.kind === 'guidedSetup' || layoutEditing.value,
+  set: (open: boolean) => {
+    if (!open) {
+      if (formImportStep.value.kind === 'guidedSetup') {
+        formImport.cancel()
+      }
+      layoutEditRequested.value = false
+    }
+  },
+})
+
+const formLayoutDialogMode = computed<'edit' | 'guided'>(() =>
+  formImportStep.value.kind === 'guidedSetup' ? 'guided' : 'edit',
+)
 
 // Guided mode maps the held file's headers; edit mode maps the saved snapshot.
 const formLayoutPanelHeaders = computed(() =>
-  formLayoutPanelMode.value === 'guided'
-    ? (formImportRefusal.value?.headers ?? formLayoutMapping.value?.headerSnapshot ?? [])
+  formImportStep.value.kind === 'guidedSetup'
+    ? formImportStep.value.headers
     : (formLayoutMapping.value?.headerSnapshot ?? []),
 )
 
 const formLayoutPanelBusy = computed(() =>
-  formLayoutPanelMode.value === 'guided' ? formImporting.value : formLayoutSaving.value,
+  formImportStep.value.kind === 'guidedSetup' ? formImportStep.value.submitting : formLayoutSaving.value,
 )
 
 const formLayoutPanelAlert = computed(() =>
-  formLayoutPanelMode.value === 'guided' ? formImportError.value : formLayoutSaveError.value,
+  formImportStep.value.kind === 'guidedSetup' ? formImport.alert.value : formLayoutSaveError.value,
+)
+
+const formLayoutFileName = computed(() =>
+  formImportStep.value.kind === 'guidedSetup' ? formImportStep.value.file.name : null,
+)
+
+const driftDialogOpen = computed({
+  get: () => formImportStep.value.kind === 'headerDrift',
+  set: (open: boolean) => {
+    if (!open && formImportStep.value.kind === 'headerDrift') {
+      formImport.cancel()
+    }
+  },
+})
+
+const driftChanges = computed(() =>
+  formImportStep.value.kind === 'headerDrift' ? formImportStep.value.changes : [],
+)
+
+const driftSubmitting = computed(() =>
+  formImportStep.value.kind === 'headerDrift' ? formImportStep.value.submitting : false,
 )
 
 function openFormLayoutEdit() {
-  formLayoutPanelMode.value = 'edit'
-  formLayoutPanelOpen.value = true
+  layoutEditRequested.value = true
 }
 
-async function onFormLayoutSave(columns: FormLayoutColumn[]) {
-  const guided = formLayoutPanelMode.value === 'guided'
-  const succeeded = guided
-    ? await importFormWithLayout(columns)
-    : await saveFormLayout(columns)
-  if (!succeeded) {
-    return
-  }
-  formLayoutPanelOpen.value = false
-  if (guided) {
-    // Land on the normal import result: toast fired, summary line visible.
-    importOpen.value = true
+function onFormLayoutSave(columns: FormLayoutColumn[]) {
+  if (formImportStep.value.kind === 'guidedSetup') {
+    // Guided setup completes the held file's import; success returns the step
+    // to idle, closing the panel and re-opening the import dialog.
+    void formImport.submitLayout(columns)
+  } else {
+    void saveFormLayout(columns).then((saved) => {
+      if (saved) {
+        layoutEditRequested.value = false
+      }
+    })
   }
 }
 
 function onFormLayoutCancel() {
-  if (formLayoutPanelMode.value === 'guided') {
+  if (formImportStep.value.kind === 'guidedSetup') {
     // Cancel import drops the held file; nothing is saved.
-    cancelFormRefusal()
+    formImport.cancel()
   }
-  formLayoutPanelOpen.value = false
+  layoutEditRequested.value = false
 }
 
-async function onDriftConfirm() {
-  const confirmed = await confirmFormDrift()
-  if (!confirmed) {
-    return
-  }
-  driftDialogOpen.value = false
-  importOpen.value = true
+function onDriftConfirm() {
+  // Success returns the step to idle: the drift dialog closes and the import
+  // dialog reappears with the summary line.
+  void formImport.confirmDrift()
 }
 
 function onDriftRemap() {
   // The refusal stays held; the guided panel pre-fills the current mapping and
   // saving it completes the import.
-  driftDialogOpen.value = false
-  formLayoutPanelMode.value = 'guided'
-  formLayoutPanelOpen.value = true
+  formImport.remap()
 }
 
 function onDriftCancel() {
-  cancelFormRefusal()
-  driftDialogOpen.value = false
+  formImport.cancel()
 }
 
 function openCreateRound() {
@@ -579,20 +601,20 @@ function openReview(candidate: CandidateSummary) {
     </template>
 
     <ImportDialog
-      v-model:open="importOpen"
-      :busy="importing || formImporting"
+      v-model:open="importDialogOpen"
+      :busy="importing || formImportStep.kind === 'uploading'"
       :alert="importAlert"
-      :summary="formSummaryLine"
+      :summary="formImport.summaryLine.value"
       @eml-files="onImportEmlFiles"
       @csv-file="onImportCsvFile"
     />
     <FormLayoutDialog
-      v-model:open="formLayoutPanelOpen"
-      :mode="formLayoutPanelMode"
+      v-model:open="formLayoutDialogOpen"
+      :mode="formLayoutDialogMode"
       :headers="formLayoutPanelHeaders"
       :initial-columns="formLayoutMapping?.columns ?? null"
       :initial-headers="formLayoutMapping?.headerSnapshot ?? null"
-      :file-name="formImportRefusal?.file.name ?? null"
+      :file-name="formLayoutFileName"
       :busy="formLayoutPanelBusy"
       :alert="formLayoutPanelAlert"
       @save="onFormLayoutSave"
@@ -600,9 +622,9 @@ function openReview(candidate: CandidateSummary) {
     />
     <DriftDialog
       v-model:open="driftDialogOpen"
-      :changes="formHeaderChanges"
-      :busy="formImporting"
-      :alert="formImportError"
+      :changes="driftChanges"
+      :busy="driftSubmitting"
+      :alert="formImport.alert.value"
       @confirm="onDriftConfirm"
       @remap="onDriftRemap"
       @cancel="onDriftCancel"

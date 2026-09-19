@@ -3,8 +3,8 @@ import { useToast } from '@nuxt/ui/composables/useToast'
 import { ApiError } from '@/shared/http'
 import { fieldErrorsOf, firstNonFieldError } from '@/shared/validation'
 import { problemMessage, type ProblemMessageColor } from '@/shared/problem-details'
-import type { FormLayoutColumn } from '@/features/form-layout/api'
-import type { FormHeaderChangeDto } from '@/features/form-layout/format'
+import type { FormLayoutColumn, FormLayoutDto } from '@/features/form-layout/api'
+import { describeHeaderChanges, type FormHeaderChangeDto, type FormHeaderChangeView } from './format'
 import {
   confirmFormImportDrift,
   importFormResponses,
@@ -18,25 +18,44 @@ export interface FormImportAlert {
   description?: string
 }
 
-/**
- * A refused form import holding its file: `changes` null means the vacancy has
- * no valid Form Layout yet (guided setup); a list means Header Drift. The page
- * watches this to open the matching dialog — the file's single owner is here.
- */
-export interface FormImportRefusal {
-  file: File
-  headers: string[]
-  changes: FormHeaderChangeDto[] | null
-}
+/** What a terminal outcome changed server-side: layout-stamping paths also change the Form Layout. */
+export type FormImportChange = 'candidates' | 'candidatesAndLayout'
 
+/**
+ * The Form Response import lifecycle as one union, never parallel booleans.
+ * `guidedSetup` means the vacancy has no valid Form Layout yet; `headerDrift`
+ * carries the enriched changes (role + Column Label + missing flag), ready to
+ * bind. The held file's single owner is here.
+ */
+export type FormImportStep =
+  | { kind: 'idle' }
+  | { kind: 'uploading' }
+  | { kind: 'guidedSetup'; file: File; headers: string[]; submitting: boolean }
+  | {
+      kind: 'headerDrift'
+      file: File
+      headers: string[]
+      changes: FormHeaderChangeView[]
+      submitting: boolean
+    }
+
+/**
+ * One deep module for the whole Form Response import: upload, the two
+ * refusals (guided setup, Header Drift), re-map, confirm, and cancel. The
+ * layout arrives by injection — this module never loads it — and every
+ * terminal outcome that changed server state invokes `onChanged` so the
+ * caller decides what to reload.
+ */
 export function useFormResponseImport(
   vacancyId: Ref<string>,
   roundId: Ref<string>,
-  onChanged?: () => Promise<void>,
+  layout: Ref<FormLayoutDto | null>,
+  onChanged?: (changed: FormImportChange) => Promise<void>,
 ) {
   const toast = useToast()
-  const importing = shallowRef(false)
-  const importError = shallowRef<FormImportAlert | null>(null)
+  const uploading = shallowRef(false)
+  const submitting = shallowRef(false)
+  const alert = shallowRef<FormImportAlert | null>(null)
   const summary = shallowRef<FormImportSummary | null>(null)
   const pendingRefusal = shallowRef<FormImportRefusal | null>(null)
 
@@ -44,41 +63,64 @@ export function useFormResponseImport(
     summary.value ? formImportSummaryLine(summary.value) : null,
   )
 
-  async function importFile(file: File): Promise<boolean> {
-    if (importing.value) {
-      return false
+  // Derived over the raw refusal: drift enrichment reacts if the layout
+  // arrives after the refusal, and terminal success returns the step to idle.
+  const step = computed<FormImportStep>(() => {
+    const refusal = pendingRefusal.value
+    if (refusal === null) {
+      return uploading.value ? { kind: 'uploading' } : { kind: 'idle' }
     }
-    importing.value = true
-    importError.value = null
+    if (refusal.changes === null) {
+      return {
+        kind: 'guidedSetup',
+        file: refusal.file,
+        headers: refusal.headers,
+        submitting: submitting.value,
+      }
+    }
+    return {
+      kind: 'headerDrift',
+      file: refusal.file,
+      headers: refusal.headers,
+      changes: describeHeaderChanges(refusal.changes, layout.value?.columns ?? []),
+      submitting: submitting.value,
+    }
+  })
+
+  async function importFile(file: File): Promise<void> {
+    if (step.value.kind !== 'idle') {
+      return
+    }
+    uploading.value = true
+    alert.value = null
     summary.value = null
     try {
       const result = await importFormResponses(vacancyId.value, roundId.value, file)
       summary.value = result
       announce(result)
-      return true
+      await onChanged?.('candidates')
     } catch (error) {
-      // The two refusal codes route into the guided/drift dialogs instead of
+      // The two refusal codes route into the guided/drift steps instead of
       // an alert — checked before every other error mapping.
       const refusal = formImportRefusal(error, file)
       if (refusal) {
         pendingRefusal.value = refusal
-        return false
+        return
       }
       await recordImportError(error)
-      return false
     } finally {
-      importing.value = false
+      uploading.value = false
     }
   }
 
   /** Guided setup / drift re-map: re-send the held file with the mapping as the layout payload. */
-  async function importWithLayout(columns: FormLayoutColumn[]): Promise<boolean> {
+  async function submitLayout(columns: FormLayoutColumn[]): Promise<void> {
     const refusal = pendingRefusal.value
-    if (importing.value || refusal === null) {
-      return false
+    if (submitting.value || refusal === null) {
+      return
     }
-    importing.value = true
-    importError.value = null
+    submitting.value = true
+    alert.value = null
     try {
       const result = await importFormResponsesWithLayout(
         vacancyId.value,
@@ -89,54 +131,62 @@ export function useFormResponseImport(
       pendingRefusal.value = null
       summary.value = result
       announce(result)
-      return true
+      await onChanged?.('candidatesAndLayout')
     } catch (error) {
       // The refusal stays pending so the dialog remains open with its mapping.
       await recordImportError(error)
-      return false
     } finally {
-      importing.value = false
+      submitting.value = false
     }
   }
 
   /** Drift confirm: re-send the held file with the confirmDrift flag. */
-  async function confirmDrift(): Promise<boolean> {
+  async function confirmDrift(): Promise<void> {
     const refusal = pendingRefusal.value
-    if (importing.value || refusal === null) {
-      return false
+    if (submitting.value || refusal === null) {
+      return
     }
-    importing.value = true
-    importError.value = null
+    submitting.value = true
+    alert.value = null
     try {
       const result = await confirmFormImportDrift(vacancyId.value, roundId.value, refusal.file)
       pendingRefusal.value = null
       summary.value = result
       announce(result)
-      return true
+      await onChanged?.('candidatesAndLayout')
     } catch (error) {
+      // The refusal stays pending so the drift dialog stays open on its mapping.
       await recordImportError(error)
-      return false
     } finally {
-      importing.value = false
+      submitting.value = false
+    }
+  }
+
+  /** Drift → guided transition: the refusal stays held; the panel re-maps it. */
+  function remap() {
+    const refusal = pendingRefusal.value
+    if (refusal?.changes) {
+      pendingRefusal.value = { ...refusal, changes: null }
     }
   }
 
   /** Drops the held file without importing (Cancel import). */
-  function cancelRefusal() {
+  function cancel() {
     pendingRefusal.value = null
   }
 
   // A different vacancy or round starts with a clean import slate, held file included.
   watch([vacancyId, roundId], () => {
-    importing.value = false
-    importError.value = null
+    uploading.value = false
+    submitting.value = false
+    alert.value = null
     summary.value = null
     pendingRefusal.value = null
   })
 
   /** Dismisses a visible summary or import error (e.g. when the import dialog closes). */
   function clearResult() {
-    importError.value = null
+    alert.value = null
     summary.value = null
   }
 
@@ -150,14 +200,14 @@ export function useFormResponseImport(
   async function recordImportError(error: unknown): Promise<void> {
     const malformed = malformedCsvAlert(error)
     if (malformed) {
-      importError.value = malformed
+      alert.value = malformed
       return
     }
     const message = problemMessage(error, "Couldn't import the form responses")
     if (message.kind !== 'failure') {
-      await onChanged?.()
+      await onChanged?.('candidates')
     }
-    importError.value = {
+    alert.value = {
       color: message.color,
       title: message.title,
       description: message.description,
@@ -165,21 +215,31 @@ export function useFormResponseImport(
   }
 
   return {
-    importing,
-    importError,
+    step,
+    alert,
     summary,
     summaryLine,
-    pendingRefusal,
     importFile,
-    importWithLayout,
+    submitLayout,
     confirmDrift,
-    cancelRefusal,
+    remap,
+    cancel,
     clearResult,
   }
 }
 
 const layoutRequiredCode = 'Candidates.FormLayoutRequired'
 const headerDriftCode = 'Candidates.FormHeaderDrift'
+
+/**
+ * A refused form import holding its file: `changes` null means the vacancy has
+ * no valid Form Layout yet (guided setup); a list means Header Drift.
+ */
+interface FormImportRefusal {
+  file: File
+  headers: string[]
+  changes: FormHeaderChangeDto[] | null
+}
 
 /**
  * Parses the two 409 refusals (problem title + extensions). Malformed
@@ -224,7 +284,6 @@ function isHeaderChange(value: unknown): value is FormHeaderChangeDto {
     typeof candidate.now === 'string'
   )
 }
-
 
 function formImportSummaryLine(summary: FormImportSummary): string {
   const segments = [

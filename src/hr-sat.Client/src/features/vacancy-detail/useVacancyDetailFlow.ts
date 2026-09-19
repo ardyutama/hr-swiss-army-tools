@@ -4,9 +4,8 @@ import type { CandidateFilterState } from '@/features/candidates/filter'
 import { useCandidateFilter } from '@/features/candidates/useCandidateFilter'
 import { useCandidateImport } from '@/features/candidates/useCandidateImport'
 import { useCandidates } from '@/features/candidates/useCandidates'
-import { useFormResponseImport } from '@/features/import-form/useFormResponseImport'
+import { useFormResponseImport, type FormImportChange } from '@/features/import-form/useFormResponseImport'
 import type { FormLayoutColumn } from '@/features/form-layout/api'
-import { describeHeaderChanges } from '@/features/form-layout/format'
 import { useFormLayout } from '@/features/form-layout/useFormLayout'
 import { useIntakeRounds, roundDisplayName } from '@/features/intake-rounds/useIntakeRounds'
 import { sendScope } from '@/features/prepared-messages/format'
@@ -102,25 +101,19 @@ export function useVacancyDetailFlow(
     importFiles: importCandidateFiles,
     clearError,
   } = useCandidateImport(vacancyId, selectedRoundParam, refreshVacancyAndCandidates)
-  const {
-    importing: formImporting,
-    importError: formImportError,
-    summaryLine: formSummaryLine,
-    pendingRefusal: formImportRefusal,
-    importFile: importFormResponseFile,
-    importWithLayout,
-    confirmDrift,
-    cancelRefusal: cancelFormRefusal,
-    clearResult: clearFormImportResult,
-  } = useFormResponseImport(vacancyId, selectedRoundParam, refreshVacancyAndCandidates)
-
-  // Drift changes enriched with the role and Column Label each ordinal carries.
-  const formHeaderChanges = computed(() => {
-    const refusal = formImportRefusal.value
-    return refusal?.changes
-      ? describeHeaderChanges(refusal.changes, formLayoutFlow.layout.value?.columns ?? [])
-      : []
-  })
+  const formImportChanged = async (changed: FormImportChange) => {
+    if (changed === 'candidatesAndLayout') {
+      await refreshVacancyCandidatesAndLayout()
+    } else {
+      await refreshVacancyAndCandidates()
+    }
+  }
+  const formImport = useFormResponseImport(
+    vacancyId,
+    selectedRoundParam,
+    formLayoutFlow.layout,
+    formImportChanged,
+  )
   const {
     status: statusFilter,
     outcome: outcomeFilter,
@@ -177,16 +170,6 @@ export function useVacancyDetailFlow(
     return true
   }
 
-  async function importFormFile(file: File): Promise<boolean> {
-    const imported = await importFormResponseFile(file)
-    if (!imported) {
-      return false
-    }
-    // Refresh so the vacancy progress, round counts, and the candidate list reflect the import.
-    await refreshVacancyAndCandidates()
-    return true
-  }
-
   // A layout save re-projects over stored rows, so candidate details change too.
   async function saveFormLayoutMapping(columns: FormLayoutColumn[]): Promise<boolean> {
     const saved = await formLayoutFlow.save(columns)
@@ -194,24 +177,6 @@ export function useVacancyDetailFlow(
       await refreshVacancyAndCandidates()
     }
     return saved
-  }
-
-  // Guided setup completes the held file's import and stamps the layout from it.
-  async function importFormWithLayout(columns: FormLayoutColumn[]): Promise<boolean> {
-    const imported = await importWithLayout(columns)
-    if (imported) {
-      await refreshVacancyCandidatesAndLayout()
-    }
-    return imported
-  }
-
-  // Drift confirm imports the held file and adopts its headers as the snapshot.
-  async function confirmFormDrift(): Promise<boolean> {
-    const confirmed = await confirmDrift()
-    if (confirmed) {
-      await refreshVacancyCandidatesAndLayout()
-    }
-    return confirmed
   }
 
   function selectRound(round: VacancyRound) {
@@ -375,16 +340,7 @@ export function useVacancyDetailFlow(
       clearError,
       canImport,
       importFiles,
-      formImporting,
-      formImportError,
-      formSummaryLine,
-      importFormFile,
-      clearFormImportResult,
-      formImportRefusal,
-      formHeaderChanges,
-      importFormWithLayout,
-      confirmFormDrift,
-      cancelFormRefusal,
+      formImport,
     },
     formLayout: {
       layout: formLayoutFlow.layout,
