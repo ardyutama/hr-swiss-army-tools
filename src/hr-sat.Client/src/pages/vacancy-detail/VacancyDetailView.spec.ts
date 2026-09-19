@@ -31,6 +31,13 @@ function stubFetch(vacancy: () => unknown, handler: FetchHandler): void {
       if (url.endsWith('/vacancies/1')) {
         return Promise.resolve(jsonResponse(vacancy()))
       }
+      // No Form Layout by default: the vacancy starts unmapped (404 is the
+      // client's empty state, not a failure).
+      if (url.endsWith('/form-layout')) {
+        return Promise.resolve(
+          jsonResponse({ title: 'FormLayouts.NotFound', detail: 'No form layout.' }, 404),
+        )
+      }
       throw new Error(`Unstubbed fetch: ${init?.method ?? 'GET'} ${url}`)
     }),
   )
@@ -120,6 +127,24 @@ function bobSummary(overrides: Partial<Record<string, unknown>> = {}) {
   })
 }
 
+// The Form Layout GET wire shape spells roles lowercased; writes take camelCase.
+function formLayoutDto(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 5,
+    vacancyId: 1,
+    headerSnapshot: ['Timestamp', 'Nama Lengkap', 'Email aktif', 'Pengalaman kerja'],
+    columns: [
+      { ordinal: 1, role: 'name', label: 'Candidate name' },
+      { ordinal: 2, role: 'contactemail', label: null },
+      { ordinal: 3, role: null, label: null },
+    ],
+    isValid: true,
+    candidatesUpdated: 0,
+    typedOverridesKept: 0,
+    ...overrides,
+  }
+}
+
 function mountView(id = '1') {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -197,6 +222,22 @@ async function openImportDialog(wrapper: VueWrapper) {
 
 function dropFiles(files: File[]) {
   return new DOMWrapper(bodyElement('.dropzone')).trigger('drop', { dataTransfer: { files } })
+}
+
+// Picks a column in one of the Form Layout panel's role selects (teleported).
+async function pickRoleColumn(roleLabel: string, optionText: string) {
+  const trigger = Array.from(document.body.querySelectorAll('button')).find(
+    (candidate) => candidate.getAttribute('aria-label') === roleLabel,
+  )
+  expect(trigger, `a "${roleLabel}" role select`).toBeDefined()
+  await new DOMWrapper(trigger as HTMLElement).trigger('keydown', { key: 'ArrowDown' })
+  await flushPromises()
+  const option = Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).find(
+    (candidate) => candidate.textContent?.includes(optionText),
+  )
+  expect(option, `an option containing "${optionText}"`).toBeDefined()
+  await new DOMWrapper(option as HTMLElement).trigger('keydown', { key: 'Enter' })
+  await flushPromises()
 }
 
 afterEach(() => {
@@ -637,6 +678,461 @@ describe('VacancyDetailView', () => {
 
     const aliceRow = wrapper.findAll('.crow').find((row) => row.text().includes('Alice Applicant'))
     expect(aliceRow?.text()).toContain('Resubmitted')
+    wrapper.unmount()
+  })
+
+  it('domain: the first .csv upload routes into the guided Form Layout setup and completes the import', async () => {
+    let imported = false
+    let layoutPayload: string | undefined
+    let sentFileName: string | undefined
+    stubFetch(
+      () => vacancyDetails(),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/candidates/import-form')) {
+          const form = init.body as FormData
+          if (form.get('layout') === null) {
+            // No valid layout yet: the import is refused and carries the file's headers.
+            return Promise.resolve(
+              jsonResponse(
+                {
+                  title: 'Candidates.FormLayoutRequired',
+                  detail: 'The vacancy needs a valid Form Layout first.',
+                  headers: ['Timestamp', 'Nama Lengkap', 'Email aktif', 'Pengalaman kerja'],
+                },
+                409,
+              ),
+            )
+          }
+          imported = true
+          layoutPayload = form.get('layout') as string
+          sentFileName = (form.get('file') as File).name
+          return Promise.resolve(
+            jsonResponse({
+              rowsRead: 2,
+              created: 2,
+              updated: 0,
+              skippedOutdated: 0,
+              priorApplications: 0,
+            }),
+          )
+        }
+        if (url.endsWith('/form-layout')) {
+          return Promise.resolve(
+            imported
+              ? jsonResponse(formLayoutDto())
+              : jsonResponse({ title: 'FormLayouts.NotFound', detail: 'No form layout.' }, 404),
+          )
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse(imported ? [candidateSummary(1)] : []))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await openImportDialog(wrapper)
+    await dropFiles([new File(['Timestamp,Nama'], 'responses.csv', { type: 'text/csv' })])
+    await flushPromises()
+
+    // The import dialog is swapped for the blocking guided panel naming the held file…
+    expect(document.body.querySelector('.dropzone')).toBeNull()
+    expect(document.body.textContent).toContain('Set up the form layout to finish importing')
+    expect(document.body.textContent).toContain('responses.csv')
+    expect(document.body.textContent).toContain('Bind Name and Contact email')
+    // …with no dismiss control — the only exits are Cancel import and Save.
+    expect(document.body.querySelector('button[aria-label="Close"]')).toBeNull()
+
+    // HR binds the required roles by hand — the panel never pre-fills them.
+    await pickRoleColumn('Name', '1 · Nama Lengkap')
+    await pickRoleColumn('Contact email', '2 · Email aktif')
+
+    dialogButton('Save layout & import')?.click()
+    await flushPromises()
+
+    // The held file is re-sent with the mapping as the layout payload (camelCase roles).
+    expect(sentFileName).toBe('responses.csv')
+    expect(JSON.parse(layoutPayload!)).toEqual({
+      columns: [
+        { ordinal: 1, role: 'name', label: null },
+        { ordinal: 2, role: 'contactEmail', label: null },
+      ],
+    })
+
+    // Success lands on the normal import result: toast plus the summary line…
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Form import complete: 2 rows read · 2 new',
+        color: 'success',
+      }),
+    )
+    expect(document.body.querySelector('[role="status"]')?.textContent).toContain(
+      '2 rows read · 2 new',
+    )
+    // …the stamped layout shows in the summary card…
+    expect(wrapper.text()).toContain('1 · Nama Lengkap')
+    // …and the imported candidates are listed.
+    expect(wrapper.text()).toContain('Alice Applicant')
+    wrapper.unmount()
+  })
+
+  it('domain: Header Drift pauses a re-upload behind the drift dialog; Confirm imports with confirmDrift', async () => {
+    const confirmDriftValues: (FormDataEntryValue | null)[] = []
+    stubFetch(
+      () => vacancyDetails(),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/candidates/import-form')) {
+          const form = init.body as FormData
+          confirmDriftValues.push(form.get('confirmDrift'))
+          if (form.get('confirmDrift') !== 'true') {
+            return Promise.resolve(
+              jsonResponse(
+                {
+                  title: 'Candidates.FormHeaderDrift',
+                  detail: 'The uploaded form headers differ from the saved Form Layout.',
+                  headers: ['Timestamp', 'Nama lengkap sesuai KTP', 'Email aktif', 'Pengalaman kerja'],
+                  changes: [
+                    { ordinal: 1, was: 'Nama Lengkap', now: 'Nama lengkap sesuai KTP' },
+                  ],
+                },
+                409,
+              ),
+            )
+          }
+          return Promise.resolve(
+            jsonResponse({
+              rowsRead: 3,
+              created: 1,
+              updated: 2,
+              skippedOutdated: 0,
+              priorApplications: 0,
+            }),
+          )
+        }
+        if (url.endsWith('/form-layout')) {
+          return Promise.resolve(jsonResponse(formLayoutDto()))
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await openImportDialog(wrapper)
+    await dropFiles([new File(['Timestamp,Nama'], 'responses.csv', { type: 'text/csv' })])
+    await flushPromises()
+
+    // The drift dialog lists the changed ordinal with its role, label, and both headers.
+    expect(document.body.textContent).toContain('Form headers changed')
+    expect(document.body.textContent).toContain('bound to Name')
+    expect(document.body.textContent).toContain('Candidate name')
+    expect(document.body.textContent).toContain('Nama Lengkap')
+    expect(document.body.textContent).toContain('Nama lengkap sesuai KTP')
+
+    dialogButton('Confirm mapping & import')?.click()
+    await flushPromises()
+
+    // The held file is re-sent with the confirmDrift flag, and the import lands.
+    expect(confirmDriftValues).toEqual([null, 'true'])
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Form import complete: 3 rows read · 1 new · 2 updated (resubmitted)',
+        color: 'success',
+      }),
+    )
+    expect(document.body.querySelector('[role="status"]')?.textContent).toContain('3 rows read')
+    wrapper.unmount()
+  })
+
+  it('domain: Header Drift Re-map pre-fills the current mapping and completes the import via the layout payload', async () => {
+    let layoutPayload: string | undefined
+    stubFetch(
+      () => vacancyDetails(),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/candidates/import-form')) {
+          const form = init.body as FormData
+          if (form.get('layout') === null) {
+            return Promise.resolve(
+              jsonResponse(
+                {
+                  title: 'Candidates.FormHeaderDrift',
+                  detail: 'The uploaded form headers differ from the saved Form Layout.',
+                  headers: ['Timestamp', 'Nama lengkap sesuai KTP', 'Email aktif', 'Pengalaman kerja'],
+                  changes: [
+                    { ordinal: 1, was: 'Nama Lengkap', now: 'Nama lengkap sesuai KTP' },
+                  ],
+                },
+                409,
+              ),
+            )
+          }
+          layoutPayload = form.get('layout') as string
+          return Promise.resolve(
+            jsonResponse({
+              rowsRead: 3,
+              created: 1,
+              updated: 2,
+              skippedOutdated: 0,
+              priorApplications: 0,
+            }),
+          )
+        }
+        if (url.endsWith('/form-layout')) {
+          return Promise.resolve(jsonResponse(formLayoutDto()))
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await openImportDialog(wrapper)
+    await dropFiles([new File(['Timestamp,Nama'], 'responses.csv', { type: 'text/csv' })])
+    await flushPromises()
+
+    dialogButton('Re-map…')?.click()
+    await flushPromises()
+
+    // The drift dialog swaps for the guided panel pre-filled with the current
+    // mapping against the new file's headers — the label carries over.
+    expect(document.body.textContent).not.toContain('Form headers changed')
+    expect(document.body.textContent).toContain('Set up the form layout to finish importing')
+    const nameSelect = Array.from(document.body.querySelectorAll('button')).find(
+      (candidate) => candidate.getAttribute('aria-label') === 'Name',
+    )
+    expect(nameSelect?.textContent).toContain('1 · Nama lengkap sesuai KTP')
+
+    dialogButton('Save layout & import')?.click()
+    await flushPromises()
+
+    expect(JSON.parse(layoutPayload!)).toEqual({
+      columns: [
+        { ordinal: 1, role: 'name', label: 'Candidate name' },
+        { ordinal: 2, role: 'contactEmail', label: null },
+        { ordinal: 3, role: null, label: null },
+      ],
+    })
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ title: expect.stringContaining('Form import complete:') }),
+    )
+    wrapper.unmount()
+  })
+
+  it('domain: Form Layout edits save through PUT and the toast states the back-fill', async () => {
+    let putBody: { columns?: unknown } | undefined
+    stubFetch(
+      () => vacancyDetails(),
+      (url, init) => {
+        if (init?.method === 'PUT' && url.endsWith('/form-layout')) {
+          putBody = JSON.parse(String(init.body))
+          return Promise.resolve(
+            jsonResponse(formLayoutDto({ candidatesUpdated: 2, typedOverridesKept: 1 })),
+          )
+        }
+        if (url.endsWith('/form-layout')) {
+          return Promise.resolve(jsonResponse(formLayoutDto()))
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    // The read-only summary shows the current mapping before anything opens.
+    expect(wrapper.text()).toContain('2 · Email aktif')
+
+    const layoutButton = wrapper
+      .findAll('button')
+      .find((candidate) => candidate.text().includes('Form layout'))
+    expect(layoutButton, 'a Form layout header button').toBeDefined()
+    await layoutButton!.trigger('click')
+    await flushPromises()
+
+    // Edit mode pre-fills the saved mapping from the header snapshot.
+    expect(document.body.textContent).toContain('Columns are matched by position')
+    const nameSelect = Array.from(document.body.querySelectorAll('button')).find(
+      (candidate) => candidate.getAttribute('aria-label') === 'Name',
+    )
+    expect(nameSelect?.textContent).toContain('1 · Nama Lengkap')
+
+    dialogButton('Save layout')?.click()
+    await flushPromises()
+
+    expect(putBody).toEqual({
+      columns: [
+        { ordinal: 1, role: 'name', label: 'Candidate name' },
+        { ordinal: 2, role: 'contactEmail', label: null },
+        { ordinal: 3, role: null, label: null },
+      ],
+    })
+    expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Form layout saved',
+        description: 'Details re-filled for 2 candidates from the form answers · 1 typed override kept.',
+        color: 'success',
+      }),
+    )
+    // The panel closes on success.
+    expect(document.body.textContent).not.toContain('Columns are matched by position')
+    wrapper.unmount()
+  })
+
+  it('domain: a Form Layout is invalid without Name and Contact email bound', async () => {
+    let putCalled = false
+    stubFetch(
+      () => vacancyDetails(),
+      (url, init) => {
+        if (init?.method === 'PUT' && url.endsWith('/form-layout')) {
+          putCalled = true
+          return Promise.resolve(jsonResponse(formLayoutDto()))
+        }
+        if (url.endsWith('/form-layout')) {
+          return Promise.resolve(jsonResponse(formLayoutDto()))
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const layoutButton = wrapper
+      .findAll('button')
+      .find((candidate) => candidate.text().includes('Form layout'))
+    await layoutButton!.trigger('click')
+    await flushPromises()
+
+    // Un-binding Contact email makes the layout invalid.
+    await pickRoleColumn('Contact email', 'Not assigned')
+
+    dialogButton('Save layout')?.click()
+    await flushPromises()
+
+    // The save never leaves the client; the panel stays open with the reason.
+    expect(putCalled).toBe(false)
+    expect(document.body.textContent).toContain('Name and Contact email are required.')
+    expect(document.body.textContent).toContain('Columns are matched by position')
+    expect(toastAdd).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('domain: Form Layout picks at most 8 columns, roles included', async () => {
+    stubFetch(
+      () => vacancyDetails(),
+      (url, _init) => {
+        if (url.endsWith('/form-layout')) {
+          return Promise.resolve(
+            jsonResponse(
+              formLayoutDto({
+                headerSnapshot: [
+                  'Timestamp',
+                  'Nama',
+                  'Email',
+                  'Satu',
+                  'Dua',
+                  'Tiga',
+                  'Empat',
+                  'Lima',
+                  'Enam',
+                  'Tujuh',
+                ],
+                columns: [
+                  { ordinal: 1, role: 'name', label: null },
+                  { ordinal: 2, role: 'contactemail', label: null },
+                  { ordinal: 3, role: null, label: null },
+                  { ordinal: 4, role: null, label: null },
+                  { ordinal: 5, role: null, label: null },
+                  { ordinal: 6, role: null, label: null },
+                  { ordinal: 7, role: null, label: null },
+                  { ordinal: 8, role: null, label: null },
+                ],
+              }),
+            ),
+          )
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const layoutButton = wrapper
+      .findAll('button')
+      .find((candidate) => candidate.text().includes('Form layout'))
+    await layoutButton!.trigger('click')
+    await flushPromises()
+
+    // At the cap the counter becomes the explanation and the 9th pick is blocked at the control.
+    expect(document.body.textContent).toContain('8 columns at most, roles included')
+    const ninth = document.body.querySelector<HTMLButtonElement>(
+      'button[role="checkbox"][aria-label="9 · Tujuh"]',
+    )
+    expect(ninth, 'the 9th column checkbox').not.toBeNull()
+    expect(ninth!.disabled).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('domain: Cancel import in the guided Form Layout setup drops the held file', async () => {
+    let postCount = 0
+    stubFetch(
+      () => vacancyDetails(),
+      (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/candidates/import-form')) {
+          postCount += 1
+          return Promise.resolve(
+            jsonResponse(
+              {
+                title: 'Candidates.FormLayoutRequired',
+                detail: 'The vacancy needs a valid Form Layout first.',
+                headers: ['Timestamp', 'Nama Lengkap', 'Email aktif', 'Pengalaman kerja'],
+              },
+              409,
+            ),
+          )
+        }
+        if (url.includes('/rounds/1/candidates')) {
+          return Promise.resolve(jsonResponse([]))
+        }
+        return undefined
+      },
+    )
+
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await openImportDialog(wrapper)
+    await dropFiles([new File(['Timestamp,Nama'], 'responses.csv', { type: 'text/csv' })])
+    await flushPromises()
+    expect(document.body.textContent).toContain('Set up the form layout to finish importing')
+
+    dialogButton('Cancel import')?.click()
+    await flushPromises()
+
+    // The held file is dropped: the panel closes, nothing else is sent, no toast.
+    expect(document.body.textContent).not.toContain('Set up the form layout to finish importing')
+    expect(postCount).toBe(1)
+    expect(toastAdd).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 

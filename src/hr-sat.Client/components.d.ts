@@ -18,6 +18,7 @@ declare module 'vue' {
     UBadge: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Badge.vue')['default']
     UButton: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Button.vue')['default']
     UCard: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Card.vue')['default']
+    UCheckbox: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Checkbox.vue')['default']
     UDashboardGroup: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/DashboardGroup.vue')['default']
     UDashboardNavbar: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/DashboardNavbar.vue')['default']
     UDashboardPanel: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/DashboardPanel.vue')['default']
@@ -31,6 +32,7 @@ declare module 'vue' {
     UModal: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Modal.vue')['default']
     UNavigationMenu: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/NavigationMenu.vue')['default']
     USelect: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Select.vue')['default']
+    USeparator: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Separator.vue')['default']
     USkeleton: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Skeleton.vue')['default']
     UTextarea: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Textarea.vue')['default']
   }

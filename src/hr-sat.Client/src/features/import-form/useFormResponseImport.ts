@@ -3,12 +3,30 @@ import { useToast } from '@nuxt/ui/composables/useToast'
 import { ApiError } from '@/shared/http'
 import { fieldErrorsOf, firstNonFieldError } from '@/shared/validation'
 import { problemMessage, type ProblemMessageColor } from '@/shared/problem-details'
-import { importFormResponses, type FormImportSummary } from './api'
+import type { FormLayoutColumn } from '@/features/form-layout/api'
+import type { FormHeaderChangeDto } from '@/features/form-layout/format'
+import {
+  confirmFormImportDrift,
+  importFormResponses,
+  importFormResponsesWithLayout,
+  type FormImportSummary,
+} from './api'
 
 export interface FormImportAlert {
   color: ProblemMessageColor
   title: string
   description?: string
+}
+
+/**
+ * A refused form import holding its file: `changes` null means the vacancy has
+ * no valid Form Layout yet (guided setup); a list means Header Drift. The page
+ * watches this to open the matching dialog — the file's single owner is here.
+ */
+export interface FormImportRefusal {
+  file: File
+  headers: string[]
+  changes: FormHeaderChangeDto[] | null
 }
 
 export function useFormResponseImport(
@@ -20,6 +38,7 @@ export function useFormResponseImport(
   const importing = shallowRef(false)
   const importError = shallowRef<FormImportAlert | null>(null)
   const summary = shallowRef<FormImportSummary | null>(null)
+  const pendingRefusal = shallowRef<FormImportRefusal | null>(null)
 
   const summaryLine = computed(() =>
     summary.value ? formImportSummaryLine(summary.value) : null,
@@ -38,31 +57,81 @@ export function useFormResponseImport(
       announce(result)
       return true
     } catch (error) {
-      const malformed = malformedCsvAlert(error)
-      if (malformed) {
-        importError.value = malformed
+      // The two refusal codes route into the guided/drift dialogs instead of
+      // an alert — checked before every other error mapping.
+      const refusal = formImportRefusal(error, file)
+      if (refusal) {
+        pendingRefusal.value = refusal
         return false
       }
-      const message = problemMessage(error, "Couldn't import the form responses")
-      if (message.kind !== 'failure') {
-        await onChanged?.()
-      }
-      importError.value = {
-        color: message.color,
-        title: message.title,
-        description: message.description,
-      }
+      await recordImportError(error)
       return false
     } finally {
       importing.value = false
     }
   }
 
-  // A different vacancy or round starts with a clean import slate.
+  /** Guided setup / drift re-map: re-send the held file with the mapping as the layout payload. */
+  async function importWithLayout(columns: FormLayoutColumn[]): Promise<boolean> {
+    const refusal = pendingRefusal.value
+    if (importing.value || refusal === null) {
+      return false
+    }
+    importing.value = true
+    importError.value = null
+    try {
+      const result = await importFormResponsesWithLayout(
+        vacancyId.value,
+        roundId.value,
+        refusal.file,
+        columns,
+      )
+      pendingRefusal.value = null
+      summary.value = result
+      announce(result)
+      return true
+    } catch (error) {
+      // The refusal stays pending so the dialog remains open with its mapping.
+      await recordImportError(error)
+      return false
+    } finally {
+      importing.value = false
+    }
+  }
+
+  /** Drift confirm: re-send the held file with the confirmDrift flag. */
+  async function confirmDrift(): Promise<boolean> {
+    const refusal = pendingRefusal.value
+    if (importing.value || refusal === null) {
+      return false
+    }
+    importing.value = true
+    importError.value = null
+    try {
+      const result = await confirmFormImportDrift(vacancyId.value, roundId.value, refusal.file)
+      pendingRefusal.value = null
+      summary.value = result
+      announce(result)
+      return true
+    } catch (error) {
+      await recordImportError(error)
+      return false
+    } finally {
+      importing.value = false
+    }
+  }
+
+  /** Drops the held file without importing (Cancel import). */
+  function cancelRefusal() {
+    pendingRefusal.value = null
+  }
+
+  // A different vacancy or round starts with a clean import slate, held file included.
   watch([vacancyId, roundId], () => {
     importing.value = false
     importError.value = null
     summary.value = null
+    pendingRefusal.value = null
   })
 
   /** Dismisses a visible summary or import error (e.g. when the import dialog closes). */
@@ -78,8 +147,84 @@ export function useFormResponseImport(
     })
   }
 
-  return { importing, importError, summary, summaryLine, importFile, clearResult }
+  async function recordImportError(error: unknown): Promise<void> {
+    const malformed = malformedCsvAlert(error)
+    if (malformed) {
+      importError.value = malformed
+      return
+    }
+    const message = problemMessage(error, "Couldn't import the form responses")
+    if (message.kind !== 'failure') {
+      await onChanged?.()
+    }
+    importError.value = {
+      color: message.color,
+      title: message.title,
+      description: message.description,
+    }
+  }
+
+  return {
+    importing,
+    importError,
+    summary,
+    summaryLine,
+    pendingRefusal,
+    importFile,
+    importWithLayout,
+    confirmDrift,
+    cancelRefusal,
+    clearResult,
+  }
 }
+
+const layoutRequiredCode = 'Candidates.FormLayoutRequired'
+const headerDriftCode = 'Candidates.FormHeaderDrift'
+
+/**
+ * Parses the two 409 refusals (problem title + extensions). Malformed
+ * extensions return null so the call falls through to the generic path.
+ */
+function formImportRefusal(error: unknown, file: File): FormImportRefusal | null {
+  if (!(error instanceof ApiError) || error.status !== 409) {
+    return null
+  }
+  const problem = error.problem
+  if (typeof problem !== 'object' || problem === null) {
+    return null
+  }
+  const { title, headers, changes } = problem as {
+    title?: unknown
+    headers?: unknown
+    changes?: unknown
+  }
+  if (title !== layoutRequiredCode && title !== headerDriftCode) {
+    return null
+  }
+  if (!Array.isArray(headers) || !headers.every((header) => typeof header === 'string')) {
+    return null
+  }
+  if (title === layoutRequiredCode) {
+    return { file, headers, changes: null }
+  }
+  if (!Array.isArray(changes) || !changes.every(isHeaderChange)) {
+    return null
+  }
+  return { file, headers, changes }
+}
+
+function isHeaderChange(value: unknown): value is FormHeaderChangeDto {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+  const candidate = value as { ordinal?: unknown; was?: unknown; now?: unknown }
+  return (
+    typeof candidate.ordinal === 'number' &&
+    typeof candidate.was === 'string' &&
+    typeof candidate.now === 'string'
+  )
+}
+
 
 function formImportSummaryLine(summary: FormImportSummary): string {
   const segments = [

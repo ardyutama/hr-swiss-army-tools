@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { computed, toRef } from 'vue'
+import { computed, shallowRef, toRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusBadge from '@/features/vacancies/components/StatusBadge.vue'
 import HiringPlanSummary from '@/features/vacancies/components/HiringPlanSummary.vue'
 import ImportDialog from '@/features/import/components/ImportDialog.vue'
+import FormLayoutDialog from '@/features/form-layout/components/FormLayoutDialog.vue'
+import DriftDialog from '@/features/form-layout/components/DriftDialog.vue'
+import FormLayoutSummary from '@/features/form-layout/components/FormLayoutSummary.vue'
+import type { FormLayoutColumn } from '@/features/form-layout/api'
 import CandidateDeleteDialog from '@/features/candidates/components/CandidateDeleteDialog.vue'
 import ImportResultList from '@/features/candidates/components/ImportResultList.vue'
 import CandidateList from '@/features/candidates/components/CandidateList.vue'
@@ -113,6 +117,20 @@ const {
     formSummaryLine,
     importFormFile,
     clearFormImportResult,
+    formImportRefusal,
+    formHeaderChanges,
+    importFormWithLayout,
+    confirmFormDrift,
+    cancelFormRefusal,
+  },
+  formLayout: {
+    layout: formLayoutMapping,
+    loadError: formLayoutLoadError,
+    viewState: formLayoutViewState,
+    saving: formLayoutSaving,
+    saveError: formLayoutSaveError,
+    load: loadFormLayout,
+    save: saveFormLayout,
   },
 } = useVacancyDetailFlow(
   toRef(props, 'id'),
@@ -178,8 +196,96 @@ async function onImportEmlFiles(files: File[]) {
 
 async function onImportCsvFile(file: File) {
   clearError()
-  // The dialog stays open so the summary line remains visible.
+  // The dialog stays open so the summary line remains visible — unless the
+  // import is refused, when the refusal watcher swaps it for the guided panel
+  // or the drift dialog.
   await importFormFile(file)
+}
+
+// --- Form layout panel + drift dialog --------------------------------------
+
+const formLayoutPanelOpen = shallowRef(false)
+const formLayoutPanelMode = shallowRef<'edit' | 'guided'>('edit')
+const driftDialogOpen = shallowRef(false)
+
+// A refused form import holds its file in the composable; open the matching
+// resolution surface and close the import dialog.
+watch(formImportRefusal, (refusal) => {
+  if (refusal === null) {
+    return
+  }
+  importOpen.value = false
+  if (refusal.changes === null) {
+    formLayoutPanelMode.value = 'guided'
+    formLayoutPanelOpen.value = true
+  } else {
+    driftDialogOpen.value = true
+  }
+})
+
+// Guided mode maps the held file's headers; edit mode maps the saved snapshot.
+const formLayoutPanelHeaders = computed(() =>
+  formLayoutPanelMode.value === 'guided'
+    ? (formImportRefusal.value?.headers ?? formLayoutMapping.value?.headerSnapshot ?? [])
+    : (formLayoutMapping.value?.headerSnapshot ?? []),
+)
+
+const formLayoutPanelBusy = computed(() =>
+  formLayoutPanelMode.value === 'guided' ? formImporting.value : formLayoutSaving.value,
+)
+
+const formLayoutPanelAlert = computed(() =>
+  formLayoutPanelMode.value === 'guided' ? formImportError.value : formLayoutSaveError.value,
+)
+
+function openFormLayoutEdit() {
+  formLayoutPanelMode.value = 'edit'
+  formLayoutPanelOpen.value = true
+}
+
+async function onFormLayoutSave(columns: FormLayoutColumn[]) {
+  const guided = formLayoutPanelMode.value === 'guided'
+  const succeeded = guided
+    ? await importFormWithLayout(columns)
+    : await saveFormLayout(columns)
+  if (!succeeded) {
+    return
+  }
+  formLayoutPanelOpen.value = false
+  if (guided) {
+    // Land on the normal import result: toast fired, summary line visible.
+    importOpen.value = true
+  }
+}
+
+function onFormLayoutCancel() {
+  if (formLayoutPanelMode.value === 'guided') {
+    // Cancel import drops the held file; nothing is saved.
+    cancelFormRefusal()
+  }
+  formLayoutPanelOpen.value = false
+}
+
+async function onDriftConfirm() {
+  const confirmed = await confirmFormDrift()
+  if (!confirmed) {
+    return
+  }
+  driftDialogOpen.value = false
+  importOpen.value = true
+}
+
+function onDriftRemap() {
+  // The refusal stays held; the guided panel pre-fills the current mapping and
+  // saving it completes the import.
+  driftDialogOpen.value = false
+  formLayoutPanelMode.value = 'guided'
+  formLayoutPanelOpen.value = true
+}
+
+function onDriftCancel() {
+  cancelFormRefusal()
+  driftDialogOpen.value = false
 }
 
 function openCreateRound() {
@@ -284,6 +390,15 @@ function openReview(candidate: CandidateSummary) {
               Manage rounds
             </UButton>
             <UButton
+              v-if="formLayoutViewState === 'ready' && !isClosed"
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-table-properties"
+              @click="openFormLayoutEdit"
+            >
+              Form layout
+            </UButton>
+            <UButton
               v-if="canImport"
               color="neutral"
               variant="ghost"
@@ -344,6 +459,15 @@ function openReview(candidate: CandidateSummary) {
         @select="selectRound"
         @create="openCreateRound"
         @close="requestCloseRound"
+      />
+
+      <FormLayoutSummary
+        :state="formLayoutViewState"
+        :layout="formLayoutMapping"
+        :load-error="formLayoutLoadError"
+        :can-edit="!isClosed"
+        @edit="openFormLayoutEdit"
+        @retry="loadFormLayout"
       />
 
       <HiringPlanSummary variant="context" :hiring="vacancy.hiring" />
@@ -461,6 +585,27 @@ function openReview(candidate: CandidateSummary) {
       :summary="formSummaryLine"
       @eml-files="onImportEmlFiles"
       @csv-file="onImportCsvFile"
+    />
+    <FormLayoutDialog
+      v-model:open="formLayoutPanelOpen"
+      :mode="formLayoutPanelMode"
+      :headers="formLayoutPanelHeaders"
+      :initial-columns="formLayoutMapping?.columns ?? null"
+      :initial-headers="formLayoutMapping?.headerSnapshot ?? null"
+      :file-name="formImportRefusal?.file.name ?? null"
+      :busy="formLayoutPanelBusy"
+      :alert="formLayoutPanelAlert"
+      @save="onFormLayoutSave"
+      @cancel="onFormLayoutCancel"
+    />
+    <DriftDialog
+      v-model:open="driftDialogOpen"
+      :changes="formHeaderChanges"
+      :busy="formImporting"
+      :alert="formImportError"
+      @confirm="onDriftConfirm"
+      @remap="onDriftRemap"
+      @cancel="onDriftCancel"
     />
     <CandidateDeleteDialog
       v-model:open="deleteOpen"

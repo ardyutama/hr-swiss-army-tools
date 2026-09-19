@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { shallowRef, watch } from 'vue'
+import type { ProblemMessageColor } from '@/shared/problem-details'
 import ImportDropZone from './ImportDropZone.vue'
 import { classifyImportFiles, type RejectedImportFile } from '../validation'
 
@@ -8,7 +9,7 @@ const open = defineModel<boolean>('open', { required: true })
 withDefaults(
   defineProps<{
     busy?: boolean
-    alert?: { color: 'error' | 'warning'; title: string; description?: string } | null
+    alert?: { color: ProblemMessageColor; title: string; description?: string } | null
     summary?: string | null
   }>(),
   { busy: false, alert: null, summary: null },

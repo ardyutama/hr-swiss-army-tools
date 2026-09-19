@@ -1,6 +1,6 @@
 import { fieldErrorsOf } from './validation'
 
-export type ProblemMessageColor = 'warning' | 'error'
+export type ProblemMessageColor = 'warning' | 'error' | 'neutral'
 export type ProblemMessageKind = 'lifecycle' | 'conflict' | 'failure'
 
 export interface ProblemMessage {
@@ -67,6 +67,29 @@ export function problemMessage(
       'This vacancy is closed',
       'A closed vacancy is read-only. Reopen it to keep importing candidates.',
     )
+  }
+
+  // The two import refusals route into the guided layout panel / drift dialog
+  // via their problem extensions; if one still surfaces as a message (a
+  // malformed payload), it is a pause for input — neutral, never amber (amber
+  // stays reserved for Flagged / Lifecycle Conflict) and never the generic
+  // 409 "data changed" copy.
+  if (code === 'Candidates.FormLayoutRequired') {
+    return {
+      title: 'This import needs your input',
+      description: 'Map the form columns, then save to finish the import.',
+      color: 'neutral',
+      kind: 'lifecycle',
+    }
+  }
+
+  if (code === 'Candidates.FormHeaderDrift') {
+    return {
+      title: 'This import needs your input',
+      description: 'Confirm the changed form headers or re-map the columns to finish the import.',
+      color: 'neutral',
+      kind: 'lifecycle',
+    }
   }
 
   // A 400 ValidationProblem the call site did not pre-handle is the server

@@ -5,6 +5,9 @@ import { useCandidateFilter } from '@/features/candidates/useCandidateFilter'
 import { useCandidateImport } from '@/features/candidates/useCandidateImport'
 import { useCandidates } from '@/features/candidates/useCandidates'
 import { useFormResponseImport } from '@/features/import-form/useFormResponseImport'
+import type { FormLayoutColumn } from '@/features/form-layout/api'
+import { describeHeaderChanges } from '@/features/form-layout/format'
+import { useFormLayout } from '@/features/form-layout/useFormLayout'
 import { useIntakeRounds, roundDisplayName } from '@/features/intake-rounds/useIntakeRounds'
 import { sendScope } from '@/features/prepared-messages/format'
 import { useEmailTemplates } from '@/features/email-templates/useEmailTemplates'
@@ -86,6 +89,12 @@ export function useVacancyDetailFlow(
   const refreshVacancyAndCandidates = async () => {
     await Promise.all([load(), loadCandidates()])
   }
+  // The Form Layout loads beside the vacancy; editing it re-projects stored
+  // rows, and guided import / drift confirm stamp it from the uploaded file.
+  const formLayoutFlow = useFormLayout(vacancyId)
+  const refreshVacancyCandidatesAndLayout = async () => {
+    await Promise.all([load(), loadCandidates(), formLayoutFlow.load()])
+  }
   const {
     importing,
     importError,
@@ -97,9 +106,21 @@ export function useVacancyDetailFlow(
     importing: formImporting,
     importError: formImportError,
     summaryLine: formSummaryLine,
+    pendingRefusal: formImportRefusal,
     importFile: importFormResponseFile,
+    importWithLayout,
+    confirmDrift,
+    cancelRefusal: cancelFormRefusal,
     clearResult: clearFormImportResult,
   } = useFormResponseImport(vacancyId, selectedRoundParam, refreshVacancyAndCandidates)
+
+  // Drift changes enriched with the role and Column Label each ordinal carries.
+  const formHeaderChanges = computed(() => {
+    const refusal = formImportRefusal.value
+    return refusal?.changes
+      ? describeHeaderChanges(refusal.changes, formLayoutFlow.layout.value?.columns ?? [])
+      : []
+  })
   const {
     status: statusFilter,
     outcome: outcomeFilter,
@@ -164,6 +185,33 @@ export function useVacancyDetailFlow(
     // Refresh so the vacancy progress, round counts, and the candidate list reflect the import.
     await refreshVacancyAndCandidates()
     return true
+  }
+
+  // A layout save re-projects over stored rows, so candidate details change too.
+  async function saveFormLayoutMapping(columns: FormLayoutColumn[]): Promise<boolean> {
+    const saved = await formLayoutFlow.save(columns)
+    if (saved) {
+      await refreshVacancyAndCandidates()
+    }
+    return saved
+  }
+
+  // Guided setup completes the held file's import and stamps the layout from it.
+  async function importFormWithLayout(columns: FormLayoutColumn[]): Promise<boolean> {
+    const imported = await importWithLayout(columns)
+    if (imported) {
+      await refreshVacancyCandidatesAndLayout()
+    }
+    return imported
+  }
+
+  // Drift confirm imports the held file and adopts its headers as the snapshot.
+  async function confirmFormDrift(): Promise<boolean> {
+    const confirmed = await confirmDrift()
+    if (confirmed) {
+      await refreshVacancyCandidatesAndLayout()
+    }
+    return confirmed
   }
 
   function selectRound(round: VacancyRound) {
@@ -332,6 +380,20 @@ export function useVacancyDetailFlow(
       formSummaryLine,
       importFormFile,
       clearFormImportResult,
+      formImportRefusal,
+      formHeaderChanges,
+      importFormWithLayout,
+      confirmFormDrift,
+      cancelFormRefusal,
+    },
+    formLayout: {
+      layout: formLayoutFlow.layout,
+      loadError: formLayoutFlow.loadError,
+      viewState: formLayoutFlow.viewState,
+      saving: formLayoutFlow.saving,
+      saveError: formLayoutFlow.saveError,
+      load: formLayoutFlow.load,
+      save: saveFormLayoutMapping,
     },
   }
 }
