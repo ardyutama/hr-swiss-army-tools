@@ -25,6 +25,7 @@ public sealed class AppDbContext(
     public DbSet<PendingFileDeletion> PendingFileDeletions => Set<PendingFileDeletion>();
     public DbSet<EmailTemplate> EmailTemplates => Set<EmailTemplate>();
     public DbSet<FormLayout> FormLayouts => Set<FormLayout>();
+    public DbSet<ScreeningRuleSet> ScreeningRuleSets => Set<ScreeningRuleSet>();
 
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken) =>
         Database.BeginTransactionAsync(cancellationToken);
@@ -81,5 +82,6 @@ public sealed class AppDbContext(
         modelBuilder.Entity<CvDocument>().Ignore(item => item.DomainEvents);
         modelBuilder.Entity<EmailTemplate>().Ignore(item => item.DomainEvents);
         modelBuilder.Entity<FormLayout>().Ignore(item => item.DomainEvents);
+        modelBuilder.Entity<ScreeningRuleSet>().Ignore(item => item.DomainEvents);
     }
 }

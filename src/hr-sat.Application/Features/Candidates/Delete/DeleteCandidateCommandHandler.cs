@@ -16,39 +16,38 @@ internal sealed class DeleteCandidateCommandHandler(
         DeleteCandidateCommand command,
         CancellationToken cancellationToken)
     {
-        var deleteResult = await RoundWrite.ExecuteAsync(
+        var deleteResult = await RoundWrite.ExecuteCandidateAsync<bool>(
             command.VacancyId,
             command.RoundId,
+            command.CandidateId,
             dbContext,
-            (vacancy, targetRoundId) => vacancy.EnsureCanRemoveCandidate(targetRoundId),
-            async (_, _) =>
+            async (vacancy, candidateId) =>
             {
-                var candidate = await dbContext.Candidates
-                    .Where(candidate =>
-                        candidate.Id == command.CandidateId &&
-                        candidate.IntakeRoundId == command.RoundId)
-                    .Select(candidate => new
-                    {
-                        candidate.Id,
-                        candidate.SourceStorageKey
-                    })
-                    .SingleOrDefaultAsync(cancellationToken);
+                var candidate = dbContext.Candidates.Local
+                    .SingleOrDefault(item =>
+                        item.Id == candidateId &&
+                        item.IntakeRoundId == command.RoundId);
                 if (candidate is null)
                 {
-                    return Result<bool>.Failure(CandidateErrors.NotFound(command.CandidateId));
+                    return Result<bool>.Failure(CandidateErrors.NotFound(candidateId));
                 }
 
-                var documentStorageKeys = await dbContext.CvDocuments
-                    .Where(document => document.CandidateId == command.CandidateId)
-                    .Select(document => document.StorageKey)
-                    .ToListAsync(cancellationToken);
+                var canRemoveResult = vacancy.EnsureCanRemoveCandidate(
+                    command.RoundId,
+                    candidate);
+                if (canRemoveResult.IsFailure)
+                {
+                    return Result<bool>.Failure(canRemoveResult.Error);
+                }
 
                 await dbContext.Candidates
-                    .Where(candidate => candidate.Id == command.CandidateId)
+                    .Where(item => item.Id == candidate.Id)
                     .ExecuteDeleteAsync(cancellationToken);
 
                 var enqueuedAt = timeProvider.GetUtcNow();
-                var storageKeys = documentStorageKeys.AsEnumerable();
+                var storageKeys = candidate.CvDocuments
+                    .Select(document => document.StorageKey)
+                    .AsEnumerable();
                 if (candidate.SourceStorageKey is not null)
                 {
                     storageKeys = storageKeys.Prepend(candidate.SourceStorageKey);
@@ -66,6 +65,7 @@ internal sealed class DeleteCandidateCommandHandler(
                 return Result<bool>.Success(true);
             },
             cancellationToken);
+
         if (deleteResult.IsFailure)
         {
             return deleteResult.Error;

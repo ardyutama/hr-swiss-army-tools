@@ -53,6 +53,12 @@ public sealed class IntakeRoundTests(ApiFactory factory) : IClassFixture<ApiFact
             "First application");
         Assert.Equal(HttpStatusCode.OK, importResponse.StatusCode);
 
+        var beforeClose = await client.GetFromJsonAsync<VacancyResponse>(vacancyLocation);
+        Assert.NotNull(beforeClose);
+        var openRound = Assert.Single(beforeClose.Rounds);
+        Assert.Equal(roundId, openRound.Id);
+        Assert.Equal(1, openRound.CandidateCount);
+
         using var closeResponse = await client.PutAsync(
             $"{vacancyLocation}/rounds/{roundId}/close",
             content: null);
@@ -116,16 +122,16 @@ public sealed class IntakeRoundTests(ApiFactory factory) : IClassFixture<ApiFact
             "Second application");
         Assert.Equal(HttpStatusCode.OK, secondImportResponse.StatusCode);
 
-        var firstCandidates = await client.GetFromJsonAsync<IReadOnlyList<CandidateSummary>>(
+        var firstPage = await client.GetFromJsonAsync<CandidateListEnvelope>(
             $"{vacancyLocation}/rounds/{firstRoundId}/candidates");
-        var secondCandidates = await client.GetFromJsonAsync<IReadOnlyList<CandidateSummary>>(
+        var secondPage = await client.GetFromJsonAsync<CandidateListEnvelope>(
             $"{vacancyLocation}/rounds/{secondRound.Id}/candidates");
-        Assert.NotNull(firstCandidates);
-        Assert.NotNull(secondCandidates);
-        Assert.Single(firstCandidates);
-        Assert.Single(secondCandidates);
-        Assert.Equal("first@example.com", firstCandidates[0].SourceSenderEmail);
-        Assert.Equal("second@example.com", secondCandidates[0].SourceSenderEmail);
+        Assert.NotNull(firstPage);
+        Assert.NotNull(secondPage);
+        Assert.Single(firstPage.Items);
+        Assert.Single(secondPage.Items);
+        Assert.Equal("first@example.com", firstPage.Items[0].SourceSenderEmail);
+        Assert.Equal("second@example.com", secondPage.Items[0].SourceSenderEmail);
     }
 
     [Fact]
@@ -256,6 +262,8 @@ public sealed class IntakeRoundTests(ApiFactory factory) : IClassFixture<ApiFact
     private sealed record CandidateSummary(
         long Id,
         string? SourceSenderEmail);
+
+    private sealed record CandidateListEnvelope(IReadOnlyList<CandidateSummary> Items);
 
     private sealed record ImportResponse(IReadOnlyList<ImportResult> Results);
 

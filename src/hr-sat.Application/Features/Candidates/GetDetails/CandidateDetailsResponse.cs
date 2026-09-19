@@ -21,7 +21,8 @@ public sealed record CandidateDetailsResponse(
     IReadOnlyList<CandidateDocumentResponse> Documents,
     string IntakeSource,
     bool IsResubmitted,
-    IReadOnlyList<CandidateFormResponseResponse> FormResponses);
+    IReadOnlyList<CandidateFormResponseResponse> FormResponses,
+    CandidateScreeningResponse? Screening = null);
 
 public sealed record CandidateRequirementReviewResponse(long RequirementId, bool Confirmed);
 

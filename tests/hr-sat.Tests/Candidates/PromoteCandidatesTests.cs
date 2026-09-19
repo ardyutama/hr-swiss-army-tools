@@ -73,10 +73,10 @@ public sealed class PromoteCandidatesTests(ApiFactory factory) : IClassFixture<A
             details.RequirementReviews,
             review => review.RequirementId == vacancy.Requirements[0].Id && review.Confirmed);
 
-        var sourceCandidates = await client.GetFromJsonAsync<IReadOnlyList<CandidateSummary>>(
+        var sourcePage = await client.GetFromJsonAsync<CandidateListEnvelope>(
             $"{vacancyLocation}/rounds/{sourceRoundId}/candidates");
-        Assert.NotNull(sourceCandidates);
-        Assert.Empty(sourceCandidates);
+        Assert.NotNull(sourcePage);
+        Assert.Empty(sourcePage.Items);
     }
 
     [Fact]
@@ -121,14 +121,14 @@ public sealed class PromoteCandidatesTests(ApiFactory factory) : IClassFixture<A
             problem.Errors["candidateIds"],
             message => message.Contains(rejectedCandidate.Id.ToString()));
 
-        var sourceCandidates = await client.GetFromJsonAsync<IReadOnlyList<CandidateSummary>>(
+        var sourcePage = await client.GetFromJsonAsync<CandidateListEnvelope>(
             $"{vacancyLocation}/rounds/{sourceRoundId}/candidates");
-        var activeCandidates = await client.GetFromJsonAsync<IReadOnlyList<CandidateSummary>>(
+        var activePage = await client.GetFromJsonAsync<CandidateListEnvelope>(
             $"{vacancyLocation}/rounds/{activeRoundId}/candidates");
-        Assert.NotNull(sourceCandidates);
-        Assert.NotNull(activeCandidates);
-        Assert.Equal(2, sourceCandidates.Count);
-        Assert.Empty(activeCandidates);
+        Assert.NotNull(sourcePage);
+        Assert.NotNull(activePage);
+        Assert.Equal(2, sourcePage.Items.Count);
+        Assert.Empty(activePage.Items);
     }
 
     [Fact]
@@ -269,14 +269,14 @@ public sealed class PromoteCandidatesTests(ApiFactory factory) : IClassFixture<A
         Assert.NotNull(problem);
         Assert.Equal("Candidates.SourceEmailAlreadyInRound", problem.Title);
 
-        var sourceCandidates = await client.GetFromJsonAsync<IReadOnlyList<CandidateSummary>>(
+        var sourcePage = await client.GetFromJsonAsync<CandidateListEnvelope>(
             $"{vacancyLocation}/rounds/{sourceRoundId}/candidates");
-        var activeCandidates = await client.GetFromJsonAsync<IReadOnlyList<CandidateSummary>>(
+        var activePage = await client.GetFromJsonAsync<CandidateListEnvelope>(
             $"{vacancyLocation}/rounds/{activeRoundId}/candidates");
-        Assert.NotNull(sourceCandidates);
-        Assert.NotNull(activeCandidates);
-        Assert.Equal(sourceCandidate.Id, Assert.Single(sourceCandidates).Id);
-        Assert.Equal(activeCandidate.Id, Assert.Single(activeCandidates).Id);
+        Assert.NotNull(sourcePage);
+        Assert.NotNull(activePage);
+        Assert.Equal(sourceCandidate.Id, Assert.Single(sourcePage.Items).Id);
+        Assert.Equal(activeCandidate.Id, Assert.Single(activePage.Items).Id);
     }
 
     private static async Task<(string Location, long RoundId)> CreateVacancyAsync(
@@ -440,6 +440,8 @@ public sealed class PromoteCandidatesTests(ApiFactory factory) : IClassFixture<A
         string? SourceSubject,
         DateTimeOffset? SourceSentAt,
         int CvDocumentCount);
+
+    private sealed record CandidateListEnvelope(IReadOnlyList<CandidateSummary> Items);
 
     private sealed record CandidateDetails(
         long Id,

@@ -29,11 +29,53 @@ internal static class RoundWrite
                     .Where(candidate => candidate.Id == candidateId &&
                         candidate.IntakeRoundId == roundId)
                     .LoadAsync(cancellationToken);
+                await dbContext.CandidateFormResponses
+                    .Where(response => response.CandidateId == candidateId)
+                    .LoadAsync(cancellationToken);
+                await dbContext.CvDocuments
+                    .Where(document => document.CandidateId == candidateId)
+                    .LoadAsync(cancellationToken);
                 await dbContext.CandidateRequirementReviews
                     .Where(review => review.CandidateId == candidateId)
                     .LoadAsync(cancellationToken);
 
                 return mutation(vacancy, candidateId);
+            },
+            cancellationToken);
+    }
+
+    public static async Task<Result<T>> ExecuteCandidateAsync<T>(
+        long vacancyId,
+        long roundId,
+        long candidateId,
+        IApplicationDbContext dbContext,
+        Func<Vacancy, long, Task<Result<T>>> mutation,
+        CancellationToken cancellationToken)
+    {
+        return await VacancyWrite.ExecuteLockedAsync(
+            vacancyId,
+            dbContext,
+            async vacancy =>
+            {
+                await dbContext.IntakeRounds
+                    .Where(round => round.VacancyId == vacancyId &&
+                        (round.ClosedAt == null || round.Id == roundId))
+                    .LoadAsync(cancellationToken);
+                await dbContext.Candidates
+                    .Where(candidate => candidate.Id == candidateId &&
+                        candidate.IntakeRoundId == roundId)
+                    .LoadAsync(cancellationToken);
+                await dbContext.CandidateFormResponses
+                    .Where(response => response.CandidateId == candidateId)
+                    .LoadAsync(cancellationToken);
+                await dbContext.CvDocuments
+                    .Where(document => document.CandidateId == candidateId)
+                    .LoadAsync(cancellationToken);
+                await dbContext.CandidateRequirementReviews
+                    .Where(review => review.CandidateId == candidateId)
+                    .LoadAsync(cancellationToken);
+
+                return await mutation(vacancy, candidateId);
             },
             cancellationToken);
     }

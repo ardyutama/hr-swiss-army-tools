@@ -9,7 +9,7 @@ namespace hr_sat.Tests.Candidates;
 public sealed class ListCandidatesHandlerTests
 {
     [Fact]
-    public async Task Handle_Should_ReturnCandidatesInImportOrder_WhenVacancyExists() // US-14: HR reviews candidates in import order
+    public async Task Handle_Should_ReturnCandidatesInNewestReceivedOrder_WhenVacancyExists() // US-14: HR reviews candidates in received-date order
     {
         await using var dbContext = new TestDbContext();
         var vacancy = CandidateTestData.CreateVacancy();
@@ -19,11 +19,11 @@ public sealed class ListCandidatesHandlerTests
             CandidateTestData.CreateCandidate(
                 vacancy.Rounds.Single().Id,
                 2,
-                new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero)),
+                sourceSentAt: new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero)),
             CandidateTestData.CreateCandidate(
                 vacancy.Rounds.Single().Id,
                 1,
-                new DateTimeOffset(2026, 8, 20, 11, 0, 0, TimeSpan.Zero)));
+                sourceSentAt: new DateTimeOffset(2026, 8, 20, 11, 0, 0, TimeSpan.Zero)));
         await dbContext.SaveChangesAsync(CancellationToken.None);
 
         var handler = new ListCandidatesQueryHandler(dbContext);
@@ -33,8 +33,8 @@ public sealed class ListCandidatesHandlerTests
             CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
-        result.Value.Select(candidate => candidate.SourceSenderName)
-            .ShouldBe(["Candidate 1", "Candidate 2"]);
+        result.Value.Items.Select(candidate => candidate.SourceSenderName)
+            .ShouldBe(["Candidate 2", "Candidate 1"]);
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public sealed class ListCandidatesHandlerTests
             CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
-        var candidate = result.Value.ShouldHaveSingleItem();
+        var candidate = result.Value.Items.ShouldHaveSingleItem();
         candidate.CvDocumentCount.ShouldBe(1);
     }
 

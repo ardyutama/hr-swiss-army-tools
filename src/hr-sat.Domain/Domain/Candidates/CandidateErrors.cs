@@ -45,4 +45,14 @@ public static class CandidateErrors
     public static Error SourceEmailAlreadyInRound(IEnumerable<long> candidateIds) => Error.Conflict(
         "Candidates.SourceEmailAlreadyInRound",
         $"The source email for candidate id(s) '{string.Join(", ", candidateIds)}' already exists in the target round.");
+
+    public static Error ScreenedOut(
+        long candidateId,
+        IReadOnlyList<ScreeningRuleMatch> firedRules) => Error.Conflict(
+        "Candidates.ScreenedOut",
+        $"Candidate '{candidateId}' is currently screened out by: {string.Join(", ", firedRules.Select(rule => rule.Display))}.",
+        new Dictionary<string, object?>
+        {
+            ["firedRules"] = firedRules
+        });
 }

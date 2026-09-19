@@ -32,11 +32,13 @@ internal static class CandidateTestData
     public static Candidate CreateCandidate(
         long intakeRoundId,
         int sourceNumber = 1,
-        DateTimeOffset? importedAt = null)
+        DateTimeOffset? importedAt = null,
+        DateTimeOffset? sourceSentAt = null)
         => CreateCandidateCore(
             intakeRoundId,
             sourceNumber,
             importedAt,
+            sourceSentAt,
             $"candidate{sourceNumber}@example.com");
 
     public static Candidate CreateCandidateWithSenderEmail(
@@ -48,12 +50,14 @@ internal static class CandidateTestData
             intakeRoundId,
             sourceNumber,
             importedAt,
+            null,
             sourceSenderEmail);
 
     private static Candidate CreateCandidateCore(
         long intakeRoundId,
         int sourceNumber,
         DateTimeOffset? importedAt,
+        DateTimeOffset? sourceSentAt,
         string? sourceSenderEmail)
     {
         var sourceHash = new byte[32];
@@ -64,7 +68,7 @@ internal static class CandidateTestData
             sourceSenderEmail,
             $"Candidate {sourceNumber} application",
             "Please find my CV attached.",
-            new DateTimeOffset(2026, 8, 20, 10, 0, 0, TimeSpan.Zero),
+            sourceSentAt ?? new DateTimeOffset(2026, 8, 20, 10, 0, 0, TimeSpan.Zero),
             $"candidate{sourceNumber}.eml",
             $"source-emails/candidate{sourceNumber}.eml",
             100,

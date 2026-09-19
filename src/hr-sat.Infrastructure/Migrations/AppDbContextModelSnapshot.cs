@@ -156,6 +156,16 @@ namespace hr_sat.Infrastructure.Migrations
                         .HasDefaultValue("new")
                         .HasColumnName("review_status");
 
+                    b.Property<bool>("ScreenedOut")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("screened_out");
+
+                    b.Property<string>("ScreeningVerdict")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("screening_verdict");
+
                     b.Property<string>("SourceBodyText")
                         .HasColumnType("text")
                         .HasColumnName("source_body_text");
@@ -537,6 +547,36 @@ namespace hr_sat.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("hr_sat.Domain.Vacancies.ScreeningRuleSet", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Rules")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("rules");
+
+                    b.Property<long>("VacancyId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("vacancy_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VacancyId")
+                        .IsUnique()
+                        .HasDatabaseName("screening_rule_set_vacancy_key");
+
+                    b.ToTable("screening_rule_set", null, t =>
+                        {
+                            t.HasCheckConstraint("screening_rule_set_vacancy_id_check", "vacancy_id > 0");
+                        });
+                });
+
             modelBuilder.Entity("hr_sat.Domain.Vacancies.Vacancy", b =>
                 {
                     b.Property<long>("Id")
@@ -706,6 +746,15 @@ namespace hr_sat.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("hr_sat.Domain.Vacancies.ScreeningRuleSet", b =>
+                {
+                    b.HasOne("hr_sat.Domain.Vacancies.Vacancy", null)
+                        .WithOne("ScreeningRuleSet")
+                        .HasForeignKey("hr_sat.Domain.Vacancies.ScreeningRuleSet", "VacancyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("hr_sat.Domain.Vacancies.VacancyRequirement", b =>
                 {
                     b.HasOne("hr_sat.Domain.Vacancies.Vacancy", null)
@@ -738,6 +787,8 @@ namespace hr_sat.Infrastructure.Migrations
                     b.Navigation("Requirements");
 
                     b.Navigation("Rounds");
+
+                    b.Navigation("ScreeningRuleSet");
                 });
 #pragma warning restore 612, 618
         }

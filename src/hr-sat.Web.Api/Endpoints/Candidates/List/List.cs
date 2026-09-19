@@ -10,11 +10,25 @@ internal sealed class List : IEndpoint
         app.MapGet("/api/vacancies/{vacancyId:long}/rounds/{roundId:long}/candidates", async (
             long vacancyId,
             long roundId,
-            IQueryHandler<ListCandidatesQuery, IReadOnlyList<CandidateSummaryResponse>> handler,
+            string? status,
+            string? outcome,
+            string? query,
+            string? sort,
+            string? screened,
+            int? page,
+            IQueryHandler<ListCandidatesQuery, CandidateListResponse> handler,
             CancellationToken cancellationToken) =>
         {
             var result = await handler.Handle(
-                new ListCandidatesQuery(vacancyId, roundId),
+                new ListCandidatesQuery(
+                    vacancyId,
+                    roundId,
+                    status,
+                    outcome,
+                    query,
+                    sort,
+                    screened,
+                    page ?? 1),
                 cancellationToken);
             return result.Match<IResult>(
                 TypedResults.Ok,

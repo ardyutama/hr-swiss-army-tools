@@ -1,4 +1,5 @@
 using hr_sat.Application.Abstractions.Data;
+using hr_sat.Application.Features.Candidates;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
 using Microsoft.EntityFrameworkCore;
@@ -73,8 +74,34 @@ internal static class CandidateDetailsReader
                 CandidateErrors.NotFound(candidateId));
         }
 
-        var normalizedSenderEmail = candidate.SourceSenderEmail is not null
-            ? CandidateFormIdentity.NormalizeEmail(candidate.SourceSenderEmail)
+        var roundClosedAt = await dbContext.IntakeRounds
+            .AsNoTracking()
+            .Where(round => round.Id == roundId && round.VacancyId == vacancyId)
+            .Select(round => round.ClosedAt)
+            .SingleOrDefaultAsync(cancellationToken);
+        var layout = await dbContext.FormLayouts
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item => item.VacancyId == vacancyId, cancellationToken);
+        var ruleSet = await dbContext.ScreeningRuleSets
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item => item.VacancyId == vacancyId, cancellationToken);
+        var screeningCandidate = await dbContext.Candidates
+            .AsNoTracking()
+            .Include(item => item.FormResponses)
+            .SingleOrDefaultAsync(item => item.Id == candidateId, cancellationToken);
+        var firedRules = screeningCandidate?.EvaluateScreening(
+            roundClosedAt.HasValue,
+            ruleSet,
+            layout) ?? [];
+        var candidateWithScreening = candidate with
+        {
+            Screening = CandidateScreeningResponse.From(
+                firedRules.Count > 0,
+                firedRules)
+        };
+
+        var normalizedSenderEmail = candidateWithScreening.SourceSenderEmail is not null
+            ? CandidateFormIdentity.NormalizeEmail(candidateWithScreening.SourceSenderEmail)
             : CandidateFormIdentity.NormalizeEmail(await dbContext.CandidateFormResponses
                 .AsNoTracking()
                 .Where(response =>
@@ -85,7 +112,7 @@ internal static class CandidateDetailsReader
                 .SingleOrDefaultAsync(cancellationToken));
         if (normalizedSenderEmail is null)
         {
-            return candidate;
+            return candidateWithScreening;
         }
 
         var priorApplications = await dbContext.Candidates
@@ -163,7 +190,7 @@ internal static class CandidateDetailsReader
             .ThenByDescending(prior => prior.CandidateId)
             .ToList();
 
-        return candidate with
+        return candidateWithScreening with
         {
             PriorApplications = allPriorApplications
                 .GroupBy(prior => prior.RoundNumber)

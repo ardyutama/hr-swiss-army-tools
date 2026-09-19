@@ -15,8 +15,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new ScreeningOperatorJsonConverter());
     options.SerializerOptions.Converters.Add(
-        new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
+        new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+});
 builder.Services.AddApplication();
 builder.Services.AddEndpoints();
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
@@ -24,6 +27,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Database")));
 builder.Services.AddScoped<IApplicationDbContext>(
     services => services.GetRequiredService<AppDbContext>());
+builder.Services.AddScoped<ICandidateListReader, PostgresCandidateListReader>();
 builder.Services.Configure<PrivateFileStorageOptions>(
     builder.Configuration.GetSection(PrivateFileStorageOptions.SectionName));
 builder.Services.AddSingleton<IPrivateFileStorage, PrivateFileStorage>();

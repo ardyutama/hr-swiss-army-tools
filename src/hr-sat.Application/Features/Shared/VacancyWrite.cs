@@ -30,6 +30,9 @@ internal static class VacancyWrite
                 await dbContext.FormLayouts
                     .Where(layout => layout.VacancyId == id)
                     .LoadAsync(cancellationToken);
+                await dbContext.ScreeningRuleSets
+                    .Where(ruleSet => ruleSet.VacancyId == id)
+                    .LoadAsync(cancellationToken);
 
                 var mutationResult = mutation(vacancy);
                 if (mutationResult.IsFailure)
@@ -38,6 +41,41 @@ internal static class VacancyWrite
                 }
 
                 return vacancy;
+            },
+            cancellationToken);
+    }
+
+    public static async Task<Result<Vacancy>> ExecuteAsync(
+        long id,
+        IApplicationDbContext dbContext,
+        Func<Vacancy, Task<Result>> mutation,
+        CancellationToken cancellationToken)
+    {
+        return await ExecuteLockedAsync<Vacancy>(
+            id,
+            dbContext,
+            async vacancy =>
+            {
+                await dbContext.VacancyRequirements
+                    .Where(requirement => requirement.VacancyId == id)
+                    .LoadAsync(cancellationToken);
+                await dbContext.IntakeRounds
+                    .Where(round => round.VacancyId == id)
+                    .LoadAsync(cancellationToken);
+                await dbContext.EmailTemplates
+                    .Where(template => template.VacancyId == id)
+                    .LoadAsync(cancellationToken);
+                await dbContext.FormLayouts
+                    .Where(layout => layout.VacancyId == id)
+                    .LoadAsync(cancellationToken);
+                await dbContext.ScreeningRuleSets
+                    .Where(ruleSet => ruleSet.VacancyId == id)
+                    .LoadAsync(cancellationToken);
+
+                var mutationResult = await mutation(vacancy);
+                return mutationResult.IsFailure
+                    ? Result<Vacancy>.Failure(mutationResult.Error)
+                    : vacancy;
             },
             cancellationToken);
     }
@@ -57,6 +95,9 @@ internal static class VacancyWrite
 
         await dbContext.FormLayouts
             .Where(layout => layout.VacancyId == vacancyId)
+            .LoadAsync(cancellationToken);
+        await dbContext.ScreeningRuleSets
+            .Where(ruleSet => ruleSet.VacancyId == vacancyId)
             .LoadAsync(cancellationToken);
 
         var mutationResult = await mutation(vacancy);

@@ -11,6 +11,7 @@ public sealed class Vacancy : Entity
     private readonly List<IntakeRound> _rounds = [];
     private readonly List<EmailTemplate> _emailTemplates = [];
     private FormLayout? _formLayout;
+    private ScreeningRuleSet? _screeningRuleSet;
 
     private Vacancy()
     {
@@ -34,6 +35,7 @@ public sealed class Vacancy : Entity
     public IReadOnlyList<IntakeRound> Rounds => _rounds;
     public IReadOnlyList<EmailTemplate> EmailTemplates => _emailTemplates;
     public FormLayout? FormLayout => _formLayout;
+    public ScreeningRuleSet? ScreeningRuleSet => _screeningRuleSet;
     public IntakeRound? ActiveRound => _rounds.SingleOrDefault(round => round.IsOpen);
 
     public Result<IntakeRound> CreateRound(string? name)
@@ -58,7 +60,23 @@ public sealed class Vacancy : Entity
     {
         var round = _rounds.SingleOrDefault(item => item.Id == roundId);
         var closeResult = VacancyRoundRules.EnsureCanCloseRound(Status, round, roundId);
-        return closeResult.IsFailure ? closeResult : round!.Close(closedAt);
+        if (closeResult.IsFailure)
+        {
+            return closeResult;
+        }
+
+        var result = round!.Close(closedAt);
+        if (result.IsFailure)
+        {
+            return result;
+        }
+
+        foreach (var candidate in round.Candidates)
+        {
+            candidate.FreezeScreening(_screeningRuleSet, _formLayout);
+        }
+
+        return Result.Success();
     }
 
     public static Result<Vacancy> Create(
@@ -129,6 +147,45 @@ public sealed class Vacancy : Entity
 
         Raise(new FormLayoutUpsertedDomainEvent(Id));
         return _formLayout;
+    }
+
+    public Result<ScreeningRuleSet> UpsertScreeningRules(
+        ScreeningRuleDefinition definition)
+    {
+        var openResult = VacancyLifecycleRules.EnsureOpen(
+            Status,
+            "A closed vacancy must be reopened before its Screening Rules can be changed.");
+        if (openResult.IsFailure)
+        {
+            return Result<ScreeningRuleSet>.Failure(openResult.Error);
+        }
+
+        if (_formLayout is null || !_formLayout.IsValid)
+        {
+            return Result<ScreeningRuleSet>.Failure(ScreeningRuleSetErrors.SnapshotRequired(Id));
+        }
+
+        if (_screeningRuleSet is null)
+        {
+            var createResult = ScreeningRuleSet.Create(Id, _formLayout, definition);
+            if (createResult.IsFailure)
+            {
+                return createResult;
+            }
+
+            _screeningRuleSet = createResult.Value;
+            Raise(new ScreeningRuleSetUpsertedDomainEvent(Id));
+            return createResult.Value;
+        }
+
+        var replaceResult = _screeningRuleSet.Replace(_formLayout, definition);
+        if (replaceResult.IsFailure)
+        {
+            return Result<ScreeningRuleSet>.Failure(replaceResult.Error);
+        }
+
+        Raise(new ScreeningRuleSetUpsertedDomainEvent(Id));
+        return _screeningRuleSet;
     }
 
     internal Result<FormLayout> UpsertFormLayout(
@@ -306,6 +363,27 @@ public sealed class Vacancy : Entity
         return openResult.IsFailure
             ? Result<IntakeRound>.Failure(openResult.Error)
             : EnsureOpenRound(roundId, requireActive: false);
+    }
+
+    public Result<IntakeRound> EnsureCanRemoveCandidate(
+        long roundId,
+        Candidate candidate)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+
+        var roundResult = EnsureCanRemoveCandidate(roundId);
+        if (roundResult.IsFailure || candidate.IntakeSource != CandidateIntakeSource.Form)
+        {
+            return roundResult;
+        }
+
+        var firedRules = candidate.EvaluateScreening(
+            roundClosed: false,
+            _screeningRuleSet,
+            _formLayout);
+        return firedRules.Count == 0
+            ? roundResult
+            : Result<IntakeRound>.Failure(CandidateErrors.ScreenedOut(candidate.Id, firedRules));
     }
 
     public Result<IntakeRound> EnsureCanReviewCandidate(long roundId)

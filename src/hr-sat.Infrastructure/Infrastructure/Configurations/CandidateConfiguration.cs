@@ -1,7 +1,9 @@
+using System.Text.Json;
 using hr_sat.Domain.Candidates;
 using hr_sat.Domain.IntakeRounds;
 using hr_sat.Domain.Vacancies;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace hr_sat.Infrastructure.Configurations;
@@ -81,6 +83,25 @@ internal sealed class CandidateConfiguration : IEntityTypeConfiguration<Candidat
             .HasColumnName("is_resubmitted")
             .HasDefaultValue(false)
             .IsRequired();
+        entity.Property(candidate => candidate.ScreenedOut)
+            .HasColumnName("screened_out")
+            .HasDefaultValue(false)
+            .IsRequired();
+        entity.Property(candidate => candidate.ScreeningVerdict)
+            .HasColumnName("screening_verdict")
+            .HasColumnType("jsonb")
+            .HasConversion(
+                verdict => verdict == null ? null : JsonSerializer.Serialize(verdict),
+                json => json == null
+                    ? null
+                    : JsonSerializer.Deserialize<ScreeningRuleMatch[]>(json))
+            .Metadata.SetValueComparer(new ValueComparer<IReadOnlyList<ScreeningRuleMatch>?>(
+                (left, right) => left == null && right == null ||
+                    left != null && right != null && left.SequenceEqual(right),
+                value => value == null
+                    ? 0
+                    : value.Aggregate(0, (hash, item) => HashCode.Combine(hash, item.GetHashCode())),
+                value => value == null ? null : value.ToArray()));
         entity.Property(candidate => candidate.PromotedFromRoundNumber)
             .HasColumnName("promoted_from_round_number");
         entity.Property(candidate => candidate.PromotedAt)

@@ -2,6 +2,7 @@ using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Messaging;
 using hr_sat.Application.Features.Shared;
 using hr_sat.Domain;
+using hr_sat.Domain.Candidates;
 using hr_sat.Domain.Vacancies;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,7 +20,17 @@ internal sealed class CloseIntakeRoundCommandHandler(
         var closeResult = await VacancyWrite.ExecuteAsync(
             command.VacancyId,
             dbContext,
-            vacancy => vacancy.CloseRound(command.RoundId, timeProvider.GetUtcNow()),
+            async vacancy =>
+            {
+                await dbContext.Candidates
+                    .Where(candidate =>
+                        candidate.IntakeRoundId == command.RoundId &&
+                        candidate.IntakeSource == CandidateIntakeSource.Form)
+                    .Include(candidate => candidate.FormResponses)
+                    .LoadAsync(cancellationToken);
+
+                return vacancy.CloseRound(command.RoundId, timeProvider.GetUtcNow());
+            },
             cancellationToken);
         if (closeResult.IsFailure)
         {
@@ -36,7 +47,7 @@ internal sealed class CloseIntakeRoundCommandHandler(
             round.IsOpen ? "open" : "closed",
             round.ClosedAt,
             await dbContext.Candidates.CountAsync(
-                candidate => candidate.IntakeRoundId == round.Id,
+                candidate => candidate.IntakeRoundId == command.RoundId,
                 cancellationToken));
     }
 }

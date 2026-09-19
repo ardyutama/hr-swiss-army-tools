@@ -51,6 +51,8 @@ public sealed class Candidate : Entity
     public CandidateReviewStatus ReviewStatus { get; private set; }
     public CandidateHireOutcome HireOutcome { get; private set; }
     public CandidateExtractionStatus ExtractionStatus { get; private set; }
+    public bool ScreenedOut { get; private set; }
+    public IReadOnlyList<ScreeningRuleMatch>? ScreeningVerdict { get; private set; }
     public string? FullName { get; private set; }
     public string? ContactEmail { get; private set; }
     public string? ContactPhone { get; private set; }
@@ -267,7 +269,42 @@ public sealed class Candidate : Entity
         IntakeRoundId = targetRoundId;
         PromotedFromRoundNumber = sourceRoundNumber;
         PromotedAt = promotedAt;
+        ScreenedOut = false;
+        ScreeningVerdict = null;
         return Result.Success();
+    }
+
+    internal void FreezeScreening(
+        ScreeningRuleSet? ruleSet,
+        FormLayout? layout)
+    {
+        var firedRules = EvaluateScreening(
+            roundClosed: false,
+            ruleSet,
+            layout);
+        ScreenedOut = firedRules.Count > 0;
+        ScreeningVerdict = firedRules;
+    }
+
+    internal IReadOnlyList<ScreeningRuleMatch> EvaluateScreening(
+        bool roundClosed,
+        ScreeningRuleSet? ruleSet,
+        FormLayout? layout)
+    {
+        if (IntakeSource != CandidateIntakeSource.Form)
+        {
+            return [];
+        }
+
+        if (roundClosed)
+        {
+            return ScreenedOut ? ScreeningVerdict ?? [] : [];
+        }
+
+        var currentResponse = _formResponses.SingleOrDefault(response => response.IsCurrent);
+        return ruleSet is null || layout is null || currentResponse is null
+            ? []
+            : ruleSet.EvaluateWithDisplay(currentResponse.Cells, layout);
     }
 
     internal Result SetRequirementReview(long vacancyRequirementId, bool confirmed)

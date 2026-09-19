@@ -1,6 +1,8 @@
+using hr_sat.Application.Features.Candidates;
+
 namespace hr_sat.Application.Features.Candidates.List;
 
-internal sealed record CandidateSummaryResponse(
+public sealed record CandidateSummaryResponse(
     long Id,
     string? FullName,
     string? ContactEmail,
@@ -13,4 +15,6 @@ internal sealed record CandidateSummaryResponse(
     DateTimeOffset? SourceSentAt,
     int CvDocumentCount,
     string IntakeSource,
-    bool IsResubmitted);
+    bool IsResubmitted,
+    bool ScreenedOut,
+    IReadOnlyList<FiredScreeningRuleResponse> FiredRules);

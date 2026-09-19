@@ -1,6 +1,7 @@
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Messaging;
 using hr_sat.Application.Features.Candidates.List;
+using hr_sat.Application.Features.Candidates.Shared;
 using hr_sat.Application.Features.Shared;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
@@ -31,6 +32,8 @@ internal sealed class PromoteCandidatesCommandHandler(
                 var roundIds = vacancy.Rounds.Select(round => round.Id).ToArray();
                 await dbContext.Candidates
                     .Where(candidate => roundIds.Contains(candidate.IntakeRoundId))
+                    .Include(candidate => candidate.FormResponses)
+                    .Include(candidate => candidate.CvDocuments)
                     .LoadAsync(cancellationToken);
 
                 if (vacancy.Status == VacancyStatus.Closed)
@@ -68,30 +71,15 @@ internal sealed class PromoteCandidatesCommandHandler(
                         promotionResult.Error);
                 }
 
-                var movedCandidateIds = promotionResult.Value
-                    .Select(candidate => candidate.Id)
-                    .ToArray();
-
-                return await dbContext.Candidates
-                    .AsNoTracking()
-                    .Where(candidate => movedCandidateIds.Contains(candidate.Id))
+                return promotionResult.Value
                     .OrderBy(candidate => candidate.ImportedAt)
                     .ThenBy(candidate => candidate.Id)
-                    .Select(candidate => new CandidateSummaryResponse(
-                        candidate.Id,
-                        candidate.FullName,
-                        candidate.ContactEmail,
-                        candidate.Notes,
-                        candidate.ReviewStatus.ToString().ToLowerInvariant(),
-                        candidate.HireOutcome.ToString().ToLowerInvariant(),
-                        candidate.SourceSenderName,
-                        candidate.SourceSenderEmail,
-                        candidate.SourceSubject,
-                        candidate.SourceSentAt,
-                        candidate.CvDocuments.Count,
-                        candidate.IntakeSource.ToString().ToLowerInvariant(),
-                        candidate.IsResubmitted))
-                    .ToListAsync(cancellationToken);
+                    .Select(candidate => CandidateSummaryMapper.Map(
+                        candidate,
+                        roundClosed: false,
+                        vacancy.ScreeningRuleSet,
+                        vacancy.FormLayout))
+                    .ToArray();
             },
             cancellationToken);
     }

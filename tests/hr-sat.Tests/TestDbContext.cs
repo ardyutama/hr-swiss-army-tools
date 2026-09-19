@@ -31,6 +31,7 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
     public DbSet<PendingFileDeletion> PendingFileDeletions => Set<PendingFileDeletion>();
     public DbSet<EmailTemplate> EmailTemplates => Set<EmailTemplate>();
     public DbSet<FormLayout> FormLayouts => Set<FormLayout>();
+    public DbSet<ScreeningRuleSet> ScreeningRuleSets => Set<ScreeningRuleSet>();
 
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken) =>
         Database.BeginTransactionAsync(cancellationToken);
@@ -124,6 +125,13 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
             entity.Property(candidate => candidate.ContactEmailProvenance).HasConversion<string>();
             entity.Property(candidate => candidate.ContactPhoneProvenance).HasConversion<string>();
             entity.Property(candidate => candidate.IsResubmitted);
+            entity.Property(candidate => candidate.ScreenedOut);
+            entity.Property(candidate => candidate.ScreeningVerdict)
+                .HasConversion(
+                    verdict => verdict == null ? null : JsonSerializer.Serialize(verdict),
+                    json => json == null
+                        ? null
+                        : JsonSerializer.Deserialize<ScreeningRuleMatch[]>(json));
             entity.HasMany(candidate => candidate.CvDocuments)
                 .WithOne()
                 .HasForeignKey(document => document.CandidateId)
@@ -210,6 +218,20 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
             entity.HasOne<Vacancy>()
                 .WithOne(vacancy => vacancy.FormLayout)
                 .HasForeignKey<FormLayout>(layout => layout.VacancyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ScreeningRuleSet>(entity =>
+        {
+            entity.HasKey(ruleSet => ruleSet.Id);
+            entity.Property(ruleSet => ruleSet.Id).ValueGeneratedOnAdd();
+            entity.Property(ruleSet => ruleSet.Rules)
+                .HasConversion(
+                    rules => JsonSerializer.Serialize(rules),
+                    json => JsonSerializer.Deserialize<ScreeningRule[]>(json) ?? Array.Empty<ScreeningRule>());
+            entity.HasOne<Vacancy>()
+                .WithOne(vacancy => vacancy.ScreeningRuleSet)
+                .HasForeignKey<ScreeningRuleSet>(ruleSet => ruleSet.VacancyId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

@@ -282,10 +282,10 @@ public sealed class ImportFormTests(ApiFactory factory) : IClassFixture<ApiFacto
         Assert.Equal(HttpStatusCode.BadRequest, confirmedResponse.StatusCode);
         await AssertProblemAsync(confirmedResponse, "FormLayouts.Invalid");
 
-        var candidates = await client.GetFromJsonAsync<IReadOnlyList<CandidateSummary>>(
+        var candidatePage = await client.GetFromJsonAsync<CandidateListEnvelope>(
             $"{vacancyLocation}/rounds/{roundId}/candidates");
-        Assert.NotNull(candidates);
-        Assert.Empty(candidates);
+        Assert.NotNull(candidatePage);
+        Assert.Empty(candidatePage.Items);
     }
 
     [Fact]
@@ -344,10 +344,10 @@ public sealed class ImportFormTests(ApiFactory factory) : IClassFixture<ApiFacto
         Assert.NotNull(problem);
         Assert.Contains(problem.Errors["file"], message => message.Contains("row 2", StringComparison.OrdinalIgnoreCase));
 
-        var candidates = await client.GetFromJsonAsync<IReadOnlyList<CandidateSummary>>(
+        var candidatePage = await client.GetFromJsonAsync<CandidateListEnvelope>(
             $"{vacancyLocation}/rounds/{roundId}/candidates");
-        Assert.NotNull(candidates);
-        Assert.Empty(candidates);
+        Assert.NotNull(candidatePage);
+        Assert.Empty(candidatePage.Items);
     }
 
     [Fact]
@@ -382,10 +382,10 @@ public sealed class ImportFormTests(ApiFactory factory) : IClassFixture<ApiFacto
         var summary = await secondImport.Content.ReadFromJsonAsync<ImportFormResponse>();
         Assert.NotNull(summary);
         Assert.Equal(new ImportFormResponse(1, 1, 0, 0, 1), summary);
-        var secondCandidates = await client.GetFromJsonAsync<IReadOnlyList<CandidateSummary>>(
+        var secondCandidatePage = await client.GetFromJsonAsync<CandidateListEnvelope>(
             $"{vacancyLocation}/rounds/{secondRound.Id}/candidates");
-        Assert.NotNull(secondCandidates);
-        Assert.Single(secondCandidates);
+        Assert.NotNull(secondCandidatePage);
+        Assert.Single(secondCandidatePage.Items);
     }
 
     [Fact]
@@ -429,10 +429,10 @@ public sealed class ImportFormTests(ApiFactory factory) : IClassFixture<ApiFacto
             CandidatePath(vacancyLocation, roundId, candidate.Id));
 
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
-        var candidates = await client.GetFromJsonAsync<IReadOnlyList<CandidateSummary>>(
+        var candidatePage = await client.GetFromJsonAsync<CandidateListEnvelope>(
             $"{vacancyLocation}/rounds/{roundId}/candidates");
-        Assert.NotNull(candidates);
-        Assert.Empty(candidates);
+        Assert.NotNull(candidatePage);
+        Assert.Empty(candidatePage.Items);
     }
 
     [Fact]
@@ -539,10 +539,10 @@ public sealed class ImportFormTests(ApiFactory factory) : IClassFixture<ApiFacto
         string vacancyLocation,
         long roundId)
     {
-        var candidates = await client.GetFromJsonAsync<IReadOnlyList<CandidateSummary>>(
+        var candidatePage = await client.GetFromJsonAsync<CandidateListEnvelope>(
             $"{vacancyLocation}/rounds/{roundId}/candidates");
-        Assert.NotNull(candidates);
-        return Assert.Single(candidates);
+        Assert.NotNull(candidatePage);
+        return Assert.Single(candidatePage.Items);
     }
 
     private static async Task<CandidateDetailsResponse> GetDetailsAsync(
@@ -608,6 +608,8 @@ public sealed class ImportFormTests(ApiFactory factory) : IClassFixture<ApiFacto
     private sealed record RoundResponse(long Id, int RoundNumber, string Status);
 
     private sealed record CandidateSummary(long Id, string IntakeSource, bool IsResubmitted);
+
+    private sealed record CandidateListEnvelope(IReadOnlyList<CandidateSummary> Items);
 
     private sealed record ProblemResponse(string? Title, int? Status, string? Detail);
 

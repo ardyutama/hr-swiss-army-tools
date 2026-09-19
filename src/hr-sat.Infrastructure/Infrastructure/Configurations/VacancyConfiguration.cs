@@ -77,5 +77,9 @@ internal sealed class VacancyConfiguration : IEntityTypeConfiguration<Vacancy>
             .WithOne()
             .HasForeignKey<FormLayout>(layout => layout.VacancyId)
             .OnDelete(DeleteBehavior.Cascade);
+        entity.HasOne(vacancy => vacancy.ScreeningRuleSet)
+            .WithOne()
+            .HasForeignKey<ScreeningRuleSet>(ruleSet => ruleSet.VacancyId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

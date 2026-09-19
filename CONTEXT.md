@@ -173,7 +173,7 @@ The review workspace state while a text field has focus; decision shortcuts stay
 _Avoid_: Input mode, composer mode
 
 **Vacancy Progress**:
-The number of shortlisted and rejected candidates compared with all candidates in a vacancy.
+The number of shortlisted and rejected candidates compared with all candidates in a vacancy except the Screened Out; screened-out candidates are outside HR's decision funnel and never count toward progress.
 _Avoid_: Flagged count, match score
 
 **Email Template**:

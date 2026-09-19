@@ -81,10 +81,10 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
         Assert.Equal("shortlisted", updated.ReviewStatus);
         Assert.Equal("Move to interview.", updated.Notes);
 
-        var listed = await client.GetFromJsonAsync<IReadOnlyList<CandidateSummary>>(
+        var listedPage = await client.GetFromJsonAsync<CandidateListEnvelope>(
             $"{vacancyLocation}/rounds/{roundId}/candidates");
-        Assert.NotNull(listed);
-        var summary = Assert.Single(listed);
+        Assert.NotNull(listedPage);
+        var summary = Assert.Single(listedPage.Items);
         Assert.Equal("shortlisted", summary.ReviewStatus);
         Assert.Equal("Move to interview.", summary.Notes);
     }
@@ -592,6 +592,8 @@ public sealed class ReviewWorkspaceTests(ApiFactory factory) : IClassFixture<Api
         string? Notes,
         string ReviewStatus,
         string HireOutcome);
+
+    private sealed record CandidateListEnvelope(IReadOnlyList<CandidateSummary> Items);
 
     private sealed record VacancyDetails(
         IReadOnlyList<VacancyRequirement> Requirements,

@@ -22,10 +22,10 @@ public sealed class DeleteCandidateTests(ApiFactory factory) : IClassFixture<Api
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
 
         // The vacancy pipeline no longer shows Bob.
-        var candidates = await (await client.GetAsync($"{vacancyLocation}/rounds/{roundId}/candidates"))
-            .Content.ReadFromJsonAsync<IReadOnlyList<CandidateSummary>>();
-        Assert.NotNull(candidates);
-        var remaining = Assert.Single(candidates);
+        var candidatePage = await (await client.GetAsync($"{vacancyLocation}/rounds/{roundId}/candidates"))
+            .Content.ReadFromJsonAsync<CandidateListEnvelope>();
+        Assert.NotNull(candidatePage);
+        var remaining = Assert.Single(candidatePage.Items);
         Assert.Equal("Alice Applicant", remaining.SourceSenderName);
 
         // Bob's CV document is gone as well.
@@ -65,10 +65,10 @@ public sealed class DeleteCandidateTests(ApiFactory factory) : IClassFixture<Api
         Assert.Contains("status", problem.Errors.Keys);
 
         // The candidate is retained for reference.
-        var candidates = await (await client.GetAsync($"{vacancyLocation}/rounds/{roundId}/candidates"))
-            .Content.ReadFromJsonAsync<IReadOnlyList<CandidateSummary>>();
-        Assert.NotNull(candidates);
-        Assert.Single(candidates);
+        var candidatePage = await (await client.GetAsync($"{vacancyLocation}/rounds/{roundId}/candidates"))
+            .Content.ReadFromJsonAsync<CandidateListEnvelope>();
+        Assert.NotNull(candidatePage);
+        Assert.Single(candidatePage.Items);
     }
 
     private static async Task<(string Location, long RoundId)> CreateVacancyAsync(HttpClient client)
@@ -163,6 +163,8 @@ public sealed class DeleteCandidateTests(ApiFactory factory) : IClassFixture<Api
     private sealed record CvDocumentResponse(long Id, string DownloadUrl);
 
     private sealed record CandidateSummary(long Id, string? SourceSenderName);
+
+    private sealed record CandidateListEnvelope(IReadOnlyList<CandidateSummary> Items);
 
     private sealed record VacancyResponse(IReadOnlyList<VacancyRoundResponse> Rounds);
 

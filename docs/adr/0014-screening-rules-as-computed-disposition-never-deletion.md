@@ -60,3 +60,14 @@ Screening is a **computed disposition, not a deletion and not a review status.**
   the read path, not the write path.
 - A future "bulk reject the screened-out" action can layer on top later without touching
   this decision.
+
+**Amendment (2026-09-19, grill session):** the freeze at closure is a **stored
+per-candidate verdict**. `CloseRound` evaluates the vacancy's rules once and persists each
+form candidate's disposition plus the fired rules' display descriptors (column label or
+header snapshot + operator + value), so closed-round reads and chips render verbatim
+forever even after rules are edited or deleted; active-round reads still evaluate live.
+"Runs in the read path" is hereby amended to include this one write at the lifecycle
+moment — consistent with ADR-0010, where settled review data *becomes* read-only data at
+closure. Rule evaluation itself is a pure domain function on the rule set (unit-tested
+without EF); the jsonb translation for the paged list lives in Infrastructure. Vacancy
+Progress now excludes the screened-out ([CONTEXT.md](../../CONTEXT.md) amended).

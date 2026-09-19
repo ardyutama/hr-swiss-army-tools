@@ -17,9 +17,9 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
         var response = await client.GetAsync($"{vacancyLocation}/rounds/{roundId}/candidates");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var candidates = await response.Content.ReadFromJsonAsync<IReadOnlyList<CandidateSummary>>();
-        Assert.NotNull(candidates);
-        Assert.Empty(candidates);
+        var candidatePage = await response.Content.ReadFromJsonAsync<CandidateListEnvelope>();
+        Assert.NotNull(candidatePage);
+        Assert.Empty(candidatePage.Items);
     }
 
     [Fact]
@@ -61,8 +61,9 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
         var response = await client.GetAsync($"{vacancyLocation}/rounds/{roundId}/candidates");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var candidates = await response.Content.ReadFromJsonAsync<IReadOnlyList<CandidateSummary>>();
-        Assert.NotNull(candidates);
+        var candidatePage = await response.Content.ReadFromJsonAsync<CandidateListEnvelope>();
+        Assert.NotNull(candidatePage);
+        var candidates = candidatePage.Items;
         Assert.Collection(
             candidates,
             alice =>
@@ -193,6 +194,8 @@ public sealed class ListCandidatesTests(ApiFactory factory) : IClassFixture<ApiF
         string? SourceSubject,
         DateTimeOffset? SourceSentAt,
         int CvDocumentCount);
+
+    private sealed record CandidateListEnvelope(IReadOnlyList<CandidateSummary> Items);
 
     private sealed record VacancyResponse(IReadOnlyList<VacancyRoundResponse> Rounds);
 

@@ -46,6 +46,26 @@ internal sealed class ValidationDecorator<TCommand, TResponse>(
     }
 }
 
+internal sealed class QueryValidationDecorator<TQuery, TResponse>(
+    IEnumerable<IValidator<TQuery>> validators,
+    IQueryHandler<TQuery, TResponse> handler)
+    : IQueryHandler<TQuery, TResponse>
+    where TQuery : IQuery<TResponse>
+{
+    public async Task<Result<TResponse>> Handle(
+        TQuery query,
+        CancellationToken cancellationToken)
+    {
+        var validationError = await ValidationDecorator.ValidateAsync(
+            validators,
+            query,
+            cancellationToken);
+        return validationError is null
+            ? await handler.Handle(query, cancellationToken)
+            : Result<TResponse>.Failure(validationError);
+    }
+}
+
 internal static class ValidationDecorator
 {
     public static async Task<ValidationError?> ValidateAsync<TCommand>(
