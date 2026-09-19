@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace hr_sat.Domain.Candidates;
+namespace hr_sat.Domain.Candidates.FormResponses;
 
 public static partial class CandidateFormIdentity
 {

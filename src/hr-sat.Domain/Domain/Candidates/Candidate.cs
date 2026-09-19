@@ -1,5 +1,7 @@
 using hr_sat.Domain;
 using hr_sat.Domain.Vacancies;
+using hr_sat.Domain.Vacancies.FormLayouts;
+using hr_sat.Domain.Candidates.FormResponses;
 
 namespace hr_sat.Domain.Candidates;
 
@@ -274,37 +276,43 @@ public sealed class Candidate : Entity
         return Result.Success();
     }
 
-    internal void FreezeScreening(
-        ScreeningRuleSet? ruleSet,
-        FormLayout? layout)
+    internal void FreezeScreening(ScreeningContext context)
     {
-        var firedRules = EvaluateScreening(
-            roundClosed: false,
-            ruleSet,
-            layout);
+        ArgumentNullException.ThrowIfNull(context);
+        if (context.Kind is ScreeningContextKind.Frozen)
+        {
+            throw new ArgumentException(
+                "Screening cannot be frozen from a frozen context.",
+                nameof(context));
+        }
+
+        var firedRules = EvaluateScreening(context);
         ScreenedOut = firedRules.Count > 0;
         ScreeningVerdict = firedRules;
     }
 
-    internal IReadOnlyList<ScreeningRuleMatch> EvaluateScreening(
-        bool roundClosed,
-        ScreeningRuleSet? ruleSet,
-        FormLayout? layout)
+    internal IReadOnlyList<ScreeningRuleMatch> EvaluateScreening(ScreeningContext context)
     {
+        ArgumentNullException.ThrowIfNull(context);
         if (IntakeSource != CandidateIntakeSource.Form)
         {
             return [];
         }
 
-        if (roundClosed)
+        if (context.Kind is ScreeningContextKind.Frozen)
         {
             return ScreenedOut ? ScreeningVerdict ?? [] : [];
         }
 
+        if (context.Kind is not ScreeningContextKind.Live)
+        {
+            return [];
+        }
+
         var currentResponse = _formResponses.SingleOrDefault(response => response.IsCurrent);
-        return ruleSet is null || layout is null || currentResponse is null
+        return currentResponse is null
             ? []
-            : ruleSet.EvaluateWithDisplay(currentResponse.Cells, layout);
+            : context.RuleSet!.EvaluateWithDisplay(currentResponse.Cells, context.Layout!);
     }
 
     internal Result SetRequirementReview(long vacancyRequirementId, bool confirmed)

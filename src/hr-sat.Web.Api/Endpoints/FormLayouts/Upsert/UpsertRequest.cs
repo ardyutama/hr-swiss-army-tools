@@ -1,4 +1,4 @@
-using hr_sat.Domain.Vacancies;
+using hr_sat.Domain.Vacancies.FormLayouts;
 
 namespace hr_sat.Web.Api.Endpoints.FormLayouts;
 

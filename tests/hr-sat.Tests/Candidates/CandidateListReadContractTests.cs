@@ -1,7 +1,9 @@
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.Candidates.FormResponses;
 using hr_sat.Domain.IntakeRounds;
 using hr_sat.Domain.Vacancies;
+using hr_sat.Domain.Vacancies.FormLayouts;
 using hr_sat.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Shouldly;

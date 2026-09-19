@@ -2,6 +2,8 @@ using hr_sat.Domain.Candidates;
 using hr_sat.Domain.EmailTemplates;
 using hr_sat.Domain.IntakeRounds;
 using hr_sat.Domain.Vacancies;
+using hr_sat.Domain.Candidates.FormResponses;
+using hr_sat.Domain.Vacancies.FormLayouts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 

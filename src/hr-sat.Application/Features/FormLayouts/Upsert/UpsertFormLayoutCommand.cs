@@ -1,5 +1,5 @@
 using hr_sat.Application.Abstractions.Messaging;
-using hr_sat.Domain.Vacancies;
+using hr_sat.Domain.Vacancies.FormLayouts;
 
 namespace hr_sat.Application.Features.FormLayouts.Upsert;
 

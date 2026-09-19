@@ -1,6 +1,7 @@
 using hr_sat.Application.Features.Candidates.GetDetails;
 using hr_sat.Application.Features.Candidates;
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.Candidates.FormResponses;
 using hr_sat.Domain.IntakeRounds;
 using hr_sat.Domain.Vacancies;
 using Shouldly;

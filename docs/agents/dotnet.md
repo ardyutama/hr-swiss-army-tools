@@ -144,6 +144,10 @@ file shapes; finish with `dotnet build` and `dotnet test` green.
 
 ## EF Core and PostgreSQL
 
+PostgreSQL-side design and operations (indexing, full-text search, JSONB, constraints,
+partitioning, pooling) are owned by `.agents/skills/postgresql-best-practices/`, the
+source of truth per ADR-0015; this section keeps EF Core mechanics only.
+
 Handlers reach data through `IApplicationDbContext`; the Npgsql-backed `AppDbContext`
 implements it in Infrastructure and is the single registered context. For read paths:
 

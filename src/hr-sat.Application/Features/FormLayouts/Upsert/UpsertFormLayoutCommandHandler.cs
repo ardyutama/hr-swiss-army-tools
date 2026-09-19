@@ -4,6 +4,7 @@ using hr_sat.Application.Features.Shared;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
 using hr_sat.Domain.Vacancies;
+using hr_sat.Domain.Vacancies.FormLayouts;
 using Microsoft.EntityFrameworkCore;
 
 namespace hr_sat.Application.Features.FormLayouts.Upsert;

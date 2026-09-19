@@ -1,4 +1,5 @@
 using hr_sat.Application.Abstractions.Data;
+using hr_sat.Application.Features.Shared;
 using hr_sat.Domain.Candidates;
 using hr_sat.Domain.IntakeRounds;
 using hr_sat.Domain.Vacancies;
@@ -28,22 +29,17 @@ internal static class VacancyProgress
             .Where(candidate => roundIds.Contains(candidate.IntakeRoundId))
             .Include(candidate => candidate.FormResponses)
             .ToListAsync(cancellationToken);
-        var layouts = await dbContext.FormLayouts
-            .AsNoTracking()
-            .Where(layout => vacancyIds.Contains(layout.VacancyId))
-            .ToDictionaryAsync(layout => layout.VacancyId, cancellationToken);
-        var ruleSets = await dbContext.ScreeningRuleSets
-            .AsNoTracking()
-            .Where(ruleSet => vacancyIds.Contains(ruleSet.VacancyId))
-            .ToDictionaryAsync(ruleSet => ruleSet.VacancyId, cancellationToken);
+        var contexts = await ScreeningContextLoader.LoadLiveAsync(
+            vacancyIds,
+            dbContext,
+            cancellationToken);
 
         return vacancies
             .Select(vacancy => ProjectSummary(
                 vacancy,
                 rounds.Where(round => round.VacancyId == vacancy.Id).ToArray(),
                 candidates,
-                layouts.GetValueOrDefault(vacancy.Id),
-                ruleSets.GetValueOrDefault(vacancy.Id)))
+                contexts))
             .ToArray();
     }
 
@@ -64,18 +60,19 @@ internal static class VacancyProgress
                 round.VacancyId == vacancy.Id))
             .Include(candidate => candidate.FormResponses)
             .ToListAsync(cancellationToken);
-        var layout = await dbContext.FormLayouts
-            .AsNoTracking()
-            .SingleOrDefaultAsync(item => item.VacancyId == vacancy.Id, cancellationToken);
-        var ruleSet = await dbContext.ScreeningRuleSets
-            .AsNoTracking()
-            .SingleOrDefaultAsync(item => item.VacancyId == vacancy.Id, cancellationToken);
+        var context = await ScreeningContextLoader.LoadLiveAsync(
+            [vacancy.Id],
+            dbContext,
+            cancellationToken);
+        var liveContext = context.GetValueOrDefault(vacancy.Id, ScreeningContext.None);
         var candidateRows = rounds
             .SelectMany(round => candidates
                 .Where(candidate => candidate.IntakeRoundId == round.Id)
-                .Select(candidate => new CandidateRound(candidate, !round.IsOpen)))
+                .Select(candidate => new CandidateRound(
+                    candidate,
+                    !round.IsOpen ? ScreeningContext.Frozen : liveContext)))
             .ToArray();
-        var progress = BuildProgress(candidateRows, ruleSet, layout);
+        var progress = BuildProgress(candidateRows);
         var hiring = BuildHiring(candidateRows, vacancy.NeededHires);
 
         return VacancyDetailsResponse.From(
@@ -95,14 +92,15 @@ internal static class VacancyProgress
         Vacancy vacancy,
         IReadOnlyList<IntakeRound> rounds,
         IReadOnlyList<Candidate> candidates,
-        FormLayout? layout,
-        ScreeningRuleSet? ruleSet)
+        IReadOnlyDictionary<long, ScreeningContext> contexts)
     {
+        var liveContext = contexts.GetValueOrDefault(vacancy.Id, ScreeningContext.None);
         var candidateRows = rounds
             .SelectMany(round => candidates
                 .Where(candidate => candidate.IntakeRoundId == round.Id)
-                .Select(candidate =>
-                new CandidateRound(candidate, !round.IsOpen)))
+                .Select(candidate => new CandidateRound(
+                    candidate,
+                    !round.IsOpen ? ScreeningContext.Frozen : liveContext)))
             .ToArray();
 
         return new VacancySummaryResponse(
@@ -110,18 +108,16 @@ internal static class VacancyProgress
             vacancy.Title,
             vacancy.OpenedOn,
             vacancy.Status == VacancyStatus.Open ? "open" : "closed",
-            BuildProgress(candidateRows, ruleSet, layout),
-            BuildReviewCounts(candidateRows, ruleSet, layout),
+            BuildProgress(candidateRows),
+            BuildReviewCounts(candidateRows),
             BuildHiring(candidateRows, vacancy.NeededHires));
     }
 
     private static VacancyProgressResponse BuildProgress(
-        IReadOnlyList<CandidateRound> candidateRows,
-        ScreeningRuleSet? ruleSet,
-        FormLayout? layout)
+        IReadOnlyList<CandidateRound> candidateRows)
     {
         var visibleCandidates = candidateRows
-            .Where(row => !IsScreenedOut(row, ruleSet, layout))
+            .Where(row => !row.ScreenedOut)
             .ToArray();
 
         return new VacancyProgressResponse(
@@ -132,12 +128,10 @@ internal static class VacancyProgress
     }
 
     private static VacancyReviewCountsResponse BuildReviewCounts(
-        IReadOnlyList<CandidateRound> candidateRows,
-        ScreeningRuleSet? ruleSet,
-        FormLayout? layout)
+        IReadOnlyList<CandidateRound> candidateRows)
     {
         var visibleCandidates = candidateRows
-            .Where(row => !IsScreenedOut(row, ruleSet, layout))
+            .Where(row => !row.ScreenedOut)
             .Select(row => row.Candidate)
             .ToArray();
 
@@ -157,13 +151,8 @@ internal static class VacancyProgress
                 candidateRows.Count(row => row.Candidate.HireOutcome == CandidateHireOutcome.Hired))
             : null;
 
-    private static bool IsScreenedOut(
-        CandidateRound candidateRow,
-        ScreeningRuleSet? ruleSet,
-        FormLayout? layout) =>
-        candidateRow.Candidate
-            .EvaluateScreening(candidateRow.RoundClosed, ruleSet, layout)
-            .Count > 0;
-
-    private sealed record CandidateRound(Candidate Candidate, bool RoundClosed);
+    private sealed record CandidateRound(Candidate Candidate, ScreeningContext Context)
+    {
+        public bool ScreenedOut { get; } = Candidate.EvaluateScreening(Context).Count > 0;
+    }
 }

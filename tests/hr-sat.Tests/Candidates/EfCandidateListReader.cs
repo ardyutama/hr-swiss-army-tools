@@ -29,8 +29,11 @@ internal sealed class EfCandidateListReader(TestDbContext dbContext) : ICandidat
             .Include(candidate => candidate.CvDocuments)
             .ToListAsync(cancellationToken);
 
+        var context = request.RoundClosed
+            ? ScreeningContext.Frozen
+            : ScreeningContext.Of(ruleSet, layout);
         var rows = candidates
-            .Select(candidate => ToRow(candidate, request.RoundClosed, ruleSet, layout))
+            .Select(candidate => ToRow(candidate, context))
             .ToList();
         var nonScreenedRows = rows.Where(row => !row.ScreenedOut).ToList();
         var scopedRows = request.IncludeScreenedOut ? rows : nonScreenedRows;
@@ -68,11 +71,9 @@ internal sealed class EfCandidateListReader(TestDbContext dbContext) : ICandidat
 
     private static CandidateListReadRow ToRow(
         Candidate candidate,
-        bool roundClosed,
-        ScreeningRuleSet? ruleSet,
-        FormLayout? layout)
+        ScreeningContext context)
     {
-        var firedRules = candidate.EvaluateScreening(roundClosed, ruleSet, layout);
+        var firedRules = candidate.EvaluateScreening(context);
         return new CandidateListReadRow(
             candidate.Id,
             candidate.FullName,

@@ -2,6 +2,7 @@ using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Messaging;
 using hr_sat.Domain;
 using hr_sat.Domain.Vacancies;
+using hr_sat.Domain.Vacancies.FormLayouts;
 using Microsoft.EntityFrameworkCore;
 
 namespace hr_sat.Application.Features.FormLayouts.Get;

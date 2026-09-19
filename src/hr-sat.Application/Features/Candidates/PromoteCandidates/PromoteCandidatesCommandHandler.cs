@@ -76,9 +76,7 @@ internal sealed class PromoteCandidatesCommandHandler(
                     .ThenBy(candidate => candidate.Id)
                     .Select(candidate => CandidateSummaryMapper.Map(
                         candidate,
-                        roundClosed: false,
-                        vacancy.ScreeningRuleSet,
-                        vacancy.FormLayout))
+                        ScreeningContext.Of(vacancy.ScreeningRuleSet, vacancy.FormLayout)))
                     .ToArray();
             },
             cancellationToken);

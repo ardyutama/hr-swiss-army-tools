@@ -53,8 +53,9 @@ internal sealed class PreviewScreeningRulesQueryHandler(IApplicationDbContext db
             .Include(candidate => candidate.FormResponses)
             .ToListAsync(cancellationToken);
 
+        var context = ScreeningContext.Live(ruleSet, layout);
         var firedRules = candidates
-            .Select(candidate => candidate.EvaluateScreening(false, ruleSet, layout))
+            .Select(candidate => candidate.EvaluateScreening(context))
             .ToArray();
         var perRule = ruleSet.Rules
             .Select((_, index) => new ScreeningRulePreviewResponse(

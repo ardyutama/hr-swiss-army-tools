@@ -116,6 +116,10 @@ _Avoid_: Knockout filter, auto-reject, validation rule
 The computed import disposition of a Form Response candidate failing at least one Screening Rule. Screened-out candidates are imported and stored, excluded from the default candidate list (with a count badge and a toggle to reveal them), never deletable, and reclassifiable only by changing rules. Screening status settles at round closure like all review data.
 _Avoid_: Filtered, deleted, auto-rejected
 
+**Screening Verdict**:
+A candidate's stored screening outcome: whether it is Screened Out plus the fired rules' display descriptors. Written once at Round Closure as the candidate's screening freezes; closed-round reads render it verbatim forever (rules may later be edited or deleted without touching it), while active-round candidates carry no verdict and are evaluated live. Promoting a candidate into a new round clears the verdict so the active round re-evaluates.
+_Avoid_: Screening result, cached verdict
+
 **Resubmitted**:
 The display indicator on a candidate whose stored Form Response was replaced by a newer row for the same identity key on a later upload. The review page flags the refresh; review status, notes, requirement reviews, and typed details are never altered by a re-upload.
 _Avoid_: Updated, overwritten

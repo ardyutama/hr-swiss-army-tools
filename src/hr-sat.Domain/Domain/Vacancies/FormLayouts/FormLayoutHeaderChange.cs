@@ -1,4 +1,4 @@
-namespace hr_sat.Domain.Vacancies;
+namespace hr_sat.Domain.Vacancies.FormLayouts;
 
 public sealed record FormLayoutHeaderChange(
     int Ordinal,

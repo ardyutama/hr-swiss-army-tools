@@ -2,6 +2,7 @@ using hr_sat.Application.Abstractions.Messaging;
 
 namespace hr_sat.Application.Features.Candidates.ImportForm;
 using hr_sat.Domain.Vacancies;
+using hr_sat.Domain.Vacancies.FormLayouts;
 
 public sealed record ImportFormCommand(
     long VacancyId,

@@ -3,6 +3,7 @@ using System.Text;
 using CsvHelper;
 using CsvHelper.Configuration;
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.Candidates.FormResponses;
 
 namespace hr_sat.Application.Features.Candidates.ImportForm;
 

@@ -8,11 +8,9 @@ internal static class CandidateSummaryMapper
 {
     public static CandidateSummaryResponse Map(
         Candidate candidate,
-        bool roundClosed,
-        ScreeningRuleSet? ruleSet,
-        FormLayout? layout)
+        ScreeningContext context)
     {
-        var firedRules = candidate.EvaluateScreening(roundClosed, ruleSet, layout);
+        var firedRules = candidate.EvaluateScreening(context);
         var screening = CandidateScreeningResponse.From(
             firedRules.Count > 0,
             firedRules);

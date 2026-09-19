@@ -1,7 +1,9 @@
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.Candidates.FormResponses;
 using hr_sat.Domain.EmailTemplates;
 using hr_sat.Domain.IntakeRounds;
+using hr_sat.Domain.Vacancies.FormLayouts;
 
 namespace hr_sat.Domain.Vacancies;
 
@@ -73,7 +75,7 @@ public sealed class Vacancy : Entity
 
         foreach (var candidate in round.Candidates)
         {
-            candidate.FreezeScreening(_screeningRuleSet, _formLayout);
+            candidate.FreezeScreening(ScreeningContext.Of(_screeningRuleSet, _formLayout));
         }
 
         return Result.Success();
@@ -378,9 +380,7 @@ public sealed class Vacancy : Entity
         }
 
         var firedRules = candidate.EvaluateScreening(
-            roundClosed: false,
-            _screeningRuleSet,
-            _formLayout);
+            ScreeningContext.Of(_screeningRuleSet, _formLayout));
         return firedRules.Count == 0
             ? roundResult
             : Result<IntakeRound>.Failure(CandidateErrors.ScreenedOut(candidate.Id, firedRules));

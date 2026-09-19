@@ -1,4 +1,4 @@
-namespace hr_sat.Domain.Candidates;
+namespace hr_sat.Domain.Candidates.FormResponses;
 
 public sealed record CandidateFormResponseData(
     IReadOnlyList<string> Cells,

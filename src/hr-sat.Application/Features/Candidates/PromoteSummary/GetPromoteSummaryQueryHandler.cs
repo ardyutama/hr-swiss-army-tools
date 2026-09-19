@@ -2,6 +2,7 @@ using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Messaging;
 using hr_sat.Application.Features.Candidates.List;
 using hr_sat.Application.Features.Candidates.Shared;
+using hr_sat.Application.Features.Shared;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
 using hr_sat.Domain.IntakeRounds;
@@ -53,12 +54,7 @@ internal sealed class GetPromoteSummaryQueryHandler(IApplicationDbContext dbCont
                 IntakeRoundErrors.NotClosed(query.SourceRoundId));
         }
 
-        var layout = await dbContext.FormLayouts
-            .AsNoTracking()
-            .SingleOrDefaultAsync(item => item.VacancyId == query.VacancyId, cancellationToken);
-        var ruleSet = await dbContext.ScreeningRuleSets
-            .AsNoTracking()
-            .SingleOrDefaultAsync(item => item.VacancyId == query.VacancyId, cancellationToken);
+        var context = ScreeningContext.Frozen;
         var candidates = await dbContext.Candidates
             .AsNoTracking()
             .Where(candidate =>
@@ -75,11 +71,7 @@ internal sealed class GetPromoteSummaryQueryHandler(IApplicationDbContext dbCont
             .ToListAsync(cancellationToken);
 
         var items = candidates
-            .Select(candidate => CandidateSummaryMapper.Map(
-                candidate,
-                roundClosed: true,
-                ruleSet,
-                layout))
+            .Select(candidate => CandidateSummaryMapper.Map(candidate, context))
             .ToArray();
 
         return Result<IReadOnlyList<CandidateSummaryResponse>>.Success(items);

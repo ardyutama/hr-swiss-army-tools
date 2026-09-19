@@ -3,6 +3,7 @@ using System.Data.Common;
 using System.Text.Json;
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Domain.Vacancies;
+using hr_sat.Domain.Vacancies.FormLayouts;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using NpgsqlTypes;

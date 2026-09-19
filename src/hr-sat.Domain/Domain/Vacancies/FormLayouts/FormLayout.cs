@@ -1,6 +1,6 @@
 using hr_sat.Domain;
 
-namespace hr_sat.Domain.Vacancies;
+namespace hr_sat.Domain.Vacancies.FormLayouts;
 
 public sealed class FormLayout : Entity
 {

@@ -1,7 +1,9 @@
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Features.Candidates;
+using hr_sat.Application.Features.Shared;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.Candidates.FormResponses;
 using Microsoft.EntityFrameworkCore;
 
 namespace hr_sat.Application.Features.Candidates.GetDetails;
@@ -15,90 +17,83 @@ internal static class CandidateDetailsReader
         IApplicationDbContext dbContext,
         CancellationToken cancellationToken)
     {
+        var round = await dbContext.IntakeRounds
+            .AsNoTracking()
+            .Where(item => item.Id == roundId && item.VacancyId == vacancyId)
+            .Select(item => new { item.ClosedAt })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (round is null)
+        {
+            return Result<CandidateDetailsResponse>.Failure(
+                CandidateErrors.NotFound(candidateId));
+        }
+
         var candidate = await dbContext.Candidates
             .AsNoTracking()
-            .Where(candidate =>
-                candidate.Id == candidateId &&
-                candidate.IntakeRoundId == roundId &&
-                dbContext.IntakeRounds.Any(round =>
-                    round.Id == roundId && round.VacancyId == vacancyId))
-            .Select(candidate => new CandidateDetailsResponse(
-                candidate.Id,
-                candidate.ReviewStatus.ToString().ToLowerInvariant(),
-                candidate.HireOutcome.ToString().ToLowerInvariant(),
-                candidate.PromotedFromRoundNumber,
-                candidate.PromotedAt,
-                Array.Empty<CandidatePriorApplicationResponse>(),
-                candidate.FullName,
-                candidate.ContactEmail,
-                candidate.ContactPhone,
-                candidate.Notes,
-                candidate.RequirementReviews
-                    .OrderBy(review => review.VacancyRequirementId)
-                    .Select(review => new CandidateRequirementReviewResponse(
-                        review.VacancyRequirementId,
-                        review.Confirmed))
-                    .ToList(),
-                candidate.SourceSenderName,
-                candidate.SourceSenderEmail,
-                candidate.SourceSubject,
-                candidate.SourceBodyText,
-                candidate.SourceSentAt,
-                candidate.SourceOriginalFilename,
-                candidate.CvDocuments
-                    .OrderBy(document => document.Position)
-                    .Select(document => new CandidateDocumentResponse(
-                        document.Id,
-                        document.OriginalFilename,
-                        document.SizeBytes,
-                        document.IsPrimary,
-                        $"/api/vacancies/{vacancyId}/rounds/{roundId}/candidates/{candidateId}/cv-documents/{document.Id}"))
-                    .ToList(),
-                candidate.IntakeSource.ToString().ToLowerInvariant(),
-                candidate.IsResubmitted,
-                candidate.FormResponses
-                    .OrderByDescending(response => response.IsCurrent)
-                    .ThenBy(response => response.ImportedAt)
-                    .Select(response => new CandidateFormResponseResponse(
-                        response.Cells,
-                        response.FormTimestampRaw,
-                        response.FormTimestampParsed,
-                        response.IsCurrent,
-                        response.ImportedAt))
-                    .ToList()))
+            .Where(item => item.Id == candidateId && item.IntakeRoundId == roundId)
+            .Include(item => item.FormResponses)
+            .Include(item => item.CvDocuments)
+            .Include(item => item.RequirementReviews)
             .SingleOrDefaultAsync(cancellationToken);
-
         if (candidate is null)
         {
             return Result<CandidateDetailsResponse>.Failure(
                 CandidateErrors.NotFound(candidateId));
         }
 
-        var roundClosedAt = await dbContext.IntakeRounds
-            .AsNoTracking()
-            .Where(round => round.Id == roundId && round.VacancyId == vacancyId)
-            .Select(round => round.ClosedAt)
-            .SingleOrDefaultAsync(cancellationToken);
-        var layout = await dbContext.FormLayouts
-            .AsNoTracking()
-            .SingleOrDefaultAsync(item => item.VacancyId == vacancyId, cancellationToken);
-        var ruleSet = await dbContext.ScreeningRuleSets
-            .AsNoTracking()
-            .SingleOrDefaultAsync(item => item.VacancyId == vacancyId, cancellationToken);
-        var screeningCandidate = await dbContext.Candidates
-            .AsNoTracking()
-            .Include(item => item.FormResponses)
-            .SingleOrDefaultAsync(item => item.Id == candidateId, cancellationToken);
-        var firedRules = screeningCandidate?.EvaluateScreening(
-            roundClosedAt.HasValue,
-            ruleSet,
-            layout) ?? [];
-        var candidateWithScreening = candidate with
-        {
-            Screening = CandidateScreeningResponse.From(
+        var context = await ScreeningContextLoader.LoadAsync(
+            vacancyId,
+            round.ClosedAt is not null,
+            dbContext,
+            cancellationToken);
+        var firedRules = candidate.EvaluateScreening(context);
+        var candidateWithScreening = new CandidateDetailsResponse(
+            candidate.Id,
+            candidate.ReviewStatus.ToString().ToLowerInvariant(),
+            candidate.HireOutcome.ToString().ToLowerInvariant(),
+            candidate.PromotedFromRoundNumber,
+            candidate.PromotedAt,
+            Array.Empty<CandidatePriorApplicationResponse>(),
+            candidate.FullName,
+            candidate.ContactEmail,
+            candidate.ContactPhone,
+            candidate.Notes,
+            candidate.RequirementReviews
+                .OrderBy(review => review.VacancyRequirementId)
+                .Select(review => new CandidateRequirementReviewResponse(
+                    review.VacancyRequirementId,
+                    review.Confirmed))
+                .ToList(),
+            candidate.SourceSenderName,
+            candidate.SourceSenderEmail,
+            candidate.SourceSubject,
+            candidate.SourceBodyText,
+            candidate.SourceSentAt,
+            candidate.SourceOriginalFilename,
+            candidate.CvDocuments
+                .OrderBy(document => document.Position)
+                .Select(document => new CandidateDocumentResponse(
+                    document.Id,
+                    document.OriginalFilename,
+                    document.SizeBytes,
+                    document.IsPrimary,
+                    $"/api/vacancies/{vacancyId}/rounds/{roundId}/candidates/{candidateId}/cv-documents/{document.Id}"))
+                .ToList(),
+            candidate.IntakeSource.ToString().ToLowerInvariant(),
+            candidate.IsResubmitted,
+            candidate.FormResponses
+                .OrderByDescending(response => response.IsCurrent)
+                .ThenBy(response => response.ImportedAt)
+                .Select(response => new CandidateFormResponseResponse(
+                    response.Cells,
+                    response.FormTimestampRaw,
+                    response.FormTimestampParsed,
+                    response.IsCurrent,
+                    response.ImportedAt))
+                .ToList(),
+            CandidateScreeningResponse.From(
                 firedRules.Count > 0,
-                firedRules)
-        };
+                firedRules));
 
         var normalizedSenderEmail = candidateWithScreening.SourceSenderEmail is not null
             ? CandidateFormIdentity.NormalizeEmail(candidateWithScreening.SourceSenderEmail)

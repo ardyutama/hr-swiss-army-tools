@@ -2,6 +2,7 @@ using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Messaging;
 using hr_sat.Application.Features.Candidates.List;
 using hr_sat.Application.Features.Candidates.Shared;
+using hr_sat.Application.Features.Shared;
 using hr_sat.Domain;
 using hr_sat.Domain.IntakeRounds;
 using hr_sat.Domain.Vacancies;
@@ -36,12 +37,11 @@ internal sealed class GetReviewQueueQueryHandler(IApplicationDbContext dbContext
                 IntakeRoundErrors.NotFound(query.RoundId));
         }
 
-        var layout = await dbContext.FormLayouts
-            .AsNoTracking()
-            .SingleOrDefaultAsync(item => item.VacancyId == query.VacancyId, cancellationToken);
-        var ruleSet = await dbContext.ScreeningRuleSets
-            .AsNoTracking()
-            .SingleOrDefaultAsync(item => item.VacancyId == query.VacancyId, cancellationToken);
+        var context = await ScreeningContextLoader.LoadAsync(
+            query.VacancyId,
+            round.ClosedAt is not null,
+            dbContext,
+            cancellationToken);
         var candidates = await dbContext.Candidates
             .AsNoTracking()
             .Where(candidate => candidate.IntakeRoundId == query.RoundId)
@@ -53,11 +53,7 @@ internal sealed class GetReviewQueueQueryHandler(IApplicationDbContext dbContext
             .ToListAsync(cancellationToken);
 
         var items = candidates
-            .Select(candidate => CandidateSummaryMapper.Map(
-                candidate,
-                round.ClosedAt is not null,
-                ruleSet,
-                layout))
+            .Select(candidate => CandidateSummaryMapper.Map(candidate, context))
             .Where(candidate => !candidate.ScreenedOut)
             .ToArray();
 

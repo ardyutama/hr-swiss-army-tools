@@ -1,5 +1,6 @@
 using hr_sat.Application.Features.FormLayouts.Upsert;
 using hr_sat.Domain.Vacancies;
+using hr_sat.Domain.Vacancies.FormLayouts;
 using Shouldly;
 using Xunit;
 

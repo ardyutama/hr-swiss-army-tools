@@ -2,6 +2,7 @@ using hr_sat.Application.Features.ScreeningRules;
 using hr_sat.Application.Features.ScreeningRules.Upsert;
 using hr_sat.Domain;
 using hr_sat.Domain.Vacancies;
+using hr_sat.Domain.Vacancies.FormLayouts;
 using hr_sat.Tests.Candidates;
 using Microsoft.EntityFrameworkCore;
 using Shouldly;

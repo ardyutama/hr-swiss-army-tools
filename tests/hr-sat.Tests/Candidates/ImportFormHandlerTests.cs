@@ -3,6 +3,7 @@ using hr_sat.Application.Features.Candidates.ImportForm;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
 using hr_sat.Domain.Vacancies;
+using hr_sat.Domain.Vacancies.FormLayouts;
 using Microsoft.EntityFrameworkCore;
 using Shouldly;
 using Xunit;

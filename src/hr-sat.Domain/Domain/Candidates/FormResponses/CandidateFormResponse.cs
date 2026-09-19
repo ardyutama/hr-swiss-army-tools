@@ -1,6 +1,6 @@
 using hr_sat.Domain;
 
-namespace hr_sat.Domain.Candidates;
+namespace hr_sat.Domain.Candidates.FormResponses;
 
 public sealed class CandidateFormResponse : Entity
 {

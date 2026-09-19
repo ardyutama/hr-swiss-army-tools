@@ -57,6 +57,16 @@ is the client UI source of truth: import its components directly, style with Tai
 v4, and keep `UApp` at the application root. Do not add `App*` UI wrappers or resurrect
 the deleted `src/shared/ui/` layer; see ADR-0007.
 
+### PostgreSQL
+
+For database design and operations — schema and constraints, indexing, full-text search,
+JSONB, partitioning, pooling, query performance — the
+`.agents/skills/postgresql-best-practices/` pack is the source of truth per ADR-0015;
+its `SKILL.md` routes to the per-topic reference. EF Core mapping and the migration
+workflow stay in `docs/agents/dotnet.md`. The project runs self-hosted PostgreSQL 18
+(Compose, Testcontainers, on-prem): use the pack's `postgresql-*` references; its Azure
+guardrails stay dormant unless an Azure deployment is adopted.
+
 ### Issue tracker
 
 Work items derive from `docs/discovery/03-user-stories.md` and live as local markdown under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.

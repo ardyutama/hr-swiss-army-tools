@@ -1,4 +1,5 @@
 using hr_sat.Domain;
+using hr_sat.Domain.Vacancies.FormLayouts;
 
 namespace hr_sat.Domain.Vacancies;
 
