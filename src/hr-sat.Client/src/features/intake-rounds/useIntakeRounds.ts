@@ -15,7 +15,8 @@ export type { VacancyRound }
 
 /**
  * Owns the intake-round chrome for the vacancy-detail flow: which round is
- * active, whether a new round can be opened, and the create/close mutations.
+ * active, which rounds are closed (the promotion sources, newest-closed
+ * first), whether a new round can be opened, and the create/close mutations.
  * The rounds themselves are source-of-truthed by `useVacancyDetail`; this
  * composable only derives round state and re-runs `onChanged` after a mutation
  * so the vacancy rollup (and its embedded rounds) refresh.
@@ -30,6 +31,16 @@ export function useIntakeRounds(
   const closing = shallowRef(false)
 
   const activeRound = computed(() => rounds.value.find((round) => round.status === 'open') ?? null)
+
+  const closedRounds = computed(() =>
+    rounds.value
+      .filter((round) => round.status === 'closed')
+      .sort((left, right) => {
+        const leftClosedAt = left.closedAt ? Date.parse(left.closedAt) : Number.NEGATIVE_INFINITY
+        const rightClosedAt = right.closedAt ? Date.parse(right.closedAt) : Number.NEGATIVE_INFINITY
+        return rightClosedAt - leftClosedAt || right.roundNumber - left.roundNumber
+      }),
+  )
 
   // A new round can only open while none is active; the vacancy-close freeze is
   // enforced server-side, so this stays a pure round-state derivation.
@@ -89,5 +100,5 @@ export function useIntakeRounds(
     }
   }
 
-  return { creating, closing, activeRound, canCreateRound, create, close }
+  return { creating, closing, activeRound, closedRounds, canCreateRound, create, close }
 }

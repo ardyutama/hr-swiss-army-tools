@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, shallowRef, toRef } from 'vue'
+import { computed, shallowRef, toRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusBadge from '@/features/vacancies/components/StatusBadge.vue'
 import HiringPlanSummary from '@/features/vacancies/components/HiringPlanSummary.vue'
@@ -8,21 +8,36 @@ import FormLayoutDialog from '@/features/form-layout/components/FormLayoutDialog
 import DriftDialog from '@/features/import-form/components/DriftDialog.vue'
 import FormLayoutSummary from '@/features/form-layout/components/FormLayoutSummary.vue'
 import type { FormLayoutColumn } from '@/features/form-layout/api'
+import { useFormLayout } from '@/features/form-layout/useFormLayout'
 import CandidateDeleteDialog from '@/features/candidates/components/CandidateDeleteDialog.vue'
 import ImportResultList from '@/features/candidates/components/ImportResultList.vue'
 import CandidateList from '@/features/candidates/components/CandidateList.vue'
 import CandidateToolbar from '@/features/candidates/components/CandidateToolbar.vue'
+import { useCandidates } from '@/features/candidates/useCandidates'
+import { useCandidateImport } from '@/features/candidates/useCandidateImport'
+import { useCandidateFilter } from '@/features/candidates/useCandidateFilter'
 import RoundList from '@/features/intake-rounds/components/RoundList.vue'
 import CreateRoundDialog from '@/features/intake-rounds/components/CreateRoundDialog.vue'
 import CloseRoundDialog from '@/features/intake-rounds/components/CloseRoundDialog.vue'
+import { useIntakeRounds, roundDisplayName } from '@/features/intake-rounds/useIntakeRounds'
 import PromoteCandidatesDialog from '@/features/promote-candidates/components/PromoteCandidatesDialog.vue'
+import { usePromoteCandidates } from '@/features/promote-candidates/usePromoteCandidates'
 import EmailTemplatesDialog from '@/features/email-templates/components/EmailTemplatesDialog.vue'
+import { useEmailTemplates } from '@/features/email-templates/useEmailTemplates'
+import { useTemplateSources } from '@/features/email-templates/useTemplateSources'
 import PreparedMessageListDialog from '@/features/prepared-messages/components/PreparedMessageListDialog.vue'
+import { usePreparedMessages } from '@/features/prepared-messages/usePreparedMessages'
+import { sendScope } from '@/features/prepared-messages/format'
+import { useFormResponseImport } from '@/features/import-form/useFormResponseImport'
 import { candidateFilterQuery, candidateFilterStateFromQuery } from '@/features/candidates/filter'
+import { problemMessage, problemMessageText } from '@/shared/problem-details'
 import { useActionDialog } from '@/shared/useActionDialog'
+import { useVacancyDetail } from '@/features/vacancy-detail/useVacancyDetail'
+import { useCloseVacancy } from '@/features/vacancy-detail/useCloseVacancy'
 import { useVacancyDetailFlow } from '@/features/vacancy-detail/useVacancyDetailFlow'
 import CloseVacancyDialog from '@/features/vacancy-detail/components/CloseVacancyDialog.vue'
-import { formatDate } from '@/features/vacancies/format'
+import { formatDate, progressPercent } from '@/features/vacancies/format'
+import { hiringShortage } from '@/features/vacancies/hiring'
 import type { CandidateSummary } from '@/features/candidates/api'
 import type { VacancyRound } from '@/features/vacancies/api'
 import CandidateListFallback from './CandidateListFallback.vue'
@@ -33,100 +48,194 @@ const props = defineProps<{
 
 const router = useRouter()
 const route = useRoute()
+const vacancyId = toRef(props, 'id')
 
+// The leaf lifecycles, composed here — the view is the composition surface.
+const { vacancy, loadError, viewState, load } = useVacancyDetail(vacancyId)
 const {
-  vacancy: {
-    vacancy,
-    loadError,
-    viewState,
-    load,
-    progress,
-    vacancyRequirements,
-    isClosed,
-    closingVacancy,
-    closeVacancy,
+  layout: formLayoutMapping,
+  loadError: formLayoutLoadError,
+  viewState: formLayoutViewState,
+  saving: formLayoutSaving,
+  saveError: formLayoutSaveError,
+  load: loadFormLayout,
+  save: saveFormLayoutMapping,
+} = useFormLayout(vacancyId)
+
+const rounds = computed<VacancyRound[]>(() => vacancy.value?.rounds ?? [])
+// The composer's refresh announcement reaches the rounds flow lazily: it is
+// only ever invoked from a create/close mutation, after composition below.
+const roundsFlow = useIntakeRounds(rounds, vacancyId, () => flow.refreshVacancyAndCandidates())
+const {
+  creating: creatingRound,
+  closing: closingRound,
+  canCreateRound,
+  create: createRoundAction,
+  close: closeRound,
+} = roundsFlow
+const closedRounds = roundsFlow.closedRounds
+const activeRound = roundsFlow.activeRound
+
+const flow = useVacancyDetailFlow({
+  vacancy,
+  rounds,
+  activeRound,
+  closedRounds,
+  reloadVacancy: load,
+  // Composed below; the composer invokes its reloads only from mutations and
+  // import outcomes, never during setup.
+  reloadCandidates: () => candidatesFlow.load(),
+  reloadLayout: loadFormLayout,
+})
+const {
+  selectedRoundId,
+  selectedRound,
+  selectRound,
+  isClosed,
+  candidatesReadonly,
+  canImport,
+  canPromote,
+} = flow
+
+const selectedRoundParam = computed(() =>
+  selectedRoundId.value === null ? '' : String(selectedRoundId.value),
+)
+const candidatesFlow = useCandidates(vacancyId, selectedRoundParam)
+const {
+  candidates,
+  loadError: candidatesError,
+  viewState: candidatesViewState,
+  removing,
+  load: loadCandidates,
+  remove: removeCandidate,
+} = candidatesFlow
+
+const selectedRoundClosed = computed(() => selectedRound.value?.status === 'closed')
+const {
+  status: statusFilter,
+  outcome: outcomeFilter,
+  query: searchQuery,
+  receivedSort,
+  statusCounts,
+  outcomeCounts,
+  filteredCandidates,
+  listState,
+  toggleReceivedSort,
+  clearFilters,
+} = useCandidateFilter(
+  candidates,
+  {
+    viewState: candidatesViewState,
+    vacancyClosed: isClosed,
+    hasActiveRound: computed(() => activeRound.value !== null),
+    selectedRoundClosed,
   },
-  rounds: {
-    rounds,
-    closedRounds,
-    selectedRoundId,
-    selectRound,
-    canOpenRound,
-    roundShortage,
-    showRoundChrome,
-    showRoundManager,
-    roundManagementOpen,
-    openRoundManager,
-    creatingRound,
-    closingRound,
-    createRound,
-    closeRound,
-  },
-  promote: {
-    canPromote,
-    open: promoteOpen,
-    sourceRoundId: promoteSourceRoundId,
-    promotableCandidates,
-    sourceLoading: promoteSourceLoading,
-    sourceError: promoteSourceError,
-    selectedCandidateIds: promoteSelectedCandidateIds,
-    submitting: promoting,
-    submitError: promoteSubmitError,
-    canSubmit: canPromoteSubmit,
-    openDialog: openPromoteDialog,
-    submit: submitPromotions,
-  },
-  prepared: {
-    preparedOpen,
-    emailTemplatesOpen,
-    sendCandidates,
-    sendRoundName,
-    openPrepared,
-    openEmailTemplates,
-    messages: preparedMessages,
-    emailTemplates,
-    templateSources,
-  },
-  candidates: {
-    candidates,
-    candidatesError,
-    removing,
-    loadCandidates,
-    statusFilter,
-    outcomeFilter,
-    searchQuery,
-    receivedSort,
-    statusCounts,
-    outcomeCounts,
-    filteredCandidates,
-    listState,
-    toggleReceivedSort,
-    clearFilters,
-    candidatesReadonly,
-    deleteCandidate,
-  },
-  import: {
-    importing,
-    importError,
-    results,
-    clearError,
-    canImport,
-    importFiles,
-    formImport,
-  },
-  formLayout: {
-    layout: formLayoutMapping,
-    loadError: formLayoutLoadError,
-    viewState: formLayoutViewState,
-    saving: formLayoutSaving,
-    saveError: formLayoutSaveError,
-    load: loadFormLayout,
-    save: saveFormLayout,
-  },
-} = useVacancyDetailFlow(
-  toRef(props, 'id'),
   candidateFilterStateFromQuery(route.query),
 )
+
+const { closing: closingVacancy, close: closeVacancy } = useCloseVacancy(vacancy, load)
+
+// The .eml adapter announces its own refresh; a landed import closes the dialog.
+const { importing, importError, results, importFiles, clearError } = useCandidateImport(
+  vacancyId,
+  selectedRoundParam,
+  flow.refreshVacancyAndCandidates,
+)
+const formImport = useFormResponseImport(
+  vacancyId,
+  selectedRoundParam,
+  formLayoutMapping,
+  async (changed) => {
+    if (changed === 'candidatesAndLayout') {
+      await flow.refreshVacancyCandidatesAndLayout()
+    } else {
+      await flow.refreshVacancyAndCandidates()
+    }
+  },
+)
+const formImportUploading = formImport.uploading
+const formLayoutPanelHeaders = formImport.panelHeaders
+
+const {
+  open: promoteOpen,
+  sourceRoundId: promoteSourceRoundId,
+  promotableCandidates,
+  sourceLoading: promoteSourceLoading,
+  sourceError: promoteSourceError,
+  selectedCandidateIds: promoteSelectedCandidateIds,
+  submitting: promoting,
+  submitError: promoteSubmitError,
+  canSubmit: canPromoteSubmit,
+  openDialog: openPromoteDialog,
+  submit: submitPromotions,
+} = usePromoteCandidates(
+  vacancyId,
+  activeRound,
+  closedRounds,
+  canPromote,
+  flow.refreshVacancyAndCandidates,
+)
+
+// Vacancy rollup derivations for the header cards and dialogs.
+const progress = computed(() => (vacancy.value ? progressPercent(vacancy.value.progress) : 0))
+const roundShortage = computed(() => {
+  const hiring = vacancy.value?.hiring
+  return hiring ? hiringShortage(hiring) : null
+})
+const vacancyRequirements = computed(
+  () => vacancy.value?.requirements.map((requirement) => requirement.phrase) ?? [],
+)
+
+// The round manager is view UI state; the chrome flags derive over the flow's.
+const roundManagementOpen = shallowRef(false)
+const canOpenRound = computed(() => !isClosed.value && canCreateRound.value)
+const showRoundChrome = computed(() => rounds.value.length > 1 || roundManagementOpen.value)
+const showRoundManager = computed(
+  () =>
+    !isClosed.value &&
+    rounds.value.length === 1 &&
+    (activeRound.value !== null || candidatesViewState.value !== 'empty'),
+)
+
+function openRoundManager() {
+  roundManagementOpen.value = true
+}
+
+// Prepared messages / email templates dialog state.
+const preparedOpen = shallowRef(false)
+const preparedCandidate = shallowRef<CandidateSummary | null>(null)
+const emailTemplatesOpen = shallowRef(false)
+const templatesRevision = shallowRef(0)
+
+watch(emailTemplatesOpen, (isOpen, wasOpen) => {
+  if (wasOpen && !isOpen) {
+    templatesRevision.value += 1
+  }
+})
+
+const sendCandidates = computed(() => sendScope(preparedCandidate.value, candidates.value ?? []))
+const sendRoundName = computed(() => {
+  const round = selectedRound.value
+  return round ? roundDisplayName(round) : 'the selected round'
+})
+
+const preparedMessages = usePreparedMessages(
+  vacancyId,
+  sendCandidates,
+  preparedOpen,
+  templatesRevision,
+)
+const emailTemplates = useEmailTemplates(vacancyId)
+const templateSources = useTemplateSources(vacancyId)
+
+function openPrepared(candidate?: CandidateSummary) {
+  preparedCandidate.value = candidate ?? null
+  preparedOpen.value = true
+}
+
+function openEmailTemplates() {
+  emailTemplatesOpen.value = true
+}
 
 const {
   open: importRequested,
@@ -162,8 +271,6 @@ const {
   confirm: confirmCloseVacancy,
 } = useActionDialog()
 
-const formImportStep = formImport.step
-
 function openReviewFromPrepared(candidate: CandidateSummary) {
   preparedOpen.value = false
   openReview(candidate)
@@ -195,12 +302,14 @@ async function onImportCsvFile(file: File) {
   await formImport.importFile(file)
 }
 
-// --- Form layout panel + drift dialog (derived from the import step) -------
+// --- Form layout panel + drift dialog --------------------------------------
+// The refusal steps and their bindings derive in the import-form module; the
+// view keeps only its own intent flags and the v-model wiring.
 
 // Edit mode is view-owned UI state; it loses to any refusal step.
 const layoutEditRequested = shallowRef(false)
 const layoutEditing = computed({
-  get: () => layoutEditRequested.value && formImportStep.value.kind === 'idle',
+  get: () => layoutEditRequested.value && formImport.idle.value,
   set: (open: boolean) => {
     layoutEditRequested.value = open
   },
@@ -210,17 +319,17 @@ const layoutEditing = computed({
 // a refusal closes it; terminal success returns to idle so it reappears with
 // the summary line while still requested.
 const importDialogOpen = computed({
-  get: () => importRequested.value && formImportStep.value.kind === 'idle',
+  get: () => importRequested.value && formImport.idle.value,
   set: (open: boolean) => {
     importRequested.value = open
   },
 })
 
 const formLayoutDialogOpen = computed({
-  get: () => formImportStep.value.kind === 'guidedSetup' || layoutEditing.value,
+  get: () => formImport.guidedSetup.value !== null || layoutEditing.value,
   set: (open: boolean) => {
     if (!open) {
-      if (formImportStep.value.kind === 'guidedSetup') {
+      if (formImport.guidedSetup.value !== null) {
         formImport.cancel()
       }
       layoutEditRequested.value = false
@@ -229,57 +338,46 @@ const formLayoutDialogOpen = computed({
 })
 
 const formLayoutDialogMode = computed<'edit' | 'guided'>(() =>
-  formImportStep.value.kind === 'guidedSetup' ? 'guided' : 'edit',
+  formImport.guidedSetup.value !== null ? 'guided' : 'edit',
 )
 
-// Guided mode maps the held file's headers; edit mode maps the saved snapshot.
-const formLayoutPanelHeaders = computed(() =>
-  formImportStep.value.kind === 'guidedSetup'
-    ? formImportStep.value.headers
-    : (formLayoutMapping.value?.headerSnapshot ?? []),
-)
-
-const formLayoutPanelBusy = computed(() =>
-  formImportStep.value.kind === 'guidedSetup' ? formImportStep.value.submitting : formLayoutSaving.value,
+const formLayoutPanelBusy = computed(
+  () => formImport.guidedSetup.value?.submitting ?? formLayoutSaving.value,
 )
 
 const formLayoutPanelAlert = computed(() =>
-  formImportStep.value.kind === 'guidedSetup' ? formImport.alert.value : formLayoutSaveError.value,
+  formImport.guidedSetup.value !== null ? formImport.alert.value : formLayoutSaveError.value,
 )
 
-const formLayoutFileName = computed(() =>
-  formImportStep.value.kind === 'guidedSetup' ? formImportStep.value.file.name : null,
-)
+const formLayoutFileName = computed(() => formImport.guidedSetup.value?.file.name ?? null)
 
 const driftDialogOpen = computed({
-  get: () => formImportStep.value.kind === 'headerDrift',
+  get: () => formImport.headerDrift.value !== null,
   set: (open: boolean) => {
-    if (!open && formImportStep.value.kind === 'headerDrift') {
+    if (!open && formImport.headerDrift.value !== null) {
       formImport.cancel()
     }
   },
 })
 
-const driftChanges = computed(() =>
-  formImportStep.value.kind === 'headerDrift' ? formImportStep.value.changes : [],
-)
+const driftChanges = computed(() => formImport.headerDrift.value?.changes ?? [])
 
-const driftSubmitting = computed(() =>
-  formImportStep.value.kind === 'headerDrift' ? formImportStep.value.submitting : false,
-)
+const driftSubmitting = computed(() => formImport.headerDrift.value?.submitting ?? false)
 
 function openFormLayoutEdit() {
   layoutEditRequested.value = true
 }
 
 function onFormLayoutSave(columns: FormLayoutColumn[]) {
-  if (formImportStep.value.kind === 'guidedSetup') {
+  if (formImport.guidedSetup.value !== null) {
     // Guided setup completes the held file's import; success returns the step
     // to idle, closing the panel and re-opening the import dialog.
     void formImport.submitLayout(columns)
   } else {
-    void saveFormLayout(columns).then((saved) => {
+    // A layout save re-projects over stored rows, so candidate details change too.
+    void saveFormLayoutMapping(columns).then(async (saved) => {
       if (saved) {
+        await flow.refreshVacancyAndCandidates()
         layoutEditRequested.value = false
       }
     })
@@ -287,7 +385,7 @@ function onFormLayoutSave(columns: FormLayoutColumn[]) {
 }
 
 function onFormLayoutCancel() {
-  if (formImportStep.value.kind === 'guidedSetup') {
+  if (formImport.guidedSetup.value !== null) {
     // Cancel import drops the held file; nothing is saved.
     formImport.cancel()
   }
@@ -315,7 +413,15 @@ function openCreateRound() {
 }
 
 async function onCreateRoundSubmit(payload: { name: string | null }) {
-  await confirmCreateRound(() => createRound(payload.name))
+  await confirmCreateRound(async () => {
+    const created = await createRoundAction(payload.name)
+    if (created === null) {
+      return false
+    }
+    // The new round becomes the selected one.
+    selectRound(created)
+    return true
+  })
 }
 
 function requestCloseRound(round: VacancyRound) {
@@ -335,7 +441,22 @@ function requestDeleteCandidate(candidate: CandidateSummary) {
 }
 
 async function confirmDeleteCandidate() {
-  await confirmDelete(async (candidate) => (candidate ? deleteCandidate(candidate) : false))
+  await confirmDelete(async (candidate) => {
+    if (candidate === null) {
+      return false
+    }
+    try {
+      await removeCandidate(candidate)
+      await flow.refreshVacancyAndCandidates()
+      return null
+    } catch (error) {
+      const message = problemMessage(error, 'Something went wrong')
+      if (message.kind !== 'failure') {
+        await flow.refreshVacancyAndCandidates()
+      }
+      return problemMessageText(message)
+    }
+  })
 }
 
 function openReview(candidate: CandidateSummary) {
@@ -602,7 +723,7 @@ function openReview(candidate: CandidateSummary) {
 
     <ImportDialog
       v-model:open="importDialogOpen"
-      :busy="importing || formImportStep.kind === 'uploading'"
+      :busy="importing || formImportUploading"
       :alert="importAlert"
       :summary="formImport.summaryLine.value"
       @eml-files="onImportEmlFiles"

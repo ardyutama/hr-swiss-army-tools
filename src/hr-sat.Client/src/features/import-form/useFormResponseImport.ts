@@ -2,7 +2,8 @@ import { computed, shallowRef, watch, type Ref } from 'vue'
 import { useToast } from '@nuxt/ui/composables/useToast'
 import { ApiError } from '@/shared/http'
 import { fieldErrorsOf, firstNonFieldError } from '@/shared/validation'
-import { problemMessage, type ProblemMessageColor } from '@/shared/problem-details'
+import { type ProblemMessageColor } from '@/shared/problem-details'
+import { useImportLifecycle, type ImportInterception } from '@/shared/useImportLifecycle'
 import type { FormLayoutColumn, FormLayoutDto } from '@/features/form-layout/api'
 import { describeHeaderChanges, type FormHeaderChangeDto, type FormHeaderChangeView } from './format'
 import {
@@ -53,9 +54,21 @@ export function useFormResponseImport(
   onChanged?: (changed: FormImportChange) => Promise<void>,
 ) {
   const toast = useToast()
-  const uploading = shallowRef(false)
+  const lifecycle = useImportLifecycle<FormImportChange, FormImportAlert>({
+    vacancyId,
+    roundId,
+    fallback: "Couldn't import the form responses",
+    mapMessage: (message) => ({
+      color: message.color,
+      title: message.title,
+      description: message.description,
+    }),
+    onChanged,
+  })
+  // The lifecycle's busy flag is the upload; refusal submissions run on their own.
+  const uploading = lifecycle.busy
+  const alert = lifecycle.alert
   const submitting = shallowRef(false)
-  const alert = shallowRef<FormImportAlert | null>(null)
   const summary = shallowRef<FormImportSummary | null>(null)
   const pendingRefusal = shallowRef<FormImportRefusal | null>(null)
 
@@ -87,30 +100,52 @@ export function useFormResponseImport(
     }
   })
 
+  // The dialog bindings are derived here, not in the view: they are refusals
+  // of the step union, and deriving them elsewhere would re-implement the
+  // union's semantics. `guidedSetup` / `headerDrift` are the narrowed refusal
+  // steps (null when absent); `idle` is the absence of any upload or refusal.
+  const guidedSetup = computed(() => (step.value.kind === 'guidedSetup' ? step.value : null))
+  const headerDrift = computed(() => (step.value.kind === 'headerDrift' ? step.value : null))
+  const idle = computed(() => step.value.kind === 'idle')
+
+  // The layout panel maps the held file's headers in guided mode and the
+  // saved snapshot in edit mode; the layout arrives by injection either way.
+  const panelHeaders = computed(
+    () => guidedSetup.value?.headers ?? layout.value?.headerSnapshot ?? [],
+  )
+
+  /**
+   * The refusal routes ahead of the shared taxonomy: the two 409 codes hold
+   * the file and swap the step (importFile only — a layout-payload retry is
+   * never refused again); a 400 is always a malformed CSV (ADR-0013) and is
+   * surfaced verbatim with no refresh.
+   */
+  function intercept(error: unknown, file: File | null): ImportInterception<FormImportAlert> {
+    if (file !== null) {
+      const refusal = formImportRefusal(error, file)
+      if (refusal) {
+        pendingRefusal.value = refusal
+        return { kind: 'handled' }
+      }
+    }
+    const malformed = malformedCsvAlert(error)
+    return malformed ? { kind: 'alert', alert: malformed } : { kind: 'unhandled' }
+  }
+
   async function importFile(file: File): Promise<void> {
     if (step.value.kind !== 'idle') {
       return
     }
-    uploading.value = true
-    alert.value = null
     summary.value = null
-    try {
-      const result = await importFormResponses(vacancyId.value, roundId.value, file)
-      summary.value = result
-      announce(result)
-      await onChanged?.('candidates')
-    } catch (error) {
-      // The two refusal codes route into the guided/drift steps instead of
-      // an alert — checked before every other error mapping.
-      const refusal = formImportRefusal(error, file)
-      if (refusal) {
-        pendingRefusal.value = refusal
-        return
-      }
-      await recordImportError(error)
-    } finally {
-      uploading.value = false
-    }
+    await lifecycle.attempt({
+      change: 'candidates',
+      operation: () => importFormResponses(vacancyId.value, roundId.value, file),
+      intercept: (error) => intercept(error, file),
+      announce: (result) => {
+        summary.value = result
+        announce(result)
+      },
+    })
   }
 
   /** Guided setup / drift re-map: re-send the held file with the mapping as the layout payload. */
@@ -119,25 +154,21 @@ export function useFormResponseImport(
     if (submitting.value || refusal === null) {
       return
     }
-    submitting.value = true
-    alert.value = null
-    try {
-      const result = await importFormResponsesWithLayout(
-        vacancyId.value,
-        roundId.value,
-        refusal.file,
-        columns,
-      )
-      pendingRefusal.value = null
-      summary.value = result
-      announce(result)
-      await onChanged?.('candidatesAndLayout')
-    } catch (error) {
-      // The refusal stays pending so the dialog remains open with its mapping.
-      await recordImportError(error)
-    } finally {
-      submitting.value = false
-    }
+    await lifecycle.attempt({
+      busy: submitting,
+      change: 'candidatesAndLayout',
+      // A failed submission still only touched candidates server-side.
+      errorChange: 'candidates',
+      operation: () =>
+        importFormResponsesWithLayout(vacancyId.value, roundId.value, refusal.file, columns),
+      // The refusal stays pending on error so the dialog remains open with its mapping.
+      intercept: (error) => intercept(error, null),
+      announce: (result) => {
+        pendingRefusal.value = null
+        summary.value = result
+        announce(result)
+      },
+    })
   }
 
   /** Drift confirm: re-send the held file with the confirmDrift flag. */
@@ -146,20 +177,19 @@ export function useFormResponseImport(
     if (submitting.value || refusal === null) {
       return
     }
-    submitting.value = true
-    alert.value = null
-    try {
-      const result = await confirmFormImportDrift(vacancyId.value, roundId.value, refusal.file)
-      pendingRefusal.value = null
-      summary.value = result
-      announce(result)
-      await onChanged?.('candidatesAndLayout')
-    } catch (error) {
-      // The refusal stays pending so the drift dialog stays open on its mapping.
-      await recordImportError(error)
-    } finally {
-      submitting.value = false
-    }
+    await lifecycle.attempt({
+      busy: submitting,
+      change: 'candidatesAndLayout',
+      errorChange: 'candidates',
+      operation: () => confirmFormImportDrift(vacancyId.value, roundId.value, refusal.file),
+      // The refusal stays pending on error so the drift dialog stays open on its mapping.
+      intercept: (error) => intercept(error, null),
+      announce: (result) => {
+        pendingRefusal.value = null
+        summary.value = result
+        announce(result)
+      },
+    })
   }
 
   /** Drift → guided transition: the refusal stays held; the panel re-maps it. */
@@ -175,18 +205,17 @@ export function useFormResponseImport(
     pendingRefusal.value = null
   }
 
-  // A different vacancy or round starts with a clean import slate, held file included.
+  // A different vacancy or round starts with a clean import slate, held file
+  // included (the lifecycle resets its own busy flag and alert).
   watch([vacancyId, roundId], () => {
-    uploading.value = false
     submitting.value = false
-    alert.value = null
     summary.value = null
     pendingRefusal.value = null
   })
 
   /** Dismisses a visible summary or import error (e.g. when the import dialog closes). */
   function clearResult() {
-    alert.value = null
+    lifecycle.clearAlert()
     summary.value = null
   }
 
@@ -197,25 +226,13 @@ export function useFormResponseImport(
     })
   }
 
-  async function recordImportError(error: unknown): Promise<void> {
-    const malformed = malformedCsvAlert(error)
-    if (malformed) {
-      alert.value = malformed
-      return
-    }
-    const message = problemMessage(error, "Couldn't import the form responses")
-    if (message.kind !== 'failure') {
-      await onChanged?.('candidates')
-    }
-    alert.value = {
-      color: message.color,
-      title: message.title,
-      description: message.description,
-    }
-  }
-
   return {
     step,
+    guidedSetup,
+    headerDrift,
+    idle,
+    uploading,
+    panelHeaders,
     alert,
     summary,
     summaryLine,

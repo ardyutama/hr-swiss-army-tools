@@ -44,6 +44,9 @@ discipline, API/routing, and the placement test are owned by
 - Oxlint is the sole client linter; type checking stays with `vue-tsc`. Use the scripts in
   `hr-sat.Client/package.json` for lint, type-check, test, and build; do not add a second
   lint stack without revisiting ADR 0001.
+- Pages compose feature leaves directly; a page composer is admitted only for cross-flow
+  coordination and re-exports nothing it does not coordinate — see the pack's
+  [slice anatomy](../../.agents/skills/vue-feature-slices/references/slice-anatomy.md#page-composers).
 
 ### Tests
 

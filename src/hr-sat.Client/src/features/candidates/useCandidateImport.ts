@@ -1,63 +1,58 @@
 import { shallowRef, watch, type Ref } from 'vue'
 import { useToast } from '@nuxt/ui/composables/useToast'
-import { fieldErrorsOf, firstNonFieldError } from '@/shared/validation'
+import { firstNonFieldError } from '@/shared/validation'
 import {
   importCandidates,
-  type ImportCandidatesResponse,
   type ImportFileResult,
   type ImportFileStatus,
 } from '@/features/candidates/api'
-import { problemMessage, problemMessageText } from '@/shared/problem-details'
+import { problemMessageText } from '@/shared/problem-details'
+import { useImportLifecycle } from '@/shared/useImportLifecycle'
 
+/**
+ * The .eml Intake Source adapter: a multi-file upload over the shared import
+ * lifecycle. The lifecycle owns the busy flag, the error taxonomy, and the
+ * refresh announcement — every terminal outcome that changed server state
+ * invokes `onChanged`, so callers never refresh manually; this module keeps
+ * only what makes the channel itself: the per-file results and their toast.
+ */
 export function useCandidateImport(
   vacancyId: Ref<string>,
   roundId: Ref<string>,
   onChanged?: () => Promise<void>,
 ) {
   const toast = useToast()
-  const importing = shallowRef(false)
-  const importError = shallowRef<string | null>(null)
+  const lifecycle = useImportLifecycle<'candidates', string>({
+    vacancyId,
+    roundId,
+    fallback: 'Something went wrong',
+    mapMessage: problemMessageText,
+    mapFieldErrors: (errors) => firstNonFieldError(errors, new Set()) ?? 'Something went wrong',
+    onChanged,
+  })
   const results = shallowRef<ImportFileResult[] | null>(null)
 
-  async function importFiles(files: File[]): Promise<ImportCandidatesResponse | null> {
-    if (files.length === 0 || importing.value) {
-      return null
+  /** Returns whether the import landed — true means the caller can close the dialog. */
+  async function importFiles(files: File[]): Promise<boolean> {
+    if (files.length === 0) {
+      return false
     }
-    importing.value = true
-    importError.value = null
-    try {
-      const response = await importCandidates(vacancyId.value, roundId.value, files)
-      results.value = response.results
-      announceResults(response.results)
-      return response
-    } catch (error) {
-      const fieldErrors = fieldErrorsOf(error)
-      if (fieldErrors) {
-        importError.value = firstNonFieldError(fieldErrors, new Set()) ?? 'Something went wrong'
-        return null
-      }
-      const message = problemMessage(error, 'Something went wrong')
-      if (message.kind !== 'failure') {
-        await onChanged?.()
-      }
-      importError.value = problemMessageText(message)
-      return null
-    } finally {
-      importing.value = false
-    }
+    const response = await lifecycle.attempt({
+      change: 'candidates',
+      operation: () => importCandidates(vacancyId.value, roundId.value, files),
+      announce: (importResponse) => {
+        results.value = importResponse.results
+        announceResults(importResponse.results)
+      },
+    })
+    return response !== null
   }
 
-  // A different vacancy or round starts with a clean import slate.
+  // A different vacancy or round starts with a clean results slate (the
+  // lifecycle resets its own busy flag and alert).
   watch([vacancyId, roundId], () => {
-    importing.value = false
-    importError.value = null
     results.value = null
   })
-
-  /** Dismisses a visible import error (e.g. when the import dialog closes). */
-  function clearError() {
-    importError.value = null
-  }
 
   function announceResults(importResults: ImportFileResult[]): void {
     const countOf = (status: ImportFileStatus) =>
@@ -77,5 +72,11 @@ export function useCandidateImport(
     }
   }
 
-  return { importing, importError, results, importFiles, clearError }
+  return {
+    importing: lifecycle.busy,
+    importError: lifecycle.alert,
+    results,
+    importFiles,
+    clearError: lifecycle.clearAlert,
+  }
 }
