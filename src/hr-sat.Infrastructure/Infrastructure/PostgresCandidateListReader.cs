@@ -1,6 +1,8 @@
 using System.Data;
 using System.Data.Common;
+using System.Text.Json;
 using hr_sat.Application.Abstractions.Data;
+using hr_sat.Domain.Vacancies;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using NpgsqlTypes;
@@ -10,8 +12,6 @@ namespace hr_sat.Infrastructure;
 public sealed class PostgresCandidateListReader(AppDbContext dbContext)
     : ICandidateListReader
 {
-    private const int PageSize = 100;
-
     public async Task<CandidateListReadResult> ReadAsync(
         CandidateListReadRequest request,
         CancellationToken cancellationToken)
@@ -27,6 +27,9 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
         {
             var candidateRows = BuildCandidateRows(request.RoundClosed);
             var filters = BuildFilters(request);
+            var screeningContext = request.RoundClosed
+                ? null
+                : await ReadScreeningContextAsync(request.RoundId, cancellationToken);
             var counts = await ReadCountsAsync(
                 connection,
                 candidateRows,
@@ -38,15 +41,16 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
                 filters,
                 request,
                 cancellationToken);
-            var candidateIds = await ReadCandidateIdsAsync(
+            var rows = await ReadRowsAsync(
                 connection,
                 candidateRows,
                 filters,
                 request,
+                screeningContext,
                 cancellationToken);
 
             return new CandidateListReadResult(
-                candidateIds,
+                rows,
                 totals.Total,
                 totals.FilteredTotal,
                 counts);
@@ -58,6 +62,24 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
                 await connection.CloseAsync();
             }
         }
+    }
+
+    private async Task<ScreeningContext> ReadScreeningContextAsync(
+        long roundId,
+        CancellationToken cancellationToken)
+    {
+        var vacancyId = await dbContext.IntakeRounds
+            .AsNoTracking()
+            .Where(round => round.Id == roundId)
+            .Select(round => round.VacancyId)
+            .SingleAsync(cancellationToken);
+        var layout = await dbContext.FormLayouts
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item => item.VacancyId == vacancyId, cancellationToken);
+        var ruleSet = await dbContext.ScreeningRuleSets
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item => item.VacancyId == vacancyId, cancellationToken);
+        return new ScreeningContext(ruleSet, layout);
     }
 
     private static async Task<CandidateListReadCounts> ReadCountsAsync(
@@ -119,11 +141,12 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
         return (ReadCount(reader, 0), ReadCount(reader, 1));
     }
 
-    private static async Task<IReadOnlyList<long>> ReadCandidateIdsAsync(
+    private static async Task<IReadOnlyList<CandidateListReadRow>> ReadRowsAsync(
         DbConnection connection,
         string candidateRows,
         string filters,
         CandidateListReadRequest request,
+        ScreeningContext? screeningContext,
         CancellationToken cancellationToken)
     {
         var scope = request.IncludeScreenedOut ? "TRUE" : "NOT screened_out";
@@ -133,10 +156,25 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
             StringComparison.OrdinalIgnoreCase)
             ? "ASC"
             : "DESC";
-        var offset = (long)(Math.Max(1, request.Page) - 1) * PageSize;
+        var offset = (long)(Math.Max(1, request.Page) - 1) * request.PageSize;
         var sql = $"""
             {candidateRows}
-            SELECT id
+            SELECT
+                id,
+                full_name,
+                contact_email,
+                notes,
+                review_status,
+                hire_outcome,
+                source_sender_name,
+                source_sender_email,
+                source_subject,
+                source_sent_at,
+                cv_document_count,
+                intake_source,
+                is_resubmitted,
+                screened_out,
+                fired_rules::text
             FROM candidate_rows
             WHERE {scope} AND {filters}
             ORDER BY
@@ -147,16 +185,35 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
             """;
         await using var command = CreateCommand(connection, sql, request);
         AddFilterParameters(command, request);
-        AddParameter(command, "page_size", NpgsqlDbType.Integer, PageSize);
+        AddParameter(command, "page_size", NpgsqlDbType.Integer, request.PageSize);
         AddParameter(command, "page_offset", NpgsqlDbType.Bigint, offset);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        var candidateIds = new List<long>();
+        var rows = new List<CandidateListReadRow>();
         while (await reader.ReadAsync(cancellationToken))
         {
-            candidateIds.Add(reader.GetInt64(0));
+            var firedRules = ParseFiredRules(
+                reader.GetString(14),
+                request.RoundClosed,
+                screeningContext);
+            rows.Add(new CandidateListReadRow(
+                reader.GetInt64(0),
+                ReadNullableString(reader, 1),
+                ReadNullableString(reader, 2),
+                ReadNullableString(reader, 3),
+                reader.GetString(4),
+                reader.GetString(5),
+                ReadNullableString(reader, 6),
+                ReadNullableString(reader, 7),
+                ReadNullableString(reader, 8),
+                ReadNullableDateTimeOffset(reader, 9),
+                reader.GetInt32(10),
+                reader.GetString(11),
+                reader.GetBoolean(12),
+                reader.GetBoolean(13),
+                firedRules));
         }
 
-        return candidateIds;
+        return rows;
     }
 
     private static DbCommand CreateCommand(
@@ -222,122 +279,137 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
         return $"({statusFilter}) AND ({outcomeFilter}) AND ({queryFilter})";
     }
 
+    private static IReadOnlyList<ScreeningRuleMatch> ParseFiredRules(
+        string json,
+        bool roundClosed,
+        ScreeningContext? screeningContext)
+    {
+        if (roundClosed)
+        {
+            return JsonSerializer.Deserialize<ScreeningRuleMatch[]>(json) ?? [];
+        }
+
+        var firedIndexes = JsonSerializer.Deserialize<int[]>(json) ?? [];
+        return screeningContext?.RuleSet is null || screeningContext.Layout is null
+            ? []
+            : screeningContext.RuleSet.FormatDisplay(firedIndexes, screeningContext.Layout);
+    }
+
+    private static string? ReadNullableString(DbDataReader reader, int ordinal) =>
+        reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+
+    private static DateTimeOffset? ReadNullableDateTimeOffset(
+        DbDataReader reader,
+        int ordinal)
+    {
+        if (reader.IsDBNull(ordinal))
+        {
+            return null;
+        }
+
+        return reader.GetValue(ordinal) switch
+        {
+            DateTimeOffset value => value,
+            DateTime value => new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc)),
+            _ => throw new InvalidOperationException("The candidate source date has an invalid database type.")
+        };
+    }
+
     private static string BuildCandidateRows(bool roundClosed)
     {
-        var screening = roundClosed
-            ? "c.screened_out"
-            : """
-                c.intake_source = 'form'
-                AND current_response.id IS NOT NULL
-                AND EXISTS (
-                    SELECT 1
-                    FROM jsonb_array_elements(COALESCE(rule_set.rules, '[]'::jsonb)) AS screening_rule
-                    WHERE CASE lower(COALESCE(
-                        screening_rule ->> 'Operator',
-                        screening_rule ->> 'operator'))
-                        WHEN '0' THEN
-                            NULLIF(btrim(current_response.cells ->> (
-                                COALESCE(
-                                    screening_rule ->> 'Ordinal',
-                                    screening_rule ->> 'ordinal'))::int), '') IS NOT NULL
-                            AND lower(btrim(current_response.cells ->> (
-                                COALESCE(
-                                    screening_rule ->> 'Ordinal',
-                                    screening_rule ->> 'ordinal'))::int)) = lower(btrim(COALESCE(
-                                screening_rule ->> 'Value',
-                                screening_rule ->> 'value')))
-                        WHEN 'equals' THEN
-                            NULLIF(btrim(current_response.cells ->> (
-                                COALESCE(
-                                    screening_rule ->> 'Ordinal',
-                                    screening_rule ->> 'ordinal'))::int), '') IS NOT NULL
-                            AND lower(btrim(current_response.cells ->> (
-                                COALESCE(
-                                    screening_rule ->> 'Ordinal',
-                                    screening_rule ->> 'ordinal'))::int)) = lower(btrim(COALESCE(
-                                screening_rule ->> 'Value',
-                                screening_rule ->> 'value')))
-                        WHEN '1' THEN
-                            NULLIF(btrim(current_response.cells ->> (
-                                COALESCE(
-                                    screening_rule ->> 'Ordinal',
-                                    screening_rule ->> 'ordinal'))::int), '') IS NULL
-                            OR lower(btrim(current_response.cells ->> (
-                                COALESCE(
-                                    screening_rule ->> 'Ordinal',
-                                    screening_rule ->> 'ordinal'))::int)) <> lower(btrim(COALESCE(
-                                screening_rule ->> 'Value',
-                                screening_rule ->> 'value')))
-                        WHEN 'notequals' THEN
-                            NULLIF(btrim(current_response.cells ->> (
-                                COALESCE(
-                                    screening_rule ->> 'Ordinal',
-                                    screening_rule ->> 'ordinal'))::int), '') IS NULL
-                            OR lower(btrim(current_response.cells ->> (
-                                COALESCE(
-                                    screening_rule ->> 'Ordinal',
-                                    screening_rule ->> 'ordinal'))::int)) <> lower(btrim(COALESCE(
-                                screening_rule ->> 'Value',
-                                screening_rule ->> 'value')))
-                        WHEN '2' THEN
-                            NULLIF(btrim(current_response.cells ->> (
-                                COALESCE(
-                                    screening_rule ->> 'Ordinal',
-                                    screening_rule ->> 'ordinal'))::int), '') IS NULL
-                        WHEN 'isempty' THEN
-                            NULLIF(btrim(current_response.cells ->> (
-                                COALESCE(
-                                    screening_rule ->> 'Ordinal',
-                                    screening_rule ->> 'ordinal'))::int), '') IS NULL
-                        WHEN '3' THEN
-                            NULLIF(btrim(current_response.cells ->> (
-                                COALESCE(
-                                    screening_rule ->> 'Ordinal',
-                                    screening_rule ->> 'ordinal'))::int), '') IS NOT NULL
-                        WHEN 'notempty' THEN
-                            NULLIF(btrim(current_response.cells ->> (
-                                COALESCE(
-                                    screening_rule ->> 'Ordinal',
-                                    screening_rule ->> 'ordinal'))::int), '') IS NOT NULL
-                        WHEN '4' THEN
-                            NULLIF(btrim(current_response.cells ->> (
-                                COALESCE(
-                                    screening_rule ->> 'Ordinal',
-                                    screening_rule ->> 'ordinal'))::int), '') IS NOT NULL
-                            AND position(lower(btrim(COALESCE(
-                                screening_rule ->> 'Value',
-                                screening_rule ->> 'value'))) in lower(btrim(current_response.cells ->> (
-                                COALESCE(
-                                    screening_rule ->> 'Ordinal',
-                                    screening_rule ->> 'ordinal'))::int))) > 0
-                        WHEN 'contains' THEN
-                            NULLIF(btrim(current_response.cells ->> (
-                                COALESCE(
-                                    screening_rule ->> 'Ordinal',
-                                    screening_rule ->> 'ordinal'))::int), '') IS NOT NULL
-                            AND position(lower(btrim(COALESCE(
-                                screening_rule ->> 'Value',
-                                screening_rule ->> 'value'))) in lower(btrim(current_response.cells ->> (
-                                COALESCE(
-                                    screening_rule ->> 'Ordinal',
-                                    screening_rule ->> 'ordinal'))::int))) > 0
-                        ELSE FALSE
-                    END
-                )
+        var ruleOrdinal = "(COALESCE(screening_rule.rule ->> 'Ordinal', screening_rule.rule ->> 'ordinal'))::int";
+        var cell = $"current_response.cells ->> {ruleOrdinal}";
+        var trimmedCell = $"btrim({cell})";
+        var nonEmptyCell = $"NULLIF({trimmedCell}, '')";
+        var ruleValue = "btrim(COALESCE(screening_rule.rule ->> 'Value', screening_rule.rule ->> 'value'))";
+        var normalizedCell = $"lower({trimmedCell})";
+        var normalizedValue = $"lower({ruleValue})";
+        var ruleOperator = "lower(COALESCE(screening_rule.rule ->> 'Operator', screening_rule.rule ->> 'operator'))";
+        var matchesRule = $"""
+            CASE {ruleOperator}
+                WHEN '0' THEN
+                    {nonEmptyCell} IS NOT NULL AND {normalizedCell} = {normalizedValue}
+                WHEN 'equals' THEN
+                    {nonEmptyCell} IS NOT NULL AND {normalizedCell} = {normalizedValue}
+                WHEN '1' THEN
+                    {nonEmptyCell} IS NULL OR {normalizedCell} <> {normalizedValue}
+                WHEN 'notequals' THEN
+                    {nonEmptyCell} IS NULL OR {normalizedCell} <> {normalizedValue}
+                WHEN 'not-equals' THEN
+                    {nonEmptyCell} IS NULL OR {normalizedCell} <> {normalizedValue}
+                WHEN '2' THEN
+                    {nonEmptyCell} IS NULL
+                WHEN 'isempty' THEN
+                    {nonEmptyCell} IS NULL
+                WHEN 'is-empty' THEN
+                    {nonEmptyCell} IS NULL
+                WHEN '3' THEN
+                    {nonEmptyCell} IS NOT NULL
+                WHEN 'notempty' THEN
+                    {nonEmptyCell} IS NOT NULL
+                WHEN 'not-empty' THEN
+                    {nonEmptyCell} IS NOT NULL
+                WHEN '4' THEN
+                    {nonEmptyCell} IS NOT NULL AND position({normalizedValue} in {normalizedCell}) > 0
+                WHEN 'contains' THEN
+                    {nonEmptyCell} IS NOT NULL AND position({normalizedValue} in {normalizedCell}) > 0
+                ELSE FALSE
+            END
+            """;
+        var activeScreeningJoin = roundClosed
+            ? string.Empty
+            : $"""
+                LEFT JOIN LATERAL (
+                    SELECT COALESCE(
+                        jsonb_agg(
+                            (screening_rule.rule_index - 1)::int
+                            ORDER BY screening_rule.rule_index)
+                            FILTER (WHERE {matchesRule}),
+                        '[]'::jsonb) AS fired_rule_indexes
+                    FROM jsonb_array_elements(
+                        COALESCE(rule_set.rules, '[]'::jsonb))
+                        WITH ORDINALITY AS screening_rule(rule, rule_index)
+                ) AS screening
+                    ON c.intake_source = 'form'
+                    AND current_response.id IS NOT NULL
                 """;
+        var screeningProjection = roundClosed
+            ? """
+                    c.screened_out,
+                    CASE
+                        WHEN c.screened_out
+                            THEN COALESCE(c.screening_verdict, '[]'::jsonb)
+                        ELSE '[]'::jsonb
+                    END AS fired_rules
+                """
+            : """
+                    jsonb_array_length(
+                        COALESCE(screening.fired_rule_indexes, '[]'::jsonb)) > 0
+                        AS screened_out,
+                    COALESCE(screening.fired_rule_indexes, '[]'::jsonb) AS fired_rules
+                """;
+
         return $"""
             WITH candidate_rows AS (
                 SELECT
                     c.id,
-                    c.review_status,
-                    c.hire_outcome,
                     c.full_name,
                     c.contact_email,
+                    c.notes,
+                    c.review_status,
+                    c.hire_outcome,
                     c.source_sender_name,
                     c.source_sender_email,
                     c.source_subject,
                     c.source_sent_at,
-                    {screening} AS screened_out
+                    (
+                        SELECT COUNT(*)::int
+                        FROM cv_document AS cv_document
+                        WHERE cv_document.candidate_id = c.id
+                    ) AS cv_document_count,
+                    c.intake_source,
+                    c.is_resubmitted,
+                    {screeningProjection}
                 FROM candidate AS c
                 LEFT JOIN candidate_form_response AS current_response
                     ON current_response.candidate_id = c.id
@@ -346,10 +418,15 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
                     ON round.id = c.intake_round_id
                 LEFT JOIN screening_rule_set AS rule_set
                     ON rule_set.vacancy_id = round.vacancy_id
+                {activeScreeningJoin}
                 WHERE c.intake_round_id = @round_id
             )
             """;
     }
+
+    private sealed record ScreeningContext(
+        ScreeningRuleSet? RuleSet,
+        FormLayout? Layout);
 
     private static int ReadCount(DbDataReader reader, int ordinal) =>
         checked((int)reader.GetInt64(ordinal));

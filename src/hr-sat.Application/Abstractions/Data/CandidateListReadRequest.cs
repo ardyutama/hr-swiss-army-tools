@@ -8,4 +8,5 @@ public sealed record CandidateListReadRequest(
     string? Query,
     string? Sort,
     bool IncludeScreenedOut,
-    int Page);
+    int Page,
+    int PageSize);

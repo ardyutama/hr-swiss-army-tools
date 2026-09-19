@@ -57,7 +57,16 @@ public sealed class ScreeningRuleSet : Entity
         IReadOnlyList<string?> cells,
         FormLayout layout)
     {
-        var firedIndexes = Evaluate(cells);
+        return FormatDisplay(Evaluate(cells), layout);
+    }
+
+    public IReadOnlyList<ScreeningRuleMatch> FormatDisplay(
+        IReadOnlyList<int> firedIndexes,
+        FormLayout layout)
+    {
+        ArgumentNullException.ThrowIfNull(firedIndexes);
+        ArgumentNullException.ThrowIfNull(layout);
+
         return firedIndexes
             .Select(index => new ScreeningRuleMatch(
                 index,

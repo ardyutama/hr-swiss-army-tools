@@ -1,6 +1,9 @@
 using hr_sat.Application.Features.Candidates.List;
+using hr_sat.Application.Abstractions.Data;
 using hr_sat.Domain.Candidates;
 using hr_sat.Domain.IntakeRounds;
+using hr_sat.Domain.Vacancies;
+using NSubstitute;
 using Shouldly;
 using Xunit;
 
@@ -9,55 +12,63 @@ namespace hr_sat.Tests.Candidates;
 public sealed class ListCandidatesHandlerTests
 {
     [Fact]
-    public async Task Handle_Should_ReturnCandidatesInNewestReceivedOrder_WhenVacancyExists() // US-14: HR reviews candidates in received-date order
+    public async Task Handle_Should_AssembleReaderRowsWithoutLoadingCandidateGraphs_WhenRoundExists() // US-14: HR sees candidate summaries in the candidate list
     {
         await using var dbContext = new TestDbContext();
         var vacancy = CandidateTestData.CreateVacancy();
         dbContext.Vacancies.Add(vacancy);
         await dbContext.SaveChangesAsync(CancellationToken.None);
-        dbContext.Candidates.AddRange(
-            CandidateTestData.CreateCandidate(
-                vacancy.Rounds.Single().Id,
-                2,
-                sourceSentAt: new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero)),
-            CandidateTestData.CreateCandidate(
-                vacancy.Rounds.Single().Id,
+        var reader = Substitute.For<ICandidateListReader>();
+        reader.ReadAsync(Arg.Any<CandidateListReadRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new CandidateListReadResult(
+                [new CandidateListReadRow(
+                    42,
+                    "Reader Name",
+                    "reader@example.com",
+                    "Reader note",
+                    "flagged",
+                    "none",
+                    "Sender Name",
+                    "sender@example.com",
+                    "Reader subject",
+                    new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero),
+                    2,
+                    "form",
+                    true,
+                    true,
+                    [new ScreeningRuleMatch(0, "Availability · equals \"no\"")])],
                 1,
-                sourceSentAt: new DateTimeOffset(2026, 8, 20, 11, 0, 0, TimeSpan.Zero)));
-        await dbContext.SaveChangesAsync(CancellationToken.None);
+                1,
+                new CandidateListReadCounts(0, 1, 0, 0, 1, 0, 0, 0, 0, 1)));
 
-        var handler = new ListCandidatesQueryHandler(dbContext);
+        var handler = new ListCandidatesQueryHandler(dbContext, reader);
 
         var result = await handler.Handle(
             new ListCandidatesQuery(vacancy.Id, vacancy.Rounds.Single().Id),
             CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
-        result.Value.Items.Select(candidate => candidate.SourceSenderName)
-            .ShouldBe(["Candidate 2", "Candidate 1"]);
-    }
-
-    [Fact]
-    public async Task Handle_Should_IncludeCvDocumentCount_WhenVacancyExists() // US-14: HR sees at a glance whether a candidate has a CV
-    {
-        await using var dbContext = new TestDbContext();
-        var (vacancy, seededCandidate) = await CandidateTestData.SeedCandidateAsync(dbContext);
-        var handler = new ListCandidatesQueryHandler(dbContext);
-
-        var result = await handler.Handle(
-            new ListCandidatesQuery(vacancy.Id, seededCandidate.IntakeRoundId),
-            CancellationToken.None);
-
-        result.IsSuccess.ShouldBeTrue();
-        var candidate = result.Value.Items.ShouldHaveSingleItem();
-        candidate.CvDocumentCount.ShouldBe(1);
+        var item = result.Value.Items.ShouldHaveSingleItem();
+        item.Id.ShouldBe(42);
+        item.FullName.ShouldBe("Reader Name");
+        item.CvDocumentCount.ShouldBe(2);
+        item.ScreenedOut.ShouldBeTrue();
+        item.FiredRules.ShouldHaveSingleItem().Display.ShouldBe(
+            "Availability · equals \"no\"");
+        await reader.Received(1).ReadAsync(
+            Arg.Is<CandidateListReadRequest>(request =>
+                request.RoundId == vacancy.Rounds.Single().Id &&
+                request.PageSize == 100),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task Handle_Should_ReturnNotFound_WhenVacancyDoesNotExist() // US-14: HR cannot review candidates for an unknown vacancy
     {
         await using var dbContext = new TestDbContext();
-        var handler = new ListCandidatesQueryHandler(dbContext);
+        var handler = new ListCandidatesQueryHandler(
+            dbContext,
+            Substitute.For<ICandidateListReader>());
 
         var result = await handler.Handle(
             new ListCandidatesQuery(999, 1),
@@ -74,7 +85,9 @@ public sealed class ListCandidatesHandlerTests
         var vacancy = CandidateTestData.CreateVacancy();
         dbContext.Vacancies.Add(vacancy);
         await dbContext.SaveChangesAsync(CancellationToken.None);
-        var handler = new ListCandidatesQueryHandler(dbContext);
+        var handler = new ListCandidatesQueryHandler(
+            dbContext,
+            Substitute.For<ICandidateListReader>());
 
         var result = await handler.Handle(
             new ListCandidatesQuery(vacancy.Id, 999),
