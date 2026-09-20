@@ -8,9 +8,11 @@ import {
   closedRound,
   jsonResponse,
   mountView,
+  pagedCandidates,
   stubFetch,
   toastAdd,
   vacancyDetails,
+  type CandidateListItem,
   type FetchHandler,
 } from './mountVacancyDetail'
 
@@ -24,7 +26,7 @@ describe('VacancyDetailView · messaging (US-19)', () => {
     options: {
       templates?: () => unknown
       sources?: Record<string, unknown[]>
-      candidates?: () => unknown[]
+      candidates?: () => CandidateListItem[]
       onUpsert?: (kind: string, body: unknown) => unknown
       onDelete?: (kind: string) => void
       onRender?: (body: unknown) => unknown
@@ -60,7 +62,12 @@ describe('VacancyDetailView · messaging (US-19)', () => {
           ),
         )
       }
+      // Row send buttons read the paged list; the send dialogs read the
+      // unpaged messaging summary — the same fixture feeds both.
       if (url.includes('/rounds/1/candidates')) {
+        return Promise.resolve(jsonResponse(pagedCandidates(options.candidates?.() ?? [])))
+      }
+      if (url.endsWith('/rounds/1/messaging-summary')) {
         return Promise.resolve(jsonResponse(options.candidates?.() ?? []))
       }
       return undefined
@@ -443,27 +450,29 @@ describe('VacancyDetailView · messaging (US-19)', () => {
         (url) => {
           if (url.includes('/rounds/1/candidates')) {
             return Promise.resolve(
-              jsonResponse([
-                candidateSummary(1),
-                bobSummary({ contactEmail: 'bob@example.com' }),
-                candidateSummary(3, {
-                  sourceSenderName: 'Fred Flagged',
-                  sourceSenderEmail: 'fred@example.com',
-                  reviewStatus: 'flagged',
-                }),
-                candidateSummary(4, {
-                  sourceSenderName: 'Hilda Hired',
-                  sourceSenderEmail: 'hilda@example.com',
-                  reviewStatus: 'shortlisted',
-                  hireOutcome: 'hired',
-                  contactEmail: 'hilda@example.com',
-                }),
-                candidateSummary(5, {
-                  sourceSenderName: 'Eve Emailless',
-                  sourceSenderEmail: 'eve@example.com',
-                  reviewStatus: 'rejected',
-                }),
-              ]),
+              jsonResponse(
+                pagedCandidates([
+                  candidateSummary(1),
+                  bobSummary({ contactEmail: 'bob@example.com' }),
+                  candidateSummary(3, {
+                    sourceSenderName: 'Fred Flagged',
+                    sourceSenderEmail: 'fred@example.com',
+                    reviewStatus: 'flagged',
+                  }),
+                  candidateSummary(4, {
+                    sourceSenderName: 'Hilda Hired',
+                    sourceSenderEmail: 'hilda@example.com',
+                    reviewStatus: 'shortlisted',
+                    hireOutcome: 'hired',
+                    contactEmail: 'hilda@example.com',
+                  }),
+                  candidateSummary(5, {
+                    sourceSenderName: 'Eve Emailless',
+                    sourceSenderEmail: 'eve@example.com',
+                    reviewStatus: 'rejected',
+                  }),
+                ]),
+              ),
             )
           }
           return undefined

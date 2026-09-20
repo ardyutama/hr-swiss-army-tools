@@ -2,7 +2,7 @@ import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-uti
 import { afterEach, expect, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
-import VacancyDetailView from './VacancyDetailView.vue'
+import SpecAppShell from './SpecAppShell.vue'
 
 // The toast module mock is per-file: `vi.mock` is hoisted, so each spec declares
 // the mock itself and points its factory at this shared fn.
@@ -28,6 +28,18 @@ export function stubFetch(vacancy: () => unknown, handler: FetchHandler): void {
       }
       if (url.endsWith('/vacancies/1')) {
         return Promise.resolve(jsonResponse(vacancy()))
+      }
+      // No Messaging summary by default: the send dialogs read an empty round.
+      if (url.endsWith('/messaging-summary')) {
+        return Promise.resolve(jsonResponse([]))
+      }
+      // No Screening Rule set by default (404 is the client's empty state, not
+      // a failure). The preview endpoint ends in `/preview`, so this never
+      // shadows it.
+      if (url.endsWith('/screening-rules')) {
+        return Promise.resolve(
+          jsonResponse({ title: 'ScreeningRules.NotFound', detail: 'No screening rules.' }, 404),
+        )
       }
       // No Form Layout by default: the vacancy starts unmapped (404 is the
       // client's empty state, not a failure).
@@ -105,6 +117,9 @@ export function candidateSummary(id: number, overrides: Partial<Record<string, u
     reviewStatus: 'new',
     hireOutcome: 'none',
     isResubmitted: false,
+    intakeSource: 'email',
+    screenedOut: false,
+    firedRules: [] as { index: number; display: string }[],
     sourceSenderName: 'Alice Applicant',
     sourceSenderEmail: 'alice@example.com',
     sourceSubject: 'Application for Welder',
@@ -125,6 +140,138 @@ export function bobSummary(overrides: Partial<Record<string, unknown>> = {}) {
   })
 }
 
+/** The candidate fields the paged-list fixtures read; `candidateSummary` satisfies it. */
+export interface CandidateListItem {
+  id: number
+  reviewStatus: string
+  hireOutcome: string
+  screenedOut: boolean
+  fullName: string | null
+  contactEmail: string | null
+  sourceSenderName: string | null
+  sourceSenderEmail: string | null
+  sourceSubject: string | null
+  sourceSentAt: string | null
+}
+
+// Counts mirror PostgresCandidateListReader.ReadCountsAsync: computed over the
+// whole round, split by screened_out, never filter- nor toggle-aware.
+function listCounts(items: CandidateListItem[]) {
+  const nonScreened = items.filter((item) => !item.screenedOut)
+  const shortlisted = nonScreened.filter((item) => item.reviewStatus === 'shortlisted')
+  const byStatus = (status: string) =>
+    nonScreened.filter((item) => item.reviewStatus === status).length
+  const byOutcome = (outcome: string) =>
+    shortlisted.filter((item) => item.hireOutcome === outcome).length
+  return {
+    status: {
+      new: byStatus('new'),
+      flagged: byStatus('flagged'),
+      shortlisted: shortlisted.length,
+      rejected: byStatus('rejected'),
+    },
+    outcome: {
+      any: nonScreened.length,
+      undecided: byOutcome('none'),
+      hired: byOutcome('hired'),
+      runaway: byOutcome('runaway'),
+      declined: byOutcome('declined'),
+    },
+    screenedOut: items.length - nonScreened.length,
+  }
+}
+
+/**
+ * A static one-page envelope for specs that only render the list: items pass
+ * through verbatim, counts derive from them (the fixture IS the whole round),
+ * and the totals equal the non-screened length.
+ */
+export function pagedCandidates(
+  items: CandidateListItem[],
+  overrides: Record<string, unknown> = {},
+) {
+  const nonScreened = items.filter((item) => !item.screenedOut)
+  return {
+    items,
+    page: 1,
+    pageSize: 100,
+    total: nonScreened.length,
+    filteredTotal: nonScreened.length,
+    counts: listCounts(items),
+    ...overrides,
+  }
+}
+
+/**
+ * A mini server for filter-dependent specs: parses the list query out of the
+ * request URL and mirrors PostgresCandidateListReader — counts over the whole
+ * round (never filter- nor toggle-aware), `total` over the screened scope,
+ * `filteredTotal` over scope + filters, rows sorted NULLs-last by received-at
+ * with an id tiebreak, page size 100.
+ */
+export function pagedCandidatesFor(url: string, items: CandidateListItem[]) {
+  const params = new URL(url, 'http://localhost').searchParams
+  const status = params.get('status') ?? 'all'
+  const outcome = params.get('outcome') ?? 'any'
+  const query = (params.get('query') ?? '').trim().toLowerCase()
+  const oldestFirst = params.get('sort') === 'oldest'
+  const screenedAll = params.get('screened') === 'all'
+  const parsedPage = Number.parseInt(params.get('page') ?? '1', 10)
+  const page = Number.isFinite(parsedPage) && parsedPage > 1 ? parsedPage : 1
+  const pageSize = 100
+
+  const scoped = screenedAll ? items : items.filter((item) => !item.screenedOut)
+  const filtered = scoped.filter((item) => {
+    if (status !== 'all' && item.reviewStatus !== status) {
+      return false
+    }
+    if (outcome !== 'any') {
+      if (item.reviewStatus !== 'shortlisted') {
+        return false
+      }
+      const matches =
+        outcome === 'undecided' ? item.hireOutcome === 'none' : item.hireOutcome === outcome
+      if (!matches) {
+        return false
+      }
+    }
+    if (query !== '') {
+      const haystack = [
+        item.fullName,
+        item.contactEmail,
+        item.sourceSenderName,
+        item.sourceSenderEmail,
+        item.sourceSubject,
+      ].map((value) => (value ?? '').toLowerCase())
+      if (!haystack.some((value) => value.includes(query))) {
+        return false
+      }
+    }
+    return true
+  })
+
+  const direction = oldestFirst ? 1 : -1
+  const sorted = [...filtered].sort((left, right) => {
+    if (left.sourceSentAt === null || right.sourceSentAt === null) {
+      if (left.sourceSentAt === null && right.sourceSentAt === null) {
+        return left.id - right.id
+      }
+      return left.sourceSentAt === null ? 1 : -1
+    }
+    const byDate = left.sourceSentAt.localeCompare(right.sourceSentAt) * direction
+    return byDate !== 0 ? byDate : left.id - right.id
+  })
+
+  return {
+    items: sorted.slice((page - 1) * pageSize, page * pageSize),
+    page,
+    pageSize,
+    total: scoped.length,
+    filteredTotal: filtered.length,
+    counts: listCounts(items),
+  }
+}
+
 // The Form Layout GET wire shape spells roles lowercased; writes take camelCase.
 export function formLayoutDto(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -143,20 +290,20 @@ export function formLayoutDto(overrides: Partial<Record<string, unknown>> = {}) 
   }
 }
 
-export function mountView(id = '1') {
-  const router = createRouter({
-    history: createMemoryHistory(),
-    routes: [
-      { path: '/', name: 'vacancy-list', component: { template: '<div />' } },
-      { path: '/vacancies/:id', name: 'vacancy-detail', component: { template: '<div />' } },
-      {
-        path: '/vacancies/:id/rounds/:roundId/review/:candidateId',
-        name: 'candidate-review',
-        component: { template: '<div />' },
-      },
-    ],
-  })
-  const wrapper = mount(VacancyDetailView, {
+const testRoutes = [
+  { path: '/', name: 'vacancy-list', component: { template: '<div />' } },
+  { path: '/vacancies/:id', name: 'vacancy-detail', component: { template: '<div />' } },
+  {
+    path: '/vacancies/:id/rounds/:roundId/review/:candidateId',
+    name: 'candidate-review',
+    component: { template: '<div />' },
+  },
+]
+
+// The shell mirrors the application root: UApp provides the TooltipProvider
+// that UTooltip (toolbar toggle, rule chips) injects.
+function mountViewRoot(id: string, router: ReturnType<typeof createRouter>) {
+  return mount(SpecAppShell, {
     props: { id },
     global: {
       plugins: [router],
@@ -165,33 +312,25 @@ export function mountView(id = '1') {
       },
     },
   })
+}
+
+export function mountView(id = '1') {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: testRoutes,
+  })
+  const wrapper = mountViewRoot(id, router)
   return { router, wrapper }
 }
 
 export async function mountViewWithQuery(id: string, query: Record<string, string>) {
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [
-      { path: '/', name: 'vacancy-list', component: { template: '<div />' } },
-      { path: '/vacancies/:id', name: 'vacancy-detail', component: { template: '<div />' } },
-      {
-        path: '/vacancies/:id/rounds/:roundId/review/:candidateId',
-        name: 'candidate-review',
-        component: { template: '<div />' },
-      },
-    ],
+    routes: testRoutes,
   })
   void router.push({ path: `/vacancies/${id}`, query })
   await router.isReady()
-  const wrapper = mount(VacancyDetailView, {
-    props: { id },
-    global: {
-      plugins: [router],
-      stubs: {
-        RouterLink: { template: '<a><slot /></a>' },
-      },
-    },
-  })
+  const wrapper = mountViewRoot(id, router)
   return { router, wrapper }
 }
 

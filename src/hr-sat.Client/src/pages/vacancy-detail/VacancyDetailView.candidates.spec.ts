@@ -11,6 +11,8 @@ import {
   mountView,
   mountViewWithQuery,
   openImportDialog,
+  pagedCandidates,
+  pagedCandidatesFor,
   stubFetch,
   toastAdd,
   vacancyDetails,
@@ -34,15 +36,17 @@ describe('VacancyDetailView · candidate list', () => {
       (url) => {
         if (url.includes('/rounds/1/candidates')) {
           return Promise.resolve(
-            jsonResponse([
-              candidateSummary(1),
-              bobSummary({ contactEmail: 'bob@example.com' }),
-              candidateSummary(3, {
-                sourceSenderName: null,
-                sourceSenderEmail: null,
-                sourceSubject: 'CV submission via web form',
-              }),
-            ]),
+            jsonResponse(
+              pagedCandidates([
+                candidateSummary(1),
+                bobSummary({ contactEmail: 'bob@example.com' }),
+                candidateSummary(3, {
+                  sourceSenderName: null,
+                  sourceSenderEmail: null,
+                  sourceSubject: 'CV submission via web form',
+                }),
+              ]),
+            ),
           )
         }
         return undefined
@@ -111,7 +115,7 @@ describe('VacancyDetailView · candidate list', () => {
       () => vacancyDetails({ hiring: { neededHires: 4, activeHires: 1 } }),
       (url) => {
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },
@@ -146,7 +150,9 @@ describe('VacancyDetailView · candidate list', () => {
         }
         if (url.includes('/rounds/1/candidates')) {
           return Promise.resolve(
-            jsonResponse(deleted ? [candidateSummary(1)] : [candidateSummary(1), bobSummary()]),
+            jsonResponse(
+              pagedCandidates(deleted ? [candidateSummary(1)] : [candidateSummary(1), bobSummary()]),
+            ),
           )
         }
         return undefined
@@ -188,7 +194,7 @@ describe('VacancyDetailView · candidate list', () => {
           return Promise.resolve(jsonResponse({ title: 'Server error' }, 500))
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([candidateSummary(1), bobSummary()]))
+          return Promise.resolve(jsonResponse(pagedCandidates([candidateSummary(1), bobSummary()])))
         }
         return undefined
       },
@@ -234,7 +240,9 @@ describe('VacancyDetailView · candidate list', () => {
           )
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse(imported ? [candidateSummary(1)] : []))
+          return Promise.resolve(
+            jsonResponse(pagedCandidates(imported ? [candidateSummary(1)] : [])),
+          )
         }
         return undefined
       },
@@ -259,7 +267,7 @@ describe('VacancyDetailView · candidate list', () => {
       () => vacancyDetails({ status: 'closed', closedAt: '2026-08-29T00:00:00Z' }),
       (url) => {
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },
@@ -288,7 +296,7 @@ describe('VacancyDetailView · candidate list', () => {
         }),
       (url) => {
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+          return Promise.resolve(jsonResponse(pagedCandidates([candidateSummary(1)])))
         }
         return undefined
       },
@@ -320,7 +328,7 @@ describe('VacancyDetailView · candidate list', () => {
           )
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+          return Promise.resolve(jsonResponse(pagedCandidates([candidateSummary(1)])))
         }
         return undefined
       },
@@ -354,21 +362,20 @@ describe('VacancyDetailView · candidate list', () => {
   })
 
   it('US-14: HR filters by review-status chips with live counts, combined AND with search', async () => {
+    const items = [
+      candidateSummary(1),
+      bobSummary(),
+      candidateSummary(3, {
+        sourceSenderName: 'Carol Welder',
+        sourceSenderEmail: 'carol@example.com',
+        reviewStatus: 'shortlisted',
+      }),
+    ]
     stubFetch(
       () => vacancyDetails(),
       (url) => {
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(
-            jsonResponse([
-              candidateSummary(1),
-              bobSummary(),
-              candidateSummary(3, {
-                sourceSenderName: 'Carol Welder',
-                sourceSenderEmail: 'carol@example.com',
-                reviewStatus: 'shortlisted',
-              }),
-            ]),
-          )
+          return Promise.resolve(jsonResponse(pagedCandidatesFor(url, items)))
         }
         return undefined
       },
@@ -379,7 +386,7 @@ describe('VacancyDetailView · candidate list', () => {
 
     const chips = () => wrapper.findAll('[aria-label="Filter by review status"] button')
 
-    // Live counts per chip; the full list shows before any filter is active.
+    // Server-computed counts per chip; the full list shows before any filter is active.
     expect(chips().map((chip) => chip.text().replace(/\s+/g, ' ').trim())).toEqual([
       'All 3',
       'New 1',
@@ -391,33 +398,49 @@ describe('VacancyDetailView · candidate list', () => {
 
     // Only the active chip is highlighted.
     await chips()[3]!.trigger('click')
+    await flushPromises()
     expect(wrapper.findAll('.crow')).toHaveLength(2)
     expect(wrapper.text()).not.toContain('Alice Applicant')
     expect(chips()[3]!.attributes('aria-pressed')).toBe('true')
     expect(chips()[0]!.attributes('aria-pressed')).toBe('false')
 
-    // Search narrows the filtered list further (AND semantics).
-    await wrapper.find('input[aria-label="Search candidates"]').setValue('bob')
-    const rows = wrapper.findAll('.crow')
-    expect(rows).toHaveLength(1)
-    expect(rows[0]!.text()).toContain('Bob Builder')
+    // Search narrows the filtered list further (AND semantics); the box is a
+    // 300 ms debounced draft, so the queries land after the quiet period.
+    const search = wrapper.find('input[aria-label="Search candidates"]')
+    vi.useFakeTimers()
+    try {
+      await search.setValue('bob')
+      await vi.advanceTimersByTimeAsync(350)
+      await flushPromises()
+      const rows = wrapper.findAll('.crow')
+      expect(rows).toHaveLength(1)
+      expect(rows[0]!.text()).toContain('Bob Builder')
 
-    // No match under the active filters shows the shared filter-empty state.
-    await wrapper.find('input[aria-label="Search candidates"]').setValue('alice')
-    expect(wrapper.findAll('.crow')).toHaveLength(0)
-    expect(wrapper.text()).toContain('No candidates match')
-    expect(wrapper.text()).not.toContain('No candidates yet')
+      // No match under the active filters shows the shared filter-empty state.
+      await search.setValue('alice')
+      await vi.advanceTimersByTimeAsync(350)
+      await flushPromises()
+      expect(wrapper.findAll('.crow')).toHaveLength(0)
+      expect(wrapper.text()).toContain('No candidates match')
+      expect(wrapper.text()).not.toContain('No candidates yet')
 
-    // Clear filters restores the full list and resets the search input.
-    const clearButton = wrapper
-      .findAll('button')
-      .find((button) => button.text().includes('Clear filters'))
-    await clearButton!.trigger('click')
-    expect(wrapper.findAll('.crow')).toHaveLength(3)
-    expect(
-      (wrapper.find('input[aria-label="Search candidates"]').element as HTMLInputElement).value,
-    ).toBe('')
-    expect(chips()[0]!.attributes('aria-pressed')).toBe('true')
+      // Clear filters restores the full list and resets the search input. The
+      // click stays inside the fake-timer block: after `useRealTimers`, Vue
+      // drops VTU-triggered clicks on elements whose handlers attached while
+      // the fake clock ran ahead (event._vts < handler attach time).
+      const clearButton = wrapper
+        .findAll('button')
+        .find((button) => button.text().includes('Clear filters'))
+      await clearButton!.trigger('click')
+      await flushPromises()
+      expect(wrapper.findAll('.crow')).toHaveLength(3)
+      expect(
+        (wrapper.find('input[aria-label="Search candidates"]').element as HTMLInputElement).value,
+      ).toBe('')
+      expect(chips()[0]!.attributes('aria-pressed')).toBe('true')
+    } finally {
+      vi.useRealTimers()
+    }
     wrapper.unmount()
   })
 
@@ -426,7 +449,7 @@ describe('VacancyDetailView · candidate list', () => {
       () => vacancyDetails(),
       (url) => {
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([candidateSummary(1), bobSummary()]))
+          return Promise.resolve(jsonResponse(pagedCandidates([candidateSummary(1), bobSummary()])))
         }
         return undefined
       },
@@ -443,34 +466,36 @@ describe('VacancyDetailView · candidate list', () => {
 
     // Shortlisted: outcome chips stay visible.
     await statusChips()[3]!.trigger('click')
+    await flushPromises()
     expect(outcomeGroup().exists()).toBe(true)
 
     // New: outcome chips hide — the facet does not exist outside Shortlisted.
     await statusChips()[1]!.trigger('click')
+    await flushPromises()
     expect(outcomeGroup().exists()).toBe(false)
 
     // Back to All: outcome chips return.
     await statusChips()[0]!.trigger('click')
+    await flushPromises()
     expect(outcomeGroup().exists()).toBe(true)
     wrapper.unmount()
   })
 
   it('US-14: a status that excludes shortlisted sanitizes a stale outcome from the URL', async () => {
+    const items = [
+      candidateSummary(1),
+      candidateSummary(2, {
+        sourceSenderName: 'Carol Welder',
+        sourceSenderEmail: 'carol@example.com',
+        reviewStatus: 'shortlisted',
+        hireOutcome: 'hired',
+      }),
+    ]
     stubFetch(
       () => vacancyDetails(),
       (url) => {
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(
-            jsonResponse([
-              candidateSummary(1),
-              candidateSummary(2, {
-                sourceSenderName: 'Carol Welder',
-                sourceSenderEmail: 'carol@example.com',
-                reviewStatus: 'shortlisted',
-                hireOutcome: 'hired',
-              }),
-            ]),
-          )
+          return Promise.resolve(jsonResponse(pagedCandidatesFor(url, items)))
         }
         return undefined
       },
@@ -489,21 +514,20 @@ describe('VacancyDetailView · candidate list', () => {
   })
 
   it('US-14: HR searches candidates by sender email and email subject', async () => {
+    const items = [
+      candidateSummary(1),
+      bobSummary(),
+      candidateSummary(3, {
+        sourceSenderName: null,
+        sourceSenderEmail: null,
+        sourceSubject: 'CV submission via web form',
+      }),
+    ]
     stubFetch(
       () => vacancyDetails(),
       (url) => {
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(
-            jsonResponse([
-              candidateSummary(1),
-              bobSummary(),
-              candidateSummary(3, {
-                sourceSenderName: null,
-                sourceSenderEmail: null,
-                sourceSubject: 'CV submission via web form',
-              }),
-            ]),
-          )
+          return Promise.resolve(jsonResponse(pagedCandidatesFor(url, items)))
         }
         return undefined
       },
@@ -513,37 +537,46 @@ describe('VacancyDetailView · candidate list', () => {
     await flushPromises()
 
     const search = wrapper.find('input[aria-label="Search candidates"]')
+    vi.useFakeTimers()
+    try {
+      await search.setValue('bob@example.com')
+      await vi.advanceTimersByTimeAsync(350)
+      await flushPromises()
+      expect(wrapper.findAll('.crow')).toHaveLength(1)
+      expect(wrapper.text()).toContain('Bob Builder')
+      expect(wrapper.text()).not.toContain('Alice Applicant')
 
-    await search.setValue('bob@example.com')
-    expect(wrapper.findAll('.crow')).toHaveLength(1)
-    expect(wrapper.text()).toContain('Bob Builder')
-    expect(wrapper.text()).not.toContain('Alice Applicant')
+      await search.setValue('web form')
+      await vi.advanceTimersByTimeAsync(350)
+      await flushPromises()
+      expect(wrapper.findAll('.crow')).toHaveLength(1)
+      expect(wrapper.text()).toContain('CV submission via web form')
 
-    await search.setValue('web form')
-    expect(wrapper.findAll('.crow')).toHaveLength(1)
-    expect(wrapper.text()).toContain('CV submission via web form')
-
-    await search.setValue('')
-    expect(wrapper.findAll('.crow')).toHaveLength(3)
+      await search.setValue('')
+      await vi.advanceTimersByTimeAsync(350)
+      await flushPromises()
+      expect(wrapper.findAll('.crow')).toHaveLength(3)
+    } finally {
+      vi.useRealTimers()
+    }
     wrapper.unmount()
   })
 
   it('domain: the Bench outcome facet scopes to shortlisted candidates and composes with search', async () => {
+    const items = [
+      candidateSummary(1),
+      bobSummary(),
+      candidateSummary(3, {
+        sourceSenderName: 'Carol Hired',
+        reviewStatus: 'shortlisted',
+        hireOutcome: 'hired',
+      }),
+    ]
     stubFetch(
       () => vacancyDetails(),
       (url) => {
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(
-            jsonResponse([
-              candidateSummary(1),
-              bobSummary(),
-              candidateSummary(3, {
-                sourceSenderName: 'Carol Hired',
-                reviewStatus: 'shortlisted',
-                hireOutcome: 'hired',
-              }),
-            ]),
-          )
+          return Promise.resolve(jsonResponse(pagedCandidatesFor(url, items)))
         }
         return undefined
       },
@@ -562,45 +595,54 @@ describe('VacancyDetailView · candidate list', () => {
     ])
 
     await outcomeChips()[1]!.trigger('click')
+    await flushPromises()
     expect(wrapper.findAll('.crow')).toHaveLength(1)
     expect(wrapper.text()).toContain('Bob Builder')
     expect(wrapper.text()).not.toContain('Carol Hired')
 
-    await wrapper.find('input[aria-label="Search candidates"]').setValue('alice')
-    expect(wrapper.findAll('.crow')).toHaveLength(0)
-    expect(wrapper.text()).toContain('No candidates match these filters')
+    vi.useFakeTimers()
+    try {
+      await wrapper.find('input[aria-label="Search candidates"]').setValue('alice')
+      await vi.advanceTimersByTimeAsync(350)
+      await flushPromises()
+      expect(wrapper.findAll('.crow')).toHaveLength(0)
+      expect(wrapper.text()).toContain('No candidates match these filters')
 
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text().includes('Clear filters'))
-      ?.trigger('click')
-    expect(outcomeChips()[0]!.attributes('aria-pressed')).toBe('true')
-    expect(wrapper.findAll('.crow')).toHaveLength(3)
+      // Clear filters on the fake clock too (see the US-14 chips test above).
+      await wrapper
+        .findAll('button')
+        .find((button) => button.text().includes('Clear filters'))
+        ?.trigger('click')
+      await flushPromises()
+      expect(outcomeChips()[0]!.attributes('aria-pressed')).toBe('true')
+      expect(wrapper.findAll('.crow')).toHaveLength(3)
+    } finally {
+      vi.useRealTimers()
+    }
     wrapper.unmount()
   })
 
   it('US-14: HR sorts by received date, newest first by default, toggling to oldest', async () => {
+    const items = [
+      candidateSummary(1), // 2026-08-28
+      candidateSummary(2, {
+        sourceSenderName: 'Bob Builder',
+        sourceSentAt: '2026-08-30T15:30:00Z',
+      }),
+      candidateSummary(3, {
+        sourceSenderName: 'Carol Welder',
+        sourceSentAt: '2026-08-25T08:00:00Z',
+      }),
+      candidateSummary(4, {
+        sourceSenderName: 'Dave NoDate',
+        sourceSentAt: null,
+      }),
+    ]
     stubFetch(
       () => vacancyDetails(),
       (url) => {
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(
-            jsonResponse([
-              candidateSummary(1), // 2026-08-28
-              candidateSummary(2, {
-                sourceSenderName: 'Bob Builder',
-                sourceSentAt: '2026-08-30T15:30:00Z',
-              }),
-              candidateSummary(3, {
-                sourceSenderName: 'Carol Welder',
-                sourceSentAt: '2026-08-25T08:00:00Z',
-              }),
-              candidateSummary(4, {
-                sourceSenderName: 'Dave NoDate',
-                sourceSentAt: null,
-              }),
-            ]),
-          )
+          return Promise.resolve(jsonResponse(pagedCandidatesFor(url, items)))
         }
         return undefined
       },
@@ -617,10 +659,12 @@ describe('VacancyDetailView · candidate list', () => {
     expect(names()).toEqual(['Bob Builder', 'Alice Applicant', 'Carol Welder', 'Dave NoDate'])
 
     await sortHeader().find('button').trigger('click')
+    await flushPromises()
     expect(sortHeader().attributes('aria-sort')).toBe('ascending')
     expect(names()).toEqual(['Carol Welder', 'Alice Applicant', 'Bob Builder', 'Dave NoDate'])
 
     await sortHeader().find('button').trigger('click')
+    await flushPromises()
     expect(sortHeader().attributes('aria-sort')).toBe('descending')
     expect(names()).toEqual(['Bob Builder', 'Alice Applicant', 'Carol Welder', 'Dave NoDate'])
     wrapper.unmount()
@@ -632,11 +676,13 @@ describe('VacancyDetailView · candidate list', () => {
       (url) => {
         if (url.includes('/rounds/1/candidates')) {
           return Promise.resolve(
-            jsonResponse([
-              candidateSummary(1),
-              candidateSummary(2, { sourceSenderName: 'Bob Builder', cvDocumentCount: 2 }),
-              candidateSummary(3, { sourceSenderName: 'Carol NoCv', cvDocumentCount: 0 }),
-            ]),
+            jsonResponse(
+              pagedCandidates([
+                candidateSummary(1),
+                candidateSummary(2, { sourceSenderName: 'Bob Builder', cvDocumentCount: 2 }),
+                candidateSummary(3, { sourceSenderName: 'Carol NoCv', cvDocumentCount: 0 }),
+              ]),
+            ),
           )
         }
         return undefined
@@ -660,7 +706,7 @@ describe('VacancyDetailView · candidate list', () => {
       () => vacancyDetails(),
       (url) => {
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([candidateSummary(1), bobSummary()]))
+          return Promise.resolve(jsonResponse(pagedCandidates([candidateSummary(1), bobSummary()])))
         }
         return undefined
       },
@@ -679,29 +725,28 @@ describe('VacancyDetailView · candidate list', () => {
   })
 
   it('US-17: HR opens review with the active candidate filters and sort', async () => {
+    const items = [
+      candidateSummary(1, {
+        sourceSenderName: 'Alice Applicant',
+        reviewStatus: 'shortlisted',
+        sourceSentAt: '2026-08-30T09:00:00Z',
+      }),
+      candidateSummary(2, {
+        sourceSenderName: 'Bob Builder',
+        reviewStatus: 'shortlisted',
+        hireOutcome: 'hired',
+        sourceSentAt: '2026-08-20T09:00:00Z',
+      }),
+      candidateSummary(3, {
+        sourceSenderName: 'Carol Welder',
+        sourceSentAt: '2026-08-10T09:00:00Z',
+      }),
+    ]
     stubFetch(
       () => vacancyDetails(),
       (url) => {
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(
-            jsonResponse([
-              candidateSummary(1, {
-                sourceSenderName: 'Alice Applicant',
-                reviewStatus: 'shortlisted',
-                sourceSentAt: '2026-08-30T09:00:00Z',
-              }),
-              candidateSummary(2, {
-                sourceSenderName: 'Bob Builder',
-                reviewStatus: 'shortlisted',
-                hireOutcome: 'hired',
-                sourceSentAt: '2026-08-20T09:00:00Z',
-              }),
-              candidateSummary(3, {
-                sourceSenderName: 'Carol Welder',
-                sourceSentAt: '2026-08-10T09:00:00Z',
-              }),
-            ]),
-          )
+          return Promise.resolve(jsonResponse(pagedCandidatesFor(url, items)))
         }
         return undefined
       },
@@ -714,13 +759,20 @@ describe('VacancyDetailView · candidate list', () => {
       .findAll('[aria-label="Filter by review status"] button')
       .find((button) => button.text().includes('Shortlisted'))
     await shortlistChip!.trigger('click')
+    await flushPromises()
     await wrapper
       .findAll('[aria-label="Filter by hire outcome"] button')
       .find((button) => button.text().includes('Hired'))
       ?.trigger('click')
+    await flushPromises()
     await wrapper.find('th[aria-sort] button').trigger('click')
+    await flushPromises()
 
-    await wrapper.findAll('.crow')[0]!.trigger('click')
+    // After the filters and the oldest-first sort, Bob is the only row.
+    const rows = wrapper.findAll('.crow')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.text()).toContain('Bob Builder')
+    await rows[0]!.trigger('click')
     await flushPromises()
 
     expect(router.currentRoute.value.fullPath).toBe(
@@ -734,7 +786,7 @@ describe('VacancyDetailView · candidate list', () => {
       () => vacancyDetails(),
       (url) => {
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([candidateSummary(1), bobSummary()]))
+          return Promise.resolve(jsonResponse(pagedCandidates([candidateSummary(1), bobSummary()])))
         }
         return undefined
       },

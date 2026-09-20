@@ -204,6 +204,33 @@ public abstract class CandidateListReadContractTests
     }
 
     [Fact]
+    public async Task US_14_candidate_list_read_query_matches_typed_contact_phone()
+    {
+        await using var harness = await CreateHarnessAsync();
+        var seed = await CandidateListContractData.CreateAsync(harness.DbContext, []);
+        var byPhone = CandidateListContractData.AddFormCandidate(
+            harness.DbContext,
+            seed,
+            1,
+            ["Timestamp", "Phone Applicant", "phone@example.com", "Yes"]);
+        byPhone.UpdateDetails("Phone Applicant", "phone@example.com", "+62 812-3456")
+            .IsSuccess.ShouldBeTrue();
+        CandidateListContractData.AddFormCandidate(
+            harness.DbContext,
+            seed,
+            2,
+            ["Timestamp", "Other Applicant", "other@example.com", "Yes"]);
+        await harness.DbContext.SaveChangesAsync(CancellationToken.None);
+
+        var result = await harness.Reader.ReadAsync(
+            Request(seed.Round.Id, query: "812-3456"),
+            CancellationToken.None);
+
+        result.FilteredTotal.ShouldBe(1);
+        result.Rows.ShouldHaveSingleItem().FullName.ShouldBe("Phone Applicant");
+    }
+
+    [Fact]
     public async Task US_14_candidate_list_read_orders_both_directions_and_pages_rows()
     {
         await using var harness = await CreateHarnessAsync();

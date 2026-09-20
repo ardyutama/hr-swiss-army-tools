@@ -78,6 +78,7 @@ internal sealed class EfCandidateListReader(TestDbContext dbContext) : ICandidat
             candidate.Id,
             candidate.FullName,
             candidate.ContactEmail,
+            candidate.ContactPhone,
             candidate.Notes,
             candidate.ReviewStatus.ToString().ToLowerInvariant(),
             candidate.HireOutcome.ToString().ToLowerInvariant(),
@@ -119,6 +120,7 @@ internal sealed class EfCandidateListReader(TestDbContext dbContext) : ICandidat
             {
                 candidate.FullName,
                 candidate.ContactEmail,
+                candidate.ContactPhone,
                 candidate.SourceSenderName,
                 candidate.SourceSenderEmail,
                 candidate.SourceSubject

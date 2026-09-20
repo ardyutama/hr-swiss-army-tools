@@ -213,7 +213,9 @@ function stubApi(
       const id = Number(detailsMatch[1])
       return Promise.resolve(jsonResponse(options.details?.[id] ?? candidateDetails(id)))
     }
-    if (method === 'GET' && url.endsWith('/candidates')) {
+    // The review queue is server-filtered: it always carries a query string
+    // when filters are active, so match the path, never the tail.
+    if (method === 'GET' && url.includes('/review-queue')) {
       return Promise.resolve(
         jsonResponse(
           options.candidates ??
@@ -436,6 +438,61 @@ describe('ReviewView', () => {
     wrapper.unmount()
   })
 
+  it('domain: a screened-out candidate shows the screening notice with its fired rules', async () => {
+    stubApi({
+      details: {
+        1: candidateDetails(1, {
+          screening: {
+            screenedOut: true,
+            firedRules: [
+              { index: 0, display: 'Pengalaman kerja contains "fresh graduate"' },
+              { index: 1, display: 'Email aktif is empty' },
+            ],
+          },
+        }),
+      },
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    const notice = wrapper.find('[data-testid="screened-out-notice"]')
+    expect(notice.exists()).toBe(true)
+    expect(notice.text()).toContain('Screened out by 2 rules')
+    expect(notice.text()).toContain('Pengalaman kerja contains "fresh graduate"')
+    expect(notice.text()).toContain('Email aktif is empty')
+    expect(notice.text()).toContain('Screening never decides for you')
+    wrapper.unmount()
+  })
+
+  it('domain: a single fired rule singularizes the screening notice title', async () => {
+    stubApi({
+      details: {
+        1: candidateDetails(1, {
+          screening: {
+            screenedOut: true,
+            firedRules: [{ index: 0, display: 'Email aktif is empty' }],
+          },
+        }),
+      },
+    })
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="screened-out-notice"]').text()).toContain(
+      'Screened out by 1 rule',
+    )
+    wrapper.unmount()
+  })
+
+  it('domain: a candidate screening never evaluated renders no notice', async () => {
+    stubApi()
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="screened-out-notice"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('Promote: the review details show promotion history only when provenance exists', async () => {
     stubApi({
       details: {
@@ -546,19 +603,18 @@ describe('ReviewView', () => {
   })
 
   it('US-17: HR reviews the sorted, filtered candidate queue', async () => {
-    stubApi({
+    // The server filters and sorts: the stub returns the already-narrowed
+    // queue (oldest first: Bob 08-20, then Jane 08-30) and the test asserts
+    // the request carried the list's URL state.
+    const { requests } = stubApi({
       candidates: [
-        candidateSummary(1, {
-          reviewStatus: 'shortlisted',
-          sourceSentAt: '2026-08-30T09:00:00Z',
-        }),
         candidateSummary(2, {
           reviewStatus: 'shortlisted',
           sourceSentAt: '2026-08-20T09:00:00Z',
         }),
-        candidateSummary(3, {
-          reviewStatus: 'new',
-          sourceSentAt: '2026-08-10T09:00:00Z',
+        candidateSummary(1, {
+          reviewStatus: 'shortlisted',
+          sourceSentAt: '2026-08-30T09:00:00Z',
         }),
       ],
     })
@@ -567,6 +623,10 @@ describe('ReviewView', () => {
       sort: 'oldest',
     })
     await flushPromises()
+
+    const queueRequest = requests.find((request) => request.url.includes('/review-queue'))
+    expect(queueRequest?.url).toContain('status=shortlisted')
+    expect(queueRequest?.url).toContain('sort=oldest')
 
     expect(wrapper.text()).toContain('Bob Builder')
     expect(wrapper.text()).toContain('1 / 2')
@@ -1043,7 +1103,7 @@ describe('ReviewView', () => {
       if (/\/candidates\/\d+$/.test(url)) {
         return Promise.resolve(jsonResponse(candidateDetails(1)))
       }
-      if (url.endsWith('/candidates')) {
+      if (url.includes('/review-queue')) {
         return Promise.resolve(jsonResponse([candidateSummary(1), candidateSummary(2)]))
       }
       if (url.endsWith('/vacancies/1')) {

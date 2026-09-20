@@ -7,6 +7,7 @@ import ReviewHeader from '@/features/review/components/ReviewHeader.vue'
 import RequirementsPanel from '@/features/review/components/RequirementsPanel.vue'
 import CandidateDetailsPanel from '@/features/review/components/CandidateDetailsPanel.vue'
 import PriorApplicationNotice from '@/features/review/components/PriorApplicationNotice.vue'
+import ScreenedOutNotice from '@/features/review/components/ScreenedOutNotice.vue'
 import SourceEmailPanel from '@/features/review/components/SourceEmailPanel.vue'
 import NotesEditor from '@/features/review/components/NotesEditor.vue'
 import CvViewer from '@/features/review/components/CvViewer.vue'
@@ -301,6 +302,10 @@ watch(outcomeDialogOpen, (open) => {
         class="mb-1"
         data-testid="round-closed-banner"
       />
+
+      <!-- Screening disposition reads full-width above the evidence grid;
+           it is advisory chrome, never a decision. -->
+      <ScreenedOutNotice :screening="candidate.screening" />
 
       <ReviewHeader
         :vacancy-id="id"

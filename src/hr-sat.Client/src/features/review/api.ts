@@ -3,7 +3,14 @@ import type {
   CandidateHireOutcome,
   CandidateReviewStatus,
   CvDocumentResult,
+  FiredScreeningRule,
 } from '@/features/candidates/api'
+
+/** The candidate's screening disposition; null for candidates screening never evaluated. */
+export interface CandidateScreening {
+  screenedOut: boolean
+  firedRules: FiredScreeningRule[]
+}
 
 export interface CandidateDetails {
   id: number
@@ -12,6 +19,7 @@ export interface CandidateDetails {
   promotedFromRoundNumber: number | null
   promotedAt: string | null
   priorApplications: PriorApplication[]
+  screening: CandidateScreening | null
   fullName: string | null
   contactEmail: string | null
   notes: string | null
@@ -59,6 +67,7 @@ function normalizeCandidateDetails(details: CandidateDetails): CandidateDetails 
   return {
     ...details,
     priorApplications: details.priorApplications ?? [],
+    screening: details.screening ?? null,
   }
 }
 

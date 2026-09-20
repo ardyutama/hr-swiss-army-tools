@@ -1,15 +1,12 @@
 import { computed, shallowRef, watch, type Ref } from 'vue'
 import { useToast } from '@nuxt/ui/composables/useToast'
-import {
-  listCandidates,
-  type CandidateSummary,
-} from '@/features/candidates/api'
+import type { CandidateSummary } from '@/features/candidates/api'
 import { fieldErrorsOf, firstNonFieldError } from '@/shared/validation'
 import { useActionDialog } from '@/shared/useActionDialog'
 import type { VacancyRound } from '@/features/vacancies/api'
 import { roundDisplayName } from '@/features/intake-rounds/useIntakeRounds'
 import { problemMessage, problemMessageText } from '@/shared/problem-details'
-import { promoteCandidates } from './api'
+import { getPromoteSummary, promoteCandidates } from './api'
 
 export function usePromoteCandidates(
   vacancyId: Ref<string>,
@@ -74,7 +71,9 @@ export function usePromoteCandidates(
     sourceCandidates.value = null
     selectedCandidateIds.value = []
     try {
-      const candidates = await listCandidates(vacancyId.value, String(roundId))
+      // The promote summary is unpaged and pre-filtered to eligible
+      // candidates; the promotable computed keeps its client-side guard.
+      const candidates = await getPromoteSummary(vacancyId.value, roundId)
       if (token !== sourceRequestToken) {
         return
       }

@@ -419,6 +419,119 @@ public sealed class ScreeningRuleIntegrationTests(ApiFactory factory) : IClassFi
         Assert.Equal(2, vacancy.Progress.TotalCandidates);
     }
 
+    [Fact]
+    public async Task Review_queue_mirrors_the_list_url_state()
+    {
+        using var client = factory.CreateClient();
+        var (vacancyLocation, roundId) = await CreateConfiguredVacancyAsync(client);
+
+        using var import = await ImportFormAsync(
+            client,
+            vacancyLocation,
+            roundId,
+            Csv(CsvRow("2026-09-16T10:00:00Z", "Screened", "screened@example.com", "No")));
+        Assert.Equal(HttpStatusCode.OK, import.StatusCode);
+        using var oldestImport = await ImportEmailAsync(
+            client,
+            vacancyLocation,
+            roundId,
+            "oldest@example.com",
+            "Fri, 28 Aug 2026 10:00:00 +0000");
+        Assert.Equal(HttpStatusCode.OK, oldestImport.StatusCode);
+        using var newestImport = await ImportEmailAsync(
+            client,
+            vacancyLocation,
+            roundId,
+            "newest@example.com",
+            "Sun, 30 Aug 2026 10:00:00 +0000");
+        Assert.Equal(HttpStatusCode.OK, newestImport.StatusCode);
+        await UpsertRulesAsync(client, vacancyLocation, (3, "equals", "no"));
+        var allPage = await GetPageAsync(
+            client,
+            vacancyLocation,
+            roundId,
+            "?screened=all");
+        var newest = Assert.Single(
+            allPage.Items,
+            candidate => candidate.SourceSenderEmail == "newest@example.com");
+        await UpdateReviewAsync(
+            client,
+            vacancyLocation,
+            roundId,
+            newest.Id,
+            "shortlisted");
+
+        var queue = await GetReviewQueueAsync(client, vacancyLocation, roundId);
+        Assert.Equal(2, queue.Count);
+        Assert.Equal("newest@example.com", queue[0].SourceSenderEmail);
+        Assert.Equal("oldest@example.com", queue[1].SourceSenderEmail);
+
+        var withScreened = await GetReviewQueueAsync(
+            client,
+            vacancyLocation,
+            roundId,
+            "?screened=all&sort=oldest");
+        Assert.Equal(3, withScreened.Count);
+        Assert.Equal("oldest@example.com", withScreened[0].SourceSenderEmail);
+        Assert.Equal("newest@example.com", withScreened[1].SourceSenderEmail);
+        var screened = Assert.Single(withScreened, candidate => candidate.ScreenedOut);
+        Assert.Equal("screened@example.com", screened.ContactEmail);
+        Assert.Equal("Availability · equals \"no\"", Assert.Single(screened.FiredRules).Display);
+
+        var statusFiltered = await GetReviewQueueAsync(
+            client,
+            vacancyLocation,
+            roundId,
+            "?status=shortlisted");
+        var shortlistedOnly = Assert.Single(statusFiltered);
+        Assert.Equal("newest@example.com", shortlistedOnly.SourceSenderEmail);
+
+        var queryFiltered = await GetReviewQueueAsync(
+            client,
+            vacancyLocation,
+            roundId,
+            "?query=Screened&screened=all");
+        var queried = Assert.Single(queryFiltered);
+        Assert.Equal("screened@example.com", queried.ContactEmail);
+    }
+
+    [Fact]
+    public async Task Messaging_summary_returns_the_full_round_unpaged_with_screening_fields()
+    {
+        using var client = factory.CreateClient();
+        var (vacancyLocation, roundId) = await CreateConfiguredVacancyAsync(client);
+        var rows = Enumerable.Range(1, 101)
+            .Select(index => CsvRow(
+                $"2026-09-16T{index % 24:00}:00:00Z",
+                $"Candidate {index}",
+                $"candidate{index}@example.com",
+                index == 101 ? "No" : "Yes"))
+            .ToArray();
+        using var import = await ImportFormAsync(
+            client,
+            vacancyLocation,
+            roundId,
+            Csv(rows));
+        Assert.Equal(HttpStatusCode.OK, import.StatusCode);
+        using var emailImport = await ImportEmailAsync(
+            client,
+            vacancyLocation,
+            roundId,
+            "email@example.com");
+        Assert.Equal(HttpStatusCode.OK, emailImport.StatusCode);
+        await UpsertRulesAsync(client, vacancyLocation, (3, "equals", "no"));
+
+        var summary = await client.GetFromJsonAsync<IReadOnlyList<CandidateSummary>>(
+            $"{vacancyLocation}/rounds/{roundId}/messaging-summary");
+        Assert.NotNull(summary);
+        Assert.Equal(102, summary.Count);
+        var screened = Assert.Single(summary, candidate => candidate.ScreenedOut);
+        Assert.Equal("candidate101@example.com", screened.ContactEmail);
+        Assert.Equal("new", screened.ReviewStatus);
+        Assert.Equal("Availability · equals \"no\"", Assert.Single(screened.FiredRules).Display);
+        Assert.Contains(summary, candidate => candidate.IntakeSource == "email");
+    }
+
     private static async Task<(string Location, long RoundId)> CreateConfiguredVacancyAsync(
         HttpClient client)
     {
@@ -475,6 +588,14 @@ public sealed class ScreeningRuleIntegrationTests(ApiFactory factory) : IClassFi
         string query = "") =>
         (await client.GetFromJsonAsync<CandidateListEnvelope>(
             $"{vacancyLocation}/rounds/{roundId}/candidates{query}"))!;
+
+    private static async Task<IReadOnlyList<CandidateSummary>> GetReviewQueueAsync(
+        HttpClient client,
+        string vacancyLocation,
+        long roundId,
+        string query = "") =>
+        (await client.GetFromJsonAsync<IReadOnlyList<CandidateSummary>>(
+            $"{vacancyLocation}/rounds/{roundId}/review-queue{query}"))!;
 
     private static async Task<CandidateSummary> GetSingleCandidateAsync(
         HttpClient client,
@@ -535,10 +656,11 @@ public sealed class ScreeningRuleIntegrationTests(ApiFactory factory) : IClassFi
         HttpClient client,
         string vacancyLocation,
         long roundId,
-        string senderEmail)
+        string senderEmail,
+        string sentAt = "Sat, 29 Aug 2026 10:00:00 +0000")
     {
         using var form = new MultipartFormDataContent();
-        var fileContent = new ByteArrayContent(CreateEml(senderEmail));
+        var fileContent = new ByteArrayContent(CreateEml(senderEmail, sentAt));
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("message/rfc822");
         form.Add(fileContent, "files", "candidate.eml");
         return await client.PostAsync(
@@ -574,14 +696,16 @@ public sealed class ScreeningRuleIntegrationTests(ApiFactory factory) : IClassFi
         }
     });
 
-    private static byte[] CreateEml(string senderEmail)
+    private static byte[] CreateEml(
+        string senderEmail,
+        string sentAt = "Sat, 29 Aug 2026 10:00:00 +0000")
     {
         const string boundary = "hr-sat-screening-boundary";
         var pdf = Encoding.ASCII.GetBytes("%PDF-1.7\nCandidate\n%%EOF");
         var builder = new StringBuilder();
         builder.Append($"From: Applicant <{senderEmail}>\r\n");
         builder.Append("To: hr@example.com\r\n");
-        builder.Append("Date: Sat, 29 Aug 2026 10:00:00 +0000\r\n");
+        builder.Append($"Date: {sentAt}\r\n");
         builder.Append("Subject: Candidate application\r\n");
         builder.Append("MIME-Version: 1.0\r\n");
         builder.Append($"Content-Type: multipart/mixed; boundary=\"{boundary}\"\r\n\r\n");
@@ -630,6 +754,7 @@ public sealed class ScreeningRuleIntegrationTests(ApiFactory factory) : IClassFi
     private sealed record CandidateSummary(
         long Id,
         string? ContactEmail,
+        string? SourceSenderEmail,
         string IntakeSource,
         string ReviewStatus,
         bool IsResubmitted,

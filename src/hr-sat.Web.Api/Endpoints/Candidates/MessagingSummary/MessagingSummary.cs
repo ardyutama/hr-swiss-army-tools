@@ -1,41 +1,29 @@
 using hr_sat.Application.Abstractions.Messaging;
 using hr_sat.Application.Features.Candidates.List;
-using hr_sat.Application.Features.Candidates.ReviewQueue;
+using hr_sat.Application.Features.Candidates.MessagingSummary;
 
 namespace hr_sat.Web.Api.Endpoints.Candidates;
 
-internal sealed class ReviewQueue : IEndpoint
+internal sealed class MessagingSummary : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
         app.MapGet(
-                "/api/vacancies/{vacancyId:long}/rounds/{roundId:long}/review-queue",
+                "/api/vacancies/{vacancyId:long}/rounds/{roundId:long}/messaging-summary",
                 async (
                     long vacancyId,
                     long roundId,
-                    string? status,
-                    string? outcome,
-                    string? query,
-                    string? sort,
-                    string? screened,
                     IQueryHandler<
-                        GetReviewQueueQuery,
+                        GetMessagingSummaryQuery,
                         IReadOnlyList<CandidateSummaryResponse>> handler,
                     CancellationToken cancellationToken) =>
                 {
                     var result = await handler.Handle(
-                        new GetReviewQueueQuery(
-                            vacancyId,
-                            roundId,
-                            status,
-                            outcome,
-                            query,
-                            sort,
-                            screened),
+                        new GetMessagingSummaryQuery(vacancyId, roundId),
                         cancellationToken);
                     return result.Match<IResult>(TypedResults.Ok, CustomResults.Problem);
                 })
             .WithTags(Tags.Candidates)
-            .WithName("GetReviewQueue");
+            .WithName("GetMessagingSummary");
     }
 }

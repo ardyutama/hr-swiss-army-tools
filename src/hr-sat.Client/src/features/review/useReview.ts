@@ -1,16 +1,12 @@
 import { computed, shallowRef, watch, type Ref } from 'vue'
 import { getVacancy, type VacancyDetails } from '@/features/vacancies/api'
 import {
-  listCandidates,
+  getReviewQueue,
   type CandidateHireOutcome,
   type CandidateReviewStatus,
   type CandidateSummary,
 } from '@/features/candidates/api'
-import {
-  filterCandidates,
-  sortByReceived,
-  type CandidateFilterState,
-} from '@/features/candidates/filter'
+import type { CandidateFilterState } from '@/features/candidates/filter'
 import {
   getCandidateDetails,
   updateCandidateDetails,
@@ -65,17 +61,9 @@ export function useReview(
   let contextToken = 0
   let detailsToken = 0
 
-  const reviewCandidates = computed(() =>
-    sortByReceived(
-      filterCandidates(
-        summaries.value ?? [],
-        filters.value.status,
-        filters.value.query,
-        filters.value.outcome,
-      ),
-      filters.value.receivedSort,
-    ),
-  )
+  // The queue arrives filtered and ordered by the server, mirroring the
+  // list's URL state (`screened=all` included) — no client-side pass.
+  const reviewCandidates = computed(() => summaries.value ?? [])
   const currentIndex = computed(() =>
     reviewCandidates.value.findIndex((summary) => String(summary.id) === candidateId.value),
   )
@@ -155,7 +143,10 @@ export function useReview(
     )
 
     if (vacancy.value !== null) {
-      const processedCandidates = summaries.value.filter(
+      // Vacancy Progress excludes the screened-out: they sit outside HR's
+      // decision funnel (processed = shortlisted + rejected over the rest).
+      const nonScreened = summaries.value.filter((summary) => !summary.screenedOut)
+      const processedCandidates = nonScreened.filter(
         (summary) =>
           summary.reviewStatus === 'shortlisted' || summary.reviewStatus === 'rejected',
       ).length
@@ -163,7 +154,7 @@ export function useReview(
         ...vacancy.value,
         progress: {
           processedCandidates,
-          totalCandidates: summaries.value.length,
+          totalCandidates: nonScreened.length,
         },
         hiring: vacancy.value.hiring
           ? {
@@ -183,9 +174,16 @@ export function useReview(
     const token = ++contextToken
     loadError.value = null
     try {
+      const current = filters.value
       const [details, list] = await Promise.all([
         getVacancy(vacancyId.value),
-        listCandidates(vacancyId.value, roundId.value),
+        getReviewQueue(vacancyId.value, roundId.value, {
+          status: current.status,
+          outcome: current.outcome,
+          query: current.query,
+          sort: current.receivedSort,
+          screened: current.screenedAll,
+        }),
       ])
       // Ignore stale responses when the route param changed meanwhile.
       if (token !== contextToken) {

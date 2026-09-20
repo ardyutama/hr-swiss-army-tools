@@ -15,6 +15,9 @@ export interface VacancyDetailFlowInput {
   reloadVacancy: () => Promise<void>
   reloadCandidates: () => Promise<void>
   reloadLayout: () => Promise<void>
+  // The messaging summary rides the mutation cascades: a reclassify, import,
+  // delete, or promote changes who the send flow and template preview see.
+  reloadMessaging: () => Promise<void>
 }
 
 /**
@@ -69,10 +72,15 @@ export function useVacancyDetailFlow(input: VacancyDetailFlowInput) {
   }
 
   const refreshVacancyAndCandidates = async () => {
-    await Promise.all([input.reloadVacancy(), input.reloadCandidates()])
+    await Promise.all([input.reloadVacancy(), input.reloadCandidates(), input.reloadMessaging()])
   }
   const refreshVacancyCandidatesAndLayout = async () => {
-    await Promise.all([input.reloadVacancy(), input.reloadCandidates(), input.reloadLayout()])
+    await Promise.all([
+      input.reloadVacancy(),
+      input.reloadCandidates(),
+      input.reloadLayout(),
+      input.reloadMessaging(),
+    ])
   }
 
   return {

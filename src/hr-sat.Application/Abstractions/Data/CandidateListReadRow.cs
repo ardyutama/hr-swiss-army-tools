@@ -6,6 +6,7 @@ public sealed record CandidateListReadRow(
     long Id,
     string? FullName,
     string? ContactEmail,
+    string? ContactPhone,
     string? Notes,
     string ReviewStatus,
     string HireOutcome,

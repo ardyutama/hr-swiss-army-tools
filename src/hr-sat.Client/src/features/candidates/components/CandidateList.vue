@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type {
   CandidateHireOutcome,
   CandidateReviewStatus,
@@ -12,15 +13,22 @@ import {
   formatReceivedAt,
 } from '../format'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     vacancyId: string
     candidates: CandidateSummary[]
     requirements: string[]
     receivedSort: ReceivedSort
+    /** Current 1-based page; the list is server-paged. */
+    page: number
+    pageSize: number
+    /** The filtered in-scope total behind the pager and the position counter. */
+    total: number
+    /** A page transition is in flight: chrome holds, skeleton rows swap in. */
+    pending?: boolean
     readonly?: boolean
   }>(),
-  { readonly: false },
+  { pending: false, readonly: false },
 )
 
 const emit = defineEmits<{
@@ -28,6 +36,7 @@ const emit = defineEmits<{
   review: [candidate: CandidateSummary]
   send: [candidate: CandidateSummary]
   toggleReceivedSort: []
+  'update:page': [page: number]
 }>()
 
 function sendLabel(candidate: CandidateSummary): string {
@@ -66,6 +75,22 @@ const hireOutcomeColors: Record<Exclude<CandidateHireOutcome, 'none'>, 'success'
 // Column proportions applied via <colgroup> so the semantic table keeps a fixed layout.
 // Order is fixed by the S3 sketch: Candidate | Received | CV | Notes | Review status | Actions.
 const columnWidths = ['24%', '14%', '8%', '28%', '12%', '7.5rem']
+
+// The pager only exists when a second page does — a one-page round is not dead UI.
+const showPagination = computed(() => props.total > props.pageSize)
+const pageStart = computed(() => (props.page - 1) * props.pageSize + 1)
+const pageEnd = computed(() => Math.min(props.page * props.pageSize, props.total))
+
+/** At most two rule chips render; the rest collapse into a "+N more rules" chip. */
+const MAX_VISIBLE_RULE_CHIPS = 2
+
+function visibleRules(candidate: CandidateSummary) {
+  return candidate.firedRules.slice(0, MAX_VISIBLE_RULE_CHIPS)
+}
+
+function collapsedRuleCount(candidate: CandidateSummary): number {
+  return candidate.firedRules.length - MAX_VISIBLE_RULE_CHIPS
+}
 </script>
 
 <template>
@@ -129,7 +154,20 @@ const columnWidths = ['24%', '14%', '8%', '28%', '12%', '7.5rem']
         </tr>
       </thead>
 
-      <tbody>
+      <!-- Page transitions keep the chrome stable and swap in shape-matched
+           skeleton rows (ADR-0008 #14) — no full-panel spinner. -->
+      <tbody v-if="pending" aria-busy="true" aria-label="Loading candidates">
+        <tr v-for="n in 4" :key="n" class="crow">
+          <td class="ctable__col border-b border-default px-2 py-4 first:pl-5 last:pr-5"><USkeleton class="h-4 w-3/4" /></td>
+          <td class="ctable__col border-b border-default px-2 py-4 first:pl-5 last:pr-5"><USkeleton class="h-3 w-16" /></td>
+          <td class="ctable__col border-b border-default px-2 py-4 first:pl-5 last:pr-5"><USkeleton class="h-4 w-4" /></td>
+          <td class="ctable__col border-b border-default px-2 py-4 first:pl-5 last:pr-5"><USkeleton class="h-3 w-1/2" /></td>
+          <td class="ctable__col border-b border-default px-2 py-4 first:pl-5 last:pr-5"><USkeleton class="h-5 w-20 rounded-full" /></td>
+          <td class="ctable__col border-b border-default px-2 py-4 first:pl-5 last:pr-5" />
+        </tr>
+      </tbody>
+
+      <tbody v-else>
         <tr
           v-for="candidate in candidates"
           :key="candidate.id"
@@ -140,8 +178,37 @@ const columnWidths = ['24%', '14%', '8%', '28%', '12%', '7.5rem']
           @keydown.enter.prevent="emit('review', candidate)"
           @keydown.space.prevent="emit('review', candidate)"
         >
-          <td class="ctable__col crow__name border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
+            <td class="ctable__col crow__name border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
             <span class="crow__name-text block max-w-full truncate text-sm font-semibold text-highlighted">{{ candidateDisplayName(candidate) }}</span>
+            <!-- Fired-rule chips stack under the name: no new column, the
+                 colgroup never reflows on toggle (decision 26). -->
+            <div
+              v-if="candidate.firedRules.length > 0"
+              class="mt-1 flex max-w-full flex-col items-start gap-1"
+            >
+              <UTooltip
+                v-for="rule in visibleRules(candidate)"
+                :key="rule.index"
+                :text="rule.display"
+              >
+                <UBadge color="neutral" variant="subtle" class="crow__rule-chip max-w-full truncate">
+                  {{ rule.display }}
+                </UBadge>
+              </UTooltip>
+              <UTooltip v-if="collapsedRuleCount(candidate) > 0">
+                <UBadge color="neutral" variant="outline">
+                  +{{ collapsedRuleCount(candidate) }} more rules
+                </UBadge>
+                <template #content>
+                  <ul class="flex max-w-72 flex-col gap-1">
+                    <li
+                      v-for="rule in candidate.firedRules"
+                      :key="rule.index"
+                    >{{ rule.display }}</li>
+                  </ul>
+                </template>
+              </UTooltip>
+            </div>
           </td>
 
           <td class="ctable__col crow__received border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
@@ -195,7 +262,10 @@ const columnWidths = ['24%', '14%', '8%', '28%', '12%', '7.5rem']
                   :disabled="contactability(candidate).kind !== 'contactable'"
                   @click.stop="emit('send', candidate)"
                 />
+                <!-- Screened-out candidates can never be deleted (decision 7);
+                     the row stays fully clickable into review. -->
                 <UButton
+                  v-if="!candidate.screenedOut"
                   icon="i-lucide-trash-2"
                   color="error"
                   variant="ghost"
@@ -214,6 +284,19 @@ const columnWidths = ['24%', '14%', '8%', '28%', '12%', '7.5rem']
         </tr>
       </tbody>
       </table>
+    </div>
+
+    <div
+      v-if="showPagination"
+      class="flex items-center justify-between gap-3 border-t border-default px-5 py-3"
+    >
+      <p class="text-sm tabular-nums text-muted">{{ pageStart }}-{{ pageEnd }} of {{ total }}</p>
+      <UPagination
+        :page="page"
+        :items-per-page="pageSize"
+        :total="total"
+        @update:page="emit('update:page', $event)"
+      />
     </div>
   </div>
 </template>

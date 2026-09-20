@@ -9,6 +9,7 @@ import {
   jsonResponse,
   mountView,
   openRound,
+  pagedCandidates,
   stubFetch,
   toastAdd,
   vacancyDetails,
@@ -24,7 +25,7 @@ describe('VacancyDetailView · intake rounds and promotion', () => {
       () => vacancyDetails(),
       (url) => {
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+          return Promise.resolve(jsonResponse(pagedCandidates([candidateSummary(1)])))
         }
         return undefined
       },
@@ -105,13 +106,13 @@ describe('VacancyDetailView · intake rounds and promotion', () => {
         if (url.includes('/rounds/3/candidates')) {
           activeListRequests += 1
           return Promise.resolve(
-            jsonResponse(promoted ? [activeCandidate, candidateSummary(7, { sourceSenderName: 'Earlier Applicant' })] : [activeCandidate]),
+            jsonResponse(pagedCandidates(promoted ? [activeCandidate, candidateSummary(7, { sourceSenderName: 'Earlier Applicant' })] : [activeCandidate])),
           )
         }
-        if (url.includes('/rounds/2/candidates')) {
+        if (url.includes('/rounds/2/promote-summary')) {
           return Promise.resolve(jsonResponse(latestRoundCandidates))
         }
-        if (url.includes('/rounds/1/candidates')) {
+        if (url.includes('/rounds/1/promote-summary')) {
           return Promise.resolve(jsonResponse([candidateSummary(8, { sourceSenderName: 'Oldest Applicant' })]))
         }
         return undefined
@@ -229,10 +230,10 @@ describe('VacancyDetailView · intake rounds and promotion', () => {
           )
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+          return Promise.resolve(jsonResponse(pagedCandidates([candidateSummary(1)])))
         }
         if (url.includes('/rounds/2/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },
@@ -294,7 +295,7 @@ describe('VacancyDetailView · intake rounds and promotion', () => {
       () => vacancyDetails({ hiring }),
       (url) => {
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },
@@ -328,7 +329,7 @@ describe('VacancyDetailView · intake rounds and promotion', () => {
         }),
       (url) => {
         if (url.includes('/rounds/2/candidates')) {
-          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+          return Promise.resolve(jsonResponse(pagedCandidates([candidateSummary(1)])))
         }
         return undefined
       },
@@ -369,14 +370,14 @@ describe('VacancyDetailView · intake rounds and promotion', () => {
         if (url.includes('/rounds/2/candidates')) {
           roundTwoRequests += 1
           if (roundTwoRequests === 1) {
-            return Promise.resolve(jsonResponse([candidateSummary(1)]))
+            return Promise.resolve(jsonResponse(pagedCandidates([candidateSummary(1)])))
           }
           return new Promise<Response>((resolve) => {
             resolveRoundTwoRefresh = resolve
           })
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([bobSummary()]))
+          return Promise.resolve(jsonResponse(pagedCandidates([bobSummary()])))
         }
         return undefined
       },
@@ -400,11 +401,17 @@ describe('VacancyDetailView · intake rounds and promotion', () => {
     await roundTwo!.trigger('click')
 
     expect(section.find('[aria-current="true"]').text()).toContain('Round 2')
-    expect(wrapper.find('[aria-label="Candidates"]').text()).toContain('Alice Applicant')
-    expect(wrapper.find('[aria-label="Loading candidates"]').exists()).toBe(false)
+    // No per-round cache: the refetch swaps the rows for shape-matched skeletons…
+    expect(wrapper.find('[aria-label="Loading candidates"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="Candidates"]').text()).not.toContain('Alice Applicant')
+    // …while the toolbar chrome stays put.
+    expect(wrapper.find('[aria-label="Search candidates"]').exists()).toBe(true)
 
-    resolveRoundTwoRefresh?.(jsonResponse([candidateSummary(1)]))
+    resolveRoundTwoRefresh?.(jsonResponse(pagedCandidates([candidateSummary(1)])))
     await flushPromises()
+
+    expect(wrapper.find('[aria-label="Loading candidates"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="Candidates"]').text()).toContain('Alice Applicant')
     wrapper.unmount()
   })
 
@@ -445,14 +452,14 @@ describe('VacancyDetailView · intake rounds and promotion', () => {
           )
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([bobSummary()]))
+          return Promise.resolve(jsonResponse(pagedCandidates([bobSummary()])))
         }
         if (url.includes('/rounds/2/candidates')) {
-          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+          return Promise.resolve(jsonResponse(pagedCandidates([candidateSummary(1)])))
         }
         if (url.includes('/rounds/3/candidates')) {
           return Promise.resolve(
-            jsonResponse([candidateSummary(3, { sourceSenderName: 'Carol Welder' })]),
+            jsonResponse(pagedCandidates([candidateSummary(3, { sourceSenderName: 'Carol Welder' })])),
           )
         }
         return undefined
@@ -501,10 +508,10 @@ describe('VacancyDetailView · intake rounds and promotion', () => {
         }),
       (url) => {
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([bobSummary()]))
+          return Promise.resolve(jsonResponse(pagedCandidates([bobSummary()])))
         }
         if (url.includes('/rounds/2/candidates')) {
-          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+          return Promise.resolve(jsonResponse(pagedCandidates([candidateSummary(1)])))
         }
         return undefined
       },
@@ -569,7 +576,7 @@ describe('VacancyDetailView · intake rounds and promotion', () => {
           )
         }
         if (url.includes('/rounds/2/candidates')) {
-          return Promise.resolve(jsonResponse([candidateSummary(1)]))
+          return Promise.resolve(jsonResponse(pagedCandidates([candidateSummary(1)])))
         }
         return undefined
       },
@@ -638,7 +645,7 @@ describe('VacancyDetailView · intake rounds and promotion', () => {
           )
         }
         if (url.includes('/rounds/1/candidates') || url.includes('/rounds/2/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },
@@ -698,7 +705,7 @@ describe('VacancyDetailView · intake rounds and promotion', () => {
           )
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },
@@ -751,7 +758,7 @@ describe('VacancyDetailView · intake rounds and promotion', () => {
           )
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },
@@ -797,11 +804,11 @@ describe('VacancyDetailView · intake rounds and promotion', () => {
         if (init?.method === 'POST' && url.endsWith('/rounds/2/promotions')) {
           return Promise.resolve(jsonResponse({ title: 'IntakeRounds.NotClosed' }, 409))
         }
-        if (url.includes('/rounds/1/candidates')) {
+        if (url.includes('/rounds/1/promote-summary')) {
           return Promise.resolve(jsonResponse([candidateSummary(1)]))
         }
         if (url.includes('/rounds/2/candidates')) {
-          return Promise.resolve(jsonResponse([candidateSummary(2)]))
+          return Promise.resolve(jsonResponse(pagedCandidates([candidateSummary(2)])))
         }
         return undefined
       },
@@ -852,8 +859,11 @@ describe('VacancyDetailView · intake rounds and promotion', () => {
         if (init?.method === 'POST' && url.endsWith('/rounds/2/promotions')) {
           return Promise.resolve(jsonResponse({ title: 'IntakeRounds.NoActiveRound' }, 409))
         }
-        if (url.includes('/rounds/1/candidates') || url.includes('/rounds/2/candidates')) {
+        if (url.includes('/rounds/1/promote-summary')) {
           return Promise.resolve(jsonResponse([candidateSummary(1)]))
+        }
+        if (url.includes('/rounds/2/candidates')) {
+          return Promise.resolve(jsonResponse(pagedCandidates([candidateSummary(1)])))
         }
         return undefined
       },

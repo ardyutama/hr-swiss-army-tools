@@ -121,6 +121,11 @@ function toggleCandidate(candidateId: number, selected: boolean) {
             <span class="min-w-0 flex-1 truncate font-medium text-highlighted">
               {{ candidateDisplayName(candidate) }}
             </span>
+            <!-- One neutral badge, not per-rule chips: the dialog is a rescue
+                 path, not a diagnostic (decision 11 / A3). -->
+            <UBadge v-if="candidate.screenedOut" color="neutral" variant="subtle">
+              screened out
+            </UBadge>
             <span class="shrink-0 text-xs text-muted capitalize">{{ candidate.reviewStatus }}</span>
           </label>
         </fieldset>

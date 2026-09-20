@@ -101,11 +101,19 @@ export function useTemplatePreview(vacancyId: MaybeRefOrGetter<string>) {
 
 /**
  * Default preview candidate: the first candidate in the viewed round whose
- * review status matches the template kind, else the round's first candidate.
+ * review status matches the template kind, else the round's first candidate —
+ * never a screened-out one (they stay Review Status `new` and are already
+ * non-contactable); null when every candidate is screened out.
  */
 export function defaultPreviewCandidate(
   candidates: readonly CandidateSummary[],
   kind: EmailTemplateKind,
 ): CandidateSummary | null {
-  return candidates.find((candidate) => candidate.reviewStatus === kind) ?? candidates[0] ?? null
+  return (
+    candidates.find(
+      (candidate) => !candidate.screenedOut && candidate.reviewStatus === kind,
+    ) ??
+    candidates.find((candidate) => !candidate.screenedOut) ??
+    null
+  )
 }

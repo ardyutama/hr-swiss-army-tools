@@ -11,6 +11,7 @@ import {
   jsonResponse,
   mountView,
   openImportDialog,
+  pagedCandidates,
   pickRoleColumn,
   stubFetch,
   toastAdd,
@@ -57,7 +58,7 @@ describe('VacancyDetailView · candidate import and Form Layout', () => {
           )
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse(imported ? [candidateSummary(1)] : []))
+          return Promise.resolve(jsonResponse(pagedCandidates(imported ? [candidateSummary(1)] : [])))
         }
         return undefined
       },
@@ -118,7 +119,7 @@ describe('VacancyDetailView · candidate import and Form Layout', () => {
           )
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse(imported ? [candidateSummary(1)] : []))
+          return Promise.resolve(jsonResponse(pagedCandidates(imported ? [candidateSummary(1)] : [])))
         }
         return undefined
       },
@@ -151,7 +152,7 @@ describe('VacancyDetailView · candidate import and Form Layout', () => {
           )
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },
@@ -197,7 +198,7 @@ describe('VacancyDetailView · candidate import and Form Layout', () => {
           )
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse(imported ? [candidateSummary(1)] : []))
+          return Promise.resolve(jsonResponse(pagedCandidates(imported ? [candidateSummary(1)] : [])))
         }
         return undefined
       },
@@ -240,7 +241,7 @@ describe('VacancyDetailView · candidate import and Form Layout', () => {
           posted.push(url)
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },
@@ -275,7 +276,7 @@ describe('VacancyDetailView · candidate import and Form Layout', () => {
           posted.push(url)
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },
@@ -306,7 +307,7 @@ describe('VacancyDetailView · candidate import and Form Layout', () => {
           )
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },
@@ -337,7 +338,7 @@ describe('VacancyDetailView · candidate import and Form Layout', () => {
           return Promise.resolve(jsonResponse({ title: 'IntakeRounds.Closed' }, 409))
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },
@@ -372,7 +373,7 @@ describe('VacancyDetailView · candidate import and Form Layout', () => {
           )
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },
@@ -412,7 +413,7 @@ describe('VacancyDetailView · candidate import and Form Layout', () => {
         }
         if (url.includes('/rounds/1/candidates')) {
           return Promise.resolve(
-            jsonResponse(imported ? [candidateSummary(1, { isResubmitted: true })] : []),
+            jsonResponse(pagedCandidates(imported ? [candidateSummary(1, { isResubmitted: true })] : [])),
           )
         }
         return undefined
@@ -479,7 +480,7 @@ describe('VacancyDetailView · candidate import and Form Layout', () => {
           )
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse(imported ? [candidateSummary(1)] : []))
+          return Promise.resolve(jsonResponse(pagedCandidates(imported ? [candidateSummary(1)] : [])))
         }
         return undefined
       },
@@ -570,7 +571,7 @@ describe('VacancyDetailView · candidate import and Form Layout', () => {
           return Promise.resolve(jsonResponse(formLayoutDto()))
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },
@@ -642,7 +643,7 @@ describe('VacancyDetailView · candidate import and Form Layout', () => {
           return Promise.resolve(jsonResponse(formLayoutDto()))
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },
@@ -698,7 +699,7 @@ describe('VacancyDetailView · candidate import and Form Layout', () => {
           return Promise.resolve(jsonResponse(formLayoutDto()))
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },
@@ -759,7 +760,7 @@ describe('VacancyDetailView · candidate import and Form Layout', () => {
           return Promise.resolve(jsonResponse(formLayoutDto()))
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },
@@ -823,7 +824,7 @@ describe('VacancyDetailView · candidate import and Form Layout', () => {
           )
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },
@@ -867,7 +868,7 @@ describe('VacancyDetailView · candidate import and Form Layout', () => {
           )
         }
         if (url.includes('/rounds/1/candidates')) {
-          return Promise.resolve(jsonResponse([]))
+          return Promise.resolve(jsonResponse(pagedCandidates([])))
         }
         return undefined
       },

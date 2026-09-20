@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, shallowRef, toRef, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import StatusBadge from '@/features/vacancies/components/StatusBadge.vue'
 import HiringPlanSummary from '@/features/vacancies/components/HiringPlanSummary.vue'
 import ImportDialog from '@/features/import/components/ImportDialog.vue'
@@ -15,7 +15,7 @@ import CandidateList from '@/features/candidates/components/CandidateList.vue'
 import CandidateToolbar from '@/features/candidates/components/CandidateToolbar.vue'
 import { useCandidates } from '@/features/candidates/useCandidates'
 import { useCandidateImport } from '@/features/candidates/useCandidateImport'
-import { useCandidateFilter } from '@/features/candidates/useCandidateFilter'
+import { useMessagingSummary } from '@/features/candidates/useMessagingSummary'
 import RoundList from '@/features/intake-rounds/components/RoundList.vue'
 import CreateRoundDialog from '@/features/intake-rounds/components/CreateRoundDialog.vue'
 import CloseRoundDialog from '@/features/intake-rounds/components/CloseRoundDialog.vue'
@@ -28,8 +28,11 @@ import { useTemplateSources } from '@/features/email-templates/useTemplateSource
 import PreparedMessageListDialog from '@/features/prepared-messages/components/PreparedMessageListDialog.vue'
 import { usePreparedMessages } from '@/features/prepared-messages/usePreparedMessages'
 import { sendScope } from '@/features/prepared-messages/format'
+import ScreeningSection from '@/features/screening/components/ScreeningSection.vue'
+import ScreeningRulesDialog from '@/features/screening/components/ScreeningRulesDialog.vue'
+import { useScreeningRules } from '@/features/screening/useScreeningRules'
 import { useFormResponseImport } from '@/features/import-form/useFormResponseImport'
-import { candidateFilterQuery, candidateFilterStateFromQuery } from '@/features/candidates/filter'
+import { candidateFilterQuery } from '@/features/candidates/filter'
 import { problemMessage, problemMessageText } from '@/shared/problem-details'
 import { useActionDialog } from '@/shared/useActionDialog'
 import { useVacancyDetail } from '@/features/vacancy-detail/useVacancyDetail'
@@ -47,7 +50,6 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
-const route = useRoute()
 const vacancyId = toRef(props, 'id')
 
 // The leaf lifecycles, composed here — the view is the composition surface.
@@ -86,6 +88,7 @@ const flow = useVacancyDetailFlow({
   // import outcomes, never during setup.
   reloadCandidates: () => candidatesFlow.load(),
   reloadLayout: loadFormLayout,
+  reloadMessaging: () => messagingFlow.load(),
 })
 const {
   selectedRoundId,
@@ -100,9 +103,25 @@ const {
 const selectedRoundParam = computed(() =>
   selectedRoundId.value === null ? '' : String(selectedRoundId.value),
 )
-const candidatesFlow = useCandidates(vacancyId, selectedRoundParam)
+const selectedRoundClosed = computed(() => selectedRound.value?.status === 'closed')
+const candidatesFlow = useCandidates(vacancyId, selectedRoundParam, {
+  vacancyClosed: isClosed,
+  hasActiveRound: computed(() => activeRound.value !== null),
+  selectedRoundClosed,
+})
 const {
-  candidates,
+  response: candidatesResponse,
+  listState,
+  status: statusFilter,
+  outcome: outcomeFilter,
+  searchDraft,
+  screenedAll,
+  page,
+  receivedSort,
+  toggleReceivedSort,
+  clearFilters,
+  backToFirstPage,
+  pending: candidatesPending,
   loadError: candidatesError,
   viewState: candidatesViewState,
   removing,
@@ -110,27 +129,15 @@ const {
   remove: removeCandidate,
 } = candidatesFlow
 
-const selectedRoundClosed = computed(() => selectedRound.value?.status === 'closed')
-const {
-  status: statusFilter,
-  outcome: outcomeFilter,
-  query: searchQuery,
-  receivedSort,
-  statusCounts,
-  outcomeCounts,
-  filteredCandidates,
-  listState,
-  toggleReceivedSort,
-  clearFilters,
-} = useCandidateFilter(
-  candidates,
-  {
-    viewState: candidatesViewState,
-    vacancyClosed: isClosed,
-    hasActiveRound: computed(() => activeRound.value !== null),
-    selectedRoundClosed,
-  },
-  candidateFilterStateFromQuery(route.query),
+// The full unpaged round list feeding the send dialogs and template preview.
+const messagingFlow = useMessagingSummary(vacancyId, selectedRoundParam)
+const messagingSummaries = messagingFlow.summaries
+
+// Saving rules reclassifies live; the modal-atomic cascade refreshes the list.
+const screeningFlow = useScreeningRules(
+  vacancyId,
+  computed(() => activeRound.value !== null),
+  flow.refreshVacancyAndCandidates,
 )
 
 const { closing: closingVacancy, close: closeVacancy } = useCloseVacancy(vacancy, load)
@@ -201,6 +208,18 @@ function openRoundManager() {
   roundManagementOpen.value = true
 }
 
+// The section hugs the toolbar/table edge-to-edge on every filtered state,
+// not just ready; the async states keep their padding.
+const candidateSectionFlush = computed(() => {
+  const kind = listState.value.kind
+  return (
+    kind === 'ready' ||
+    kind === 'no-matches' ||
+    kind === 'all-screened' ||
+    kind === 'stale-page'
+  )
+})
+
 // Prepared messages / email templates dialog state.
 const preparedOpen = shallowRef(false)
 const preparedCandidate = shallowRef<CandidateSummary | null>(null)
@@ -213,7 +232,9 @@ watch(emailTemplatesOpen, (isOpen, wasOpen) => {
   }
 })
 
-const sendCandidates = computed(() => sendScope(preparedCandidate.value, candidates.value ?? []))
+const sendCandidates = computed(() =>
+  sendScope(preparedCandidate.value, messagingSummaries.value ?? []),
+)
 const sendRoundName = computed(() => {
   const round = selectedRound.value
   return round ? roundDisplayName(round) : 'the selected round'
@@ -467,12 +488,8 @@ function openReview(candidate: CandidateSummary) {
   void router.push({
     name: 'candidate-review',
     params: { id: props.id, roundId: selectedRoundId.value, candidateId: candidate.id },
-    query: candidateFilterQuery({
-      status: statusFilter.value,
-      outcome: outcomeFilter.value,
-      query: searchQuery.value,
-      receivedSort: receivedSort.value,
-    }),
+    // The review queue mirrors the visible list, page and screened toggle included.
+    query: candidateFilterQuery(candidatesFlow.filters.value),
   })
 }
 </script>
@@ -613,11 +630,22 @@ function openReview(candidate: CandidateSummary) {
         @retry="loadFormLayout"
       />
 
+      <ScreeningSection
+        :state="screeningFlow.viewState.value"
+        :rule-count="screeningFlow.ruleCount.value"
+        :load-error="screeningFlow.loadError.value"
+        :has-header-snapshot="(formLayoutMapping?.headerSnapshot.length ?? 0) > 0"
+        :screened-out-count="candidatesResponse?.counts.screenedOut ?? null"
+        :round-name="selectedRound ? roundDisplayName(selectedRound) : null"
+        @edit="screeningFlow.openEditor"
+        @retry="screeningFlow.load"
+      />
+
       <HiringPlanSummary variant="context" :hiring="vacancy.hiring" />
 
       <section
         class="overflow-hidden rounded-xl border border-default bg-default shadow-sm"
-        :class="listState.kind === 'ready' ? 'p-0' : 'p-3'"
+        :class="candidateSectionFlush ? 'p-0' : 'p-3'"
         aria-label="Candidates"
       >
         <div v-if="canPromote" class="flex justify-end border-b border-default px-5 py-3">
@@ -675,36 +703,43 @@ function openReview(candidate: CandidateSummary) {
           @clear-filters="clearFilters"
         />
 
-        <template v-else>
+        <template v-else-if="candidatesResponse">
           <div class="border-b border-default px-5 py-3">
             <CandidateToolbar
               v-model:status="statusFilter"
               v-model:outcome="outcomeFilter"
-              v-model:query="searchQuery"
-              :counts="statusCounts"
-              :outcome-counts="outcomeCounts"
-              :total="(candidates ?? []).length"
+              v-model:query="searchDraft"
+              v-model:screened="screenedAll"
+              :counts="candidatesResponse.counts"
+              :has-form-layout="formLayoutViewState === 'ready'"
             />
           </div>
-          <CandidateListFallback
-            v-if="filteredCandidates.length === 0"
-            :state="listState"
-            :can-open-round="canOpenRound"
-            @open-round="openCreateRound"
-            @import="openImport"
-            @clear-filters="clearFilters"
-          />
           <CandidateList
-            v-else
+            v-if="listState.kind === 'ready'"
             :vacancy-id="id"
-            :candidates="filteredCandidates"
+            :candidates="candidatesResponse.items"
             :requirements="vacancyRequirements"
             :received-sort="receivedSort"
+            :page="page"
+            :page-size="candidatesResponse.pageSize"
+            :total="candidatesResponse.filteredTotal"
+            :pending="candidatesPending"
             :readonly="candidatesReadonly"
             @remove="requestDeleteCandidate"
             @review="openReview"
             @send="openPrepared"
             @toggle-received-sort="toggleReceivedSort"
+            @update:page="page = $event"
+          />
+          <CandidateListFallback
+            v-else
+            :state="listState"
+            :can-open-round="canOpenRound"
+            @open-round="openCreateRound"
+            @import="openImport"
+            @clear-filters="clearFilters"
+            @show-screened="screenedAll = true"
+            @back-to-first-page="backToFirstPage"
           />
         </template>
       </section>
@@ -756,6 +791,20 @@ function openReview(candidate: CandidateSummary) {
       :deleting="removing"
       :error="deleteError"
       @confirm="confirmDeleteCandidate"
+    />
+    <ScreeningRulesDialog
+      v-model:open="screeningFlow.open.value"
+      :header-snapshot="formLayoutMapping?.headerSnapshot ?? []"
+      :column-labels="formLayoutMapping?.columns.map((column) => ({ ordinal: column.ordinal, label: column.label })) ?? []"
+      :initial-rules="screeningFlow.ruleSet.value?.rules ?? []"
+      :preview="screeningFlow.preview.value"
+      :preview-failed="screeningFlow.previewFailed.value"
+      :has-active-round="activeRound !== null"
+      :busy="screeningFlow.saving.value"
+      :alert="screeningFlow.saveError.value"
+      :readonly="isClosed"
+      @save="screeningFlow.save"
+      @change="screeningFlow.onDraftChange"
     />
     <CreateRoundDialog
       v-model:open="createRoundOpen"
@@ -814,7 +863,7 @@ function openReview(candidate: CandidateSummary) {
       :vacancy-title="vacancy.title"
       :opened-on="vacancy.openedOn"
       :status="vacancy.status"
-      :candidates="candidates ?? []"
+      :candidates="messagingSummaries ?? []"
       :templates="emailTemplates.templates.value"
       :load-error="emailTemplates.loadError.value"
       :view-state="emailTemplates.viewState.value"

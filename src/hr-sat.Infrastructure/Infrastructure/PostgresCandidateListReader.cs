@@ -164,6 +164,7 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
                 id,
                 full_name,
                 contact_email,
+                contact_phone,
                 notes,
                 review_status,
                 hire_outcome,
@@ -193,7 +194,7 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
         while (await reader.ReadAsync(cancellationToken))
         {
             var firedRules = ParseFiredRules(
-                reader.GetString(14),
+                reader.GetString(15),
                 request.RoundClosed,
                 screeningContext);
             rows.Add(new CandidateListReadRow(
@@ -201,16 +202,17 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
                 ReadNullableString(reader, 1),
                 ReadNullableString(reader, 2),
                 ReadNullableString(reader, 3),
-                reader.GetString(4),
+                ReadNullableString(reader, 4),
                 reader.GetString(5),
-                ReadNullableString(reader, 6),
+                reader.GetString(6),
                 ReadNullableString(reader, 7),
                 ReadNullableString(reader, 8),
-                ReadNullableDateTimeOffset(reader, 9),
-                reader.GetInt32(10),
-                reader.GetString(11),
-                reader.GetBoolean(12),
+                ReadNullableString(reader, 9),
+                ReadNullableDateTimeOffset(reader, 10),
+                reader.GetInt32(11),
+                reader.GetString(12),
                 reader.GetBoolean(13),
+                reader.GetBoolean(14),
                 firedRules));
         }
 
@@ -273,6 +275,7 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
             ? "TRUE"
             : "position(lower(@query) in lower(coalesce(full_name, ''))) > 0 OR " +
               "position(lower(@query) in lower(coalesce(contact_email, ''))) > 0 OR " +
+              "position(lower(@query) in lower(coalesce(contact_phone, ''))) > 0 OR " +
               "position(lower(@query) in lower(coalesce(source_sender_name, ''))) > 0 OR " +
               "position(lower(@query) in lower(coalesce(source_sender_email, ''))) > 0 OR " +
               "position(lower(@query) in lower(coalesce(source_subject, ''))) > 0";
@@ -396,6 +399,7 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
                     c.id,
                     c.full_name,
                     c.contact_email,
+                    c.contact_phone,
                     c.notes,
                     c.review_status,
                     c.hire_outcome,

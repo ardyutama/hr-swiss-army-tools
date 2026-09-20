@@ -77,6 +77,15 @@ discipline only — not hero/bento/marquee rules.
     are removed from rendered UI and tracked as tickets instead. Placeholders teach
     users to ignore the interface. The dark sidebar itself stays — it is the strongest
     brand element.
+16. **Design-taste skill scope** (amendment 2026-09-19, screening-rules client grill):
+    of the design-taste-frontend skill, what binds this client is: full state cycles
+    (loading/empty/error per region), inline errors (never toast-only),
+    one-sentence-plus-one-action empty states, WCAG AA contrast on every control, no
+    dead UI, emoji-free UI (warning glyphs come from the icon set), and the
+    shape/color/density locks above, including the middle-dot ration (≤1 per line). Its
+    landing-page rules do not bind: the em-dash ban (this repo's copy voice predates
+    the skill — `Round 1 — First wave`, `Send email — <reason>`), hero/bento/marquee
+    choreography, and dual dark-mode design.
 
 ## Consequences
 

@@ -1,17 +1,22 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { CandidateReviewStatus } from '../api'
+import type { CandidateListCounts } from '../api'
 import type { CandidateOutcomeFilter, CandidateStatusFilter } from '../filter'
 
-const props = defineProps<{
-  counts: Record<CandidateReviewStatus, number>
-  outcomeCounts: Record<CandidateOutcomeFilter, number>
-  total: number
-}>()
+const props = withDefaults(
+  defineProps<{
+    /** Server-computed counts, rendered verbatim — no client recomputation. */
+    counts: CandidateListCounts
+    /** A form layout makes typed contact details searchable (decision 33). */
+    hasFormLayout?: boolean
+  }>(),
+  { hasFormLayout: false },
+)
 
 const status = defineModel<CandidateStatusFilter>('status', { required: true })
 const outcome = defineModel<CandidateOutcomeFilter>('outcome', { required: true })
 const query = defineModel<string>('query', { required: true })
+const screenedAll = defineModel<boolean>('screened', { required: true })
 
 const chips: { value: CandidateStatusFilter; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -31,18 +36,32 @@ const outcomeChips: { value: CandidateOutcomeFilter; label: string }[] = [
 
 const showOutcomeChips = computed(() => status.value === 'all' || status.value === 'shortlisted')
 
+// The All chip carries the non-screened funnel total; both count families come
+// from the server payload.
+const allCount = computed(() => props.counts.outcome.any)
+
+// The toggle is unavailable-but-explained at zero (the Send-button precedent),
+// never hidden — the toolbar stays spatially stable as imports land.
+const screenedDisabled = computed(() => props.counts.screenedOut === 0)
+
+const searchPlaceholder = computed(() =>
+  props.hasFormLayout ? 'Name, email, or phone' : 'Name, sender email, or subject',
+)
+
 function countFor(value: CandidateStatusFilter): number {
-  return value === 'all' ? props.total : props.counts[value]
+  return value === 'all' ? allCount.value : props.counts.status[value]
 }
 
 function outcomeCountFor(value: CandidateOutcomeFilter): number {
-  return props.outcomeCounts[value]
+  return props.counts.outcome[value]
 }
 </script>
 
 <template>
   <div class="flex flex-col gap-3">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <!-- The toggle is pinned trailing on row one; the search wraps to its own
+         line below `lg` (shared office PCs at 1280px hit the wrap). -->
+    <div class="flex flex-wrap items-center gap-2">
       <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by review status">
         <UButton
           v-for="chip in chips"
@@ -64,10 +83,25 @@ function outcomeCountFor(value: CandidateOutcomeFilter): number {
       <UInput
         v-model="query"
         icon="i-lucide-search"
-        placeholder="Name, sender email, or subject"
+        :placeholder="searchPlaceholder"
         aria-label="Search candidates"
-        class="sm:w-72"
+        class="order-last w-full lg:order-none lg:ml-auto lg:w-72"
       />
+      <div class="ml-auto flex items-center gap-2 lg:ml-0">
+        <UTooltip
+          :text="'No screened-out candidates in this round.'"
+          :disabled="!screenedDisabled"
+        >
+          <UCheckbox
+            v-model="screenedAll"
+            label="Show screened out"
+            :disabled="screenedDisabled"
+          />
+        </UTooltip>
+        <UBadge color="neutral" variant="subtle" class="tabular-nums">
+          {{ counts.screenedOut }}
+        </UBadge>
+      </div>
     </div>
     <div
       v-if="showOutcomeChips"

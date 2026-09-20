@@ -2,20 +2,19 @@ using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Messaging;
 using hr_sat.Application.Features.Candidates.List;
 using hr_sat.Application.Features.Candidates.Shared;
+using hr_sat.Application.Features.Shared;
 using hr_sat.Domain;
 using hr_sat.Domain.IntakeRounds;
 using hr_sat.Domain.Vacancies;
 using Microsoft.EntityFrameworkCore;
 
-namespace hr_sat.Application.Features.Candidates.ReviewQueue;
+namespace hr_sat.Application.Features.Candidates.MessagingSummary;
 
-internal sealed class GetReviewQueueQueryHandler(
-    IApplicationDbContext dbContext,
-    ICandidateListReader candidateListReader)
-    : IQueryHandler<GetReviewQueueQuery, IReadOnlyList<CandidateSummaryResponse>>
+internal sealed class GetMessagingSummaryQueryHandler(IApplicationDbContext dbContext)
+    : IQueryHandler<GetMessagingSummaryQuery, IReadOnlyList<CandidateSummaryResponse>>
 {
     public async Task<Result<IReadOnlyList<CandidateSummaryResponse>>> Handle(
-        GetReviewQueueQuery query,
+        GetMessagingSummaryQuery query,
         CancellationToken cancellationToken)
     {
         var vacancyExists = await dbContext.Vacancies
@@ -38,26 +37,24 @@ internal sealed class GetReviewQueueQueryHandler(
                 IntakeRoundErrors.NotFound(query.RoundId));
         }
 
-        var includeScreenedOut = string.Equals(
-            query.Screened,
-            "all",
-            StringComparison.OrdinalIgnoreCase);
-        // Unpaged expressed as a single MaxValue page: the queue mirrors the list's
-        // filters but returns every match. The reader still runs its counts queries —
-        // the accepted cost until ADR-0016's batching follow-up.
-        var readResult = await candidateListReader.ReadAsync(
-            new CandidateListReadRequest(
-                query.RoundId,
-                round.ClosedAt is not null,
-                query.Status,
-                query.Outcome,
-                query.Query,
-                query.Sort,
-                includeScreenedOut,
-                Page: 1,
-                PageSize: int.MaxValue),
+        var context = await ScreeningContextLoader.LoadAsync(
+            query.VacancyId,
+            round.ClosedAt is not null,
+            dbContext,
             cancellationToken);
-        var items = readResult.Rows.Select(CandidateListRowMapper.Map).ToArray();
+        var candidates = await dbContext.Candidates
+            .AsNoTracking()
+            .Where(candidate => candidate.IntakeRoundId == query.RoundId)
+            .Include(candidate => candidate.FormResponses)
+            .Include(candidate => candidate.CvDocuments)
+            .OrderBy(candidate => candidate.SourceSentAt == null)
+            .ThenBy(candidate => candidate.SourceSentAt)
+            .ThenBy(candidate => candidate.Id)
+            .ToListAsync(cancellationToken);
+
+        var items = candidates
+            .Select(candidate => CandidateSummaryMapper.Map(candidate, context))
+            .ToArray();
 
         return Result<IReadOnlyList<CandidateSummaryResponse>>.Success(items);
     }

@@ -1,6 +1,6 @@
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Abstractions.Messaging;
-using hr_sat.Application.Features.Candidates;
+using hr_sat.Application.Features.Candidates.Shared;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
 using hr_sat.Domain.IntakeRounds;
@@ -56,7 +56,7 @@ internal sealed class ListCandidatesQueryHandler(
                 page,
                 PageSize),
             cancellationToken);
-        var items = readResult.Rows.Select(ToResponse).ToArray();
+        var items = readResult.Rows.Select(CandidateListRowMapper.Map).ToArray();
 
         return new CandidateListResponse(
             items,
@@ -78,22 +78,4 @@ internal sealed class ListCandidatesQueryHandler(
                     readResult.Counts.Declined),
                 readResult.Counts.ScreenedOut));
     }
-
-    private static CandidateSummaryResponse ToResponse(CandidateListReadRow row) =>
-        new(
-            row.Id,
-            row.FullName,
-            row.ContactEmail,
-            row.Notes,
-            row.ReviewStatus,
-            row.HireOutcome,
-            row.SourceSenderName,
-            row.SourceSenderEmail,
-            row.SourceSubject,
-            row.SourceSentAt,
-            row.CvDocumentCount,
-            row.IntakeSource,
-            row.IsResubmitted,
-            row.ScreenedOut,
-            CandidateScreeningResponse.From(row.ScreenedOut, row.FiredRules).FiredRules);
 }

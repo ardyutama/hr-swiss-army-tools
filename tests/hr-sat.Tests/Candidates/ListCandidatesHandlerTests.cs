@@ -25,6 +25,7 @@ public sealed class ListCandidatesHandlerTests
                     42,
                     "Reader Name",
                     "reader@example.com",
+                    null,
                     "Reader note",
                     "flagged",
                     "none",

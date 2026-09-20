@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CandidateListState } from '@/features/candidates/useCandidateFilter'
+import type { CandidateListState } from '@/features/candidates/useCandidates'
 
 defineProps<{
   state: CandidateListState
@@ -10,17 +10,35 @@ const emit = defineEmits<{
   'open-round': []
   import: []
   'clear-filters': []
+  'show-screened': []
+  'back-to-first-page': []
 }>()
 </script>
 
 <template>
   <UEmpty
-    v-if="state.kind === 'ready'"
+    v-if="state.kind === 'no-matches'"
     icon="i-lucide-search-x"
     title="No candidates match these filters"
     description="Try a different search or clear the filters."
     class="min-h-40 px-6 py-10"
     :actions="[{ label: 'Clear filters', icon: 'i-lucide-x', onClick: () => emit('clear-filters') }]"
+  />
+  <UEmpty
+    v-else-if="state.kind === 'all-screened'"
+    icon="i-lucide-filter"
+    title="All candidates in this round are screened out"
+    description="Screening hides them by default — use the toggle to see them."
+    class="min-h-40 px-6 py-10"
+    :actions="[{ label: 'Show screened out', icon: 'i-lucide-eye', onClick: () => emit('show-screened') }]"
+  />
+  <UEmpty
+    v-else-if="state.kind === 'stale-page'"
+    icon="i-lucide-file-stack"
+    title="This page is empty — candidates may have been reclassified."
+    description="The list changed since this page was opened."
+    class="min-h-40 px-6 py-10"
+    :actions="[{ label: 'Back to page 1', icon: 'i-lucide-undo-2', onClick: () => emit('back-to-first-page') }]"
   />
   <template v-else-if="state.kind === 'empty'">
     <!-- Closed vacancy is read-only -->
