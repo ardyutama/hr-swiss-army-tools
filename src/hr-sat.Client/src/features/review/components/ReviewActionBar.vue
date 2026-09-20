@@ -112,7 +112,7 @@ const outcomeItems = computed<DropdownMenuItem[][]>(() => [
 
 <template>
   <div
-    class="sticky bottom-4 z-10 flex flex-col gap-2 rounded-xl border border-default bg-default px-4 py-3 shadow-lg"
+    class="flex shrink-0 flex-col gap-2 rounded-xl border border-default bg-default px-4 py-3 shadow-lg"
     aria-label="Review actions"
   >
     <p

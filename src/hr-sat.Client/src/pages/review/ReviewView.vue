@@ -276,9 +276,13 @@ watch(outcomeDialogOpen, (open) => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-5">
+  <!-- Full-height column: only the scroll region below scrolls. The action bar
+       is a flex footer outside it, so it stays pinned to the panel bottom no
+       matter how much or how little content renders. -->
+  <div class="flex min-h-0 flex-1 flex-col gap-5">
     <p class="sr-only" aria-live="polite" aria-atomic="true">{{ announcement }}</p>
 
+    <div class="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
     <!-- Shape-matched skeleton (ADR-0008 #14) -->
     <div
       v-if="viewState === 'loading'"
@@ -406,34 +410,38 @@ watch(outcomeDialogOpen, (open) => {
           class="self-start lg:sticky lg:top-6"
         />
       </div>
-
-      <ReviewActionBar
-        :review-status="candidate.reviewStatus"
-        :hire-outcome="candidate.hireOutcome"
-        :can-set-outcome="canSetHireOutcome"
-        :is-round-closed="isRoundClosed"
-        :vacancy-closed="vacancy.status === 'closed'"
-        :can-prev="previousCandidateId !== null"
-        :can-next="nextCandidateId !== null"
-        :busy="deciding"
-        :error="decisionError"
-        :outcome-busy="settingOutcome"
-        :outcome-error="outcomeError"
-        @prev="onPrev"
-        @next="onNext"
-        @decide="onDecide"
-        @set-outcome="onSetOutcome"
-        @help="shortcutsHelpOpen = true"
-      />
-
-      <OutcomeConfirmDialog
-        v-model:open="outcomeDialogOpen"
-        :outcome="pendingOutcome"
-        :busy="settingOutcome"
-        :error="outcomeError"
-        @confirm="onConfirmOutcome"
-      />
     </template>
+    </div>
+
+    <!-- Footer bar: outside the scroll region, so it never overlaps content
+         and never shifts with it. Only the ready workspace renders it. -->
+    <ReviewActionBar
+      v-if="viewState === 'ready' && vacancy && candidate"
+      :review-status="candidate.reviewStatus"
+      :hire-outcome="candidate.hireOutcome"
+      :can-set-outcome="canSetHireOutcome"
+      :is-round-closed="isRoundClosed"
+      :vacancy-closed="vacancy.status === 'closed'"
+      :can-prev="previousCandidateId !== null"
+      :can-next="nextCandidateId !== null"
+      :busy="deciding"
+      :error="decisionError"
+      :outcome-busy="settingOutcome"
+      :outcome-error="outcomeError"
+      @prev="onPrev"
+      @next="onNext"
+      @decide="onDecide"
+      @set-outcome="onSetOutcome"
+      @help="shortcutsHelpOpen = true"
+    />
+
+    <OutcomeConfirmDialog
+      v-model:open="outcomeDialogOpen"
+      :outcome="pendingOutcome"
+      :busy="settingOutcome"
+      :error="outcomeError"
+      @confirm="onConfirmOutcome"
+    />
 
     <ShortcutsHelpModal
       :open="shortcutsHelpOpen"
