@@ -200,8 +200,16 @@ _Avoid_: Match status, stored score
 A personalized message generated from an email template for one candidate for HR to send using their email client.
 _Avoid_: Sent email, bulk email
 
+**Dispatch**:
+A rendered email template sent by the server to one Contactable Candidate of a round via the installation's own SMTP account; the recorded outcome (sent, or failed with its error) plus the rendered subject and body are retained verbatim. A Dispatch never contacts a candidate outside the Contactable Candidate rule, and it never alters settled review data — a Dispatch to a closed round's candidate is legal while the vacancy is open; a Dispatch under a closed vacancy is a Lifecycle Conflict.
+_Avoid_: Sent email, notification, bulk email
+
+**Dispatch Run**:
+One Send To All action: the batch of Dispatches for every Contactable Candidate of one round, executed one candidate at a time. A failure on one Dispatch never aborts the run; re-running after a Dispatch Run sends only to candidates with no successful Dispatch — a successful Dispatch is never repeated.
+_Avoid_: Bulk send, batch job, campaign
+
 **Contactable Candidate**:
-A candidate eligible to receive a Prepared Message: a Rejected Candidate or a member of the Bench with a contact email recorded. New and flagged candidates, shortlisted candidates carrying a hire outcome, and candidates without a contact email are never contacted; the send flow names who was left out and why.
+A candidate eligible to receive a Prepared Message or a Dispatch: a Rejected Candidate or a member of the Bench with a contact email recorded. New and flagged candidates, shortlisted candidates carrying a hire outcome, and candidates without a contact email are never contacted; the send flow names who was left out and why.
 _Avoid_: Recipient, send-list member
 
 **Needed Hires**:
