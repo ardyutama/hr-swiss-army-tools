@@ -20,6 +20,8 @@ interface UseReviewShortcutsOptions {
   canPrev: Readonly<Ref<boolean>>
   canNext: Readonly<Ref<boolean>>
   busy: Readonly<Ref<boolean>>
+  /** A form candidate's stored CV link exists; C and the header button share it. */
+  canOpenCv: Readonly<Ref<boolean>>
   notesEditor: Readonly<Ref<NotesFocusHandle | null>>
   sourceEmailPanel: Readonly<Ref<SourceEmailHandle | null>>
   shortcutsHelpOpen: Ref<boolean>
@@ -30,6 +32,7 @@ interface UseReviewShortcutsOptions {
   onPrev: () => void | Promise<void>
   onNext: () => void | Promise<void>
   onEditDetails: () => void
+  onOpenCv: () => void
   onDecide: (status: Exclude<CandidateReviewStatus, 'new'>) => void | Promise<void>
   onSetOutcome: (outcome: CandidateHireOutcome) => void | Promise<void>
   onToggleRequirement: (index: number) => void | Promise<void>
@@ -127,6 +130,13 @@ export function useReviewShortcuts(options: UseReviewShortcutsOptions) {
       O: (event) => {
         if (isArmed(event)) {
           sourceEmailPanel.value?.toggle()
+        }
+      },
+      // The form variant's CV link opens in a new tab; inert on the email
+      // variant and on an empty link cell, mirroring the header button.
+      C: (event) => {
+        if (isArmed(event) && options.canOpenCv.value && !busy.value) {
+          options.onOpenCv()
         }
       },
       S: (event) => {

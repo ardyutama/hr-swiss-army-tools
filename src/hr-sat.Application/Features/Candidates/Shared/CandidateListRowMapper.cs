@@ -25,6 +25,7 @@ internal static class CandidateListRowMapper
             row.CvDocumentCount,
             row.IntakeSource,
             row.IsResubmitted,
+            row.CvLink,
             row.ScreenedOut,
             CandidateScreeningResponse.From(row.ScreenedOut, row.FiredRules).FiredRules);
 }

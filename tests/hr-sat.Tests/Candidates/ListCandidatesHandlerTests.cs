@@ -36,6 +36,7 @@ public sealed class ListCandidatesHandlerTests
                     2,
                     "form",
                     true,
+                    "https://drive.example.test/cv/42",
                     true,
                     [new ScreeningRuleMatch(0, "Availability · equals \"no\"")])],
                 1,
@@ -53,6 +54,7 @@ public sealed class ListCandidatesHandlerTests
         item.Id.ShouldBe(42);
         item.FullName.ShouldBe("Reader Name");
         item.CvDocumentCount.ShouldBe(2);
+        item.CvLink.ShouldBe("https://drive.example.test/cv/42");
         item.ScreenedOut.ShouldBeTrue();
         item.FiredRules.ShouldHaveSingleItem().Display.ShouldBe(
             "Availability · equals \"no\"");

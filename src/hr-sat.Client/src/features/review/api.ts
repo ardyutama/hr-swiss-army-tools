@@ -12,6 +12,15 @@ export interface CandidateScreening {
   firedRules: FiredScreeningRule[]
 }
 
+/** One stored Form Response row (issue 01): raw cells, ordinal-indexed, verbatim. */
+export interface CandidateFormResponse {
+  cells: string[]
+  formTimestampRaw: string
+  formTimestampParsed: string | null
+  isCurrent: boolean
+  importedAt: string
+}
+
 export interface CandidateDetails {
   id: number
   reviewStatus: CandidateReviewStatus
@@ -31,6 +40,9 @@ export interface CandidateDetails {
   sourceSentAt: string | null
   sourceOriginalFilename: string
   documents: CvDocumentResult[]
+  intakeSource: string
+  isResubmitted: boolean
+  formResponses: CandidateFormResponse[]
 }
 
 export interface PriorApplication {
@@ -68,6 +80,7 @@ function normalizeCandidateDetails(details: CandidateDetails): CandidateDetails 
     ...details,
     priorApplications: details.priorApplications ?? [],
     screening: details.screening ?? null,
+    formResponses: details.formResponses ?? [],
   }
 }
 

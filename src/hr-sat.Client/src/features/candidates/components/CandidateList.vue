@@ -46,6 +46,25 @@ function sendLabel(candidate: CandidateSummary): string {
     : `Send email — ${contactBlockReason(classification)}`
 }
 
+/** Decision 3 (issue 04): muted glyph before the name identifies the intake source. */
+const sourceIcons: Record<string, string> = {
+  email: 'i-lucide-mail',
+  form: 'i-lucide-file-text',
+}
+
+const sourceLabels: Record<string, string> = {
+  email: 'Source Email',
+  form: 'Form Response',
+}
+
+function sourceIcon(candidate: CandidateSummary): string {
+  return sourceIcons[candidate.intakeSource] ?? 'i-lucide-help-circle'
+}
+
+function sourceLabel(candidate: CandidateSummary): string {
+  return sourceLabels[candidate.intakeSource] ?? candidate.intakeSource
+}
+
 const reviewStatusLabels: Record<CandidateReviewStatus, string> = {
   new: 'New',
   flagged: 'Flagged',
@@ -179,7 +198,16 @@ function collapsedRuleCount(candidate: CandidateSummary): number {
           @keydown.space.prevent="emit('review', candidate)"
         >
             <td class="ctable__col crow__name border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
-            <span class="crow__name-text block max-w-full truncate text-sm font-semibold text-highlighted">{{ candidateDisplayName(candidate) }}</span>
+            <span class="flex min-w-0 items-center gap-1.5">
+              <UTooltip :text="sourceLabel(candidate)">
+                <UIcon
+                  :name="sourceIcon(candidate)"
+                  class="size-4 shrink-0 text-muted"
+                  :aria-label="sourceLabel(candidate)"
+                />
+              </UTooltip>
+              <span class="crow__name-text block max-w-full truncate text-sm font-semibold text-highlighted">{{ candidateDisplayName(candidate) }}</span>
+            </span>
             <!-- Fired-rule chips stack under the name: no new column, the
                  colgroup never reflows on toggle (decision 26). -->
             <div
@@ -216,15 +244,35 @@ function collapsedRuleCount(candidate: CandidateSummary): number {
           </td>
 
           <td class="ctable__col crow__cv border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">
-            <span
-              v-if="candidate.cvDocumentCount > 0"
-              class="inline-flex items-center text-muted"
-              :title="candidate.cvDocumentCount === 1 ? '1 CV document' : `${candidate.cvDocumentCount} CV documents`"
-            >
-              <UIcon name="i-lucide-paperclip" class="size-4" aria-hidden="true" />
-              <span class="sr-only">{{ candidate.cvDocumentCount === 1 ? '1 CV document' : `${candidate.cvDocumentCount} CV documents` }}</span>
-            </span>
-            <UBadge v-else color="warning" variant="subtle" icon="i-lucide-file-warning">No CV</UBadge>
+            <!-- Decision 1 (issue 04): the CV cell is a four-state matrix. Form
+                 candidates carry a Drive link, never a local PDF, so they must not
+                 show the email "No CV" gap badge. -->
+            <template v-if="candidate.intakeSource === 'form'">
+              <UButton
+                v-if="candidate.cvLink"
+                :to="candidate.cvLink"
+                target="_blank"
+                rel="noopener"
+                icon="i-lucide-external-link"
+                color="neutral"
+                variant="link"
+                class="px-0"
+                title="Open CV link in a new tab"
+                @click.stop
+              >Link</UButton>
+              <UBadge v-else color="warning" variant="subtle" icon="i-lucide-file-warning">No CV link</UBadge>
+            </template>
+            <template v-else>
+              <span
+                v-if="candidate.cvDocumentCount > 0"
+                class="inline-flex items-center text-muted"
+                :title="candidate.cvDocumentCount === 1 ? '1 CV document' : `${candidate.cvDocumentCount} CV documents`"
+              >
+                <UIcon name="i-lucide-paperclip" class="size-4" aria-hidden="true" />
+                <span class="sr-only">{{ candidate.cvDocumentCount === 1 ? '1 CV document' : `${candidate.cvDocumentCount} CV documents` }}</span>
+              </span>
+              <UBadge v-else color="warning" variant="subtle" icon="i-lucide-file-warning">No CV</UBadge>
+            </template>
           </td>
 
           <td class="ctable__col border-b border-default px-2 py-4 align-middle transition-colors first:pl-5 last:pr-5 group-hover:bg-muted">

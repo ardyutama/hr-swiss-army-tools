@@ -3,6 +3,8 @@ import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import ReviewView from './ReviewView.vue'
+import SpecAppShell from './SpecAppShell.vue'
+import { formatReceivedAt } from '@/features/candidates/format'
 
 const toastAdd = vi.fn()
 
@@ -105,6 +107,10 @@ function candidateDetails(id: number, overrides: Record<string, unknown> = {}) {
     sourceBodyText: 'Please find my CV attached.',
     sourceSentAt: '2026-08-10T09:00:00Z',
     sourceOriginalFilename: `${id}.eml`,
+    // Email-source defaults (issue 04); the form variant overrides them below.
+    intakeSource: 'email',
+    isResubmitted: false,
+    formResponses: [] as Record<string, unknown>[],
     documents: [
       {
         id: id * 10,
@@ -116,6 +122,67 @@ function candidateDetails(id: number, overrides: Record<string, unknown> = {}) {
     ],
     ...overrides,
   }
+}
+
+// The Form Layout GET wire shape spells roles lowercased (see form-layout/api.ts);
+// the review page fetches it lazily, only for form-sourced candidates. The
+// columns are deliberately unordered: the panel must sort by ordinal.
+function formLayoutDto(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 5,
+    vacancyId: 1,
+    headerSnapshot: ['Timestamp', 'Nama Lengkap', 'Email aktif', 'CV link', 'Pengalaman kerja', 'Posisi'],
+    columns: [
+      { ordinal: 1, role: 'name', label: null },
+      { ordinal: 2, role: 'contactemail', label: null },
+      { ordinal: 3, role: 'cvlink', label: null },
+      { ordinal: 5, role: null, label: null },
+      { ordinal: 4, role: null, label: 'Experience' },
+    ],
+    isValid: true,
+    candidatesUpdated: 0,
+    typedOverridesKept: 0,
+    ...overrides,
+  }
+}
+
+function formResponse(cells: string[], overrides: Record<string, unknown> = {}) {
+  return {
+    cells,
+    formTimestampRaw: '2026-09-12T09:58:00Z',
+    formTimestampParsed: '2026-09-12T09:58:00Z',
+    isCurrent: true,
+    importedAt: '2026-09-12T10:00:00Z',
+    ...overrides,
+  }
+}
+
+// A form-sourced candidate: no source email, no local PDFs; the stored raw
+// Form Response row carries the details prefill, the CV link, and the answers.
+function formCandidateDetails(id: number, overrides: Record<string, unknown> = {}) {
+  return candidateDetails(id, {
+    intakeSource: 'form',
+    fullName: 'Siti Rahma',
+    contactEmail: 'siti@example.com',
+    sourceSenderName: null,
+    sourceSenderEmail: null,
+    sourceSubject: null,
+    sourceBodyText: null,
+    sourceSentAt: null,
+    sourceOriginalFilename: null,
+    documents: [],
+    formResponses: [
+      formResponse([
+        '2026-09-12T09:58:00Z',
+        'Siti Rahma',
+        'siti@example.com',
+        'https://drive.example.test/cv/siti',
+        '3 years, PT X\nShift rotation',
+        'Operator produksi',
+      ]),
+    ],
+    ...overrides,
+  })
 }
 
 interface CapturedRequest {
@@ -130,6 +197,8 @@ function stubApi(
     candidates?: ReturnType<typeof candidateSummary>[]
     details?: Record<number, Record<string, unknown>>
     vacancy?: Record<string, unknown>
+    formLayout?: Record<string, unknown>
+    formLayoutError?: { problem: unknown; status: number }
     mutationError?: { path: string; problem: unknown; status: number }
   } = {},
 ) {
@@ -226,13 +295,23 @@ function stubApi(
     if (method === 'GET' && url.endsWith('/vacancies/1')) {
       return Promise.resolve(jsonResponse(options.vacancy ?? vacancyDetails()))
     }
+    // Option-gated on purpose: the review page must never fetch a layout for an
+    // email candidate, so the unstubbed-fetch throw below stays the tripwire.
+    if (method === 'GET' && url.endsWith('/form-layout')) {
+      if (options.formLayoutError) {
+        return Promise.resolve(
+          jsonResponse(options.formLayoutError.problem, options.formLayoutError.status),
+        )
+      }
+      if (options.formLayout) {
+        return Promise.resolve(jsonResponse(options.formLayout))
+      }
+    }
     throw new Error(`Unstubbed fetch: ${method} ${url}`)
   })
   vi.stubGlobal('fetch', mock)
   return { requests }
 }
-
-const Harness = { template: '<router-view />' }
 
 async function mountReview(
   startCandidateId = '1',
@@ -258,7 +337,9 @@ async function mountReview(
     params: { id: '1', roundId: '1', candidateId: startCandidateId },
     query,
   })
-  const wrapper = mount(Harness, { attachTo: document.body, global: { plugins: [router] } })
+  // The UApp shell provides the TooltipProvider the review header's
+  // Resubmitted tooltip injects (a bare router-view mount crashes on it).
+  const wrapper = mount(SpecAppShell, { attachTo: document.body, global: { plugins: [router] } })
   return { wrapper, router }
 }
 
@@ -291,6 +372,7 @@ async function openOutcomeMenu(wrapper: VueWrapper) {
 
 afterEach(() => {
   vi.clearAllMocks()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   document.body.innerHTML = ''
 })
@@ -889,6 +971,8 @@ describe('ReviewView', () => {
     expect(dialog?.textContent).toContain('Edit candidate details')
     expect(dialog?.textContent).toContain('Open/close source email')
     expect(dialog?.textContent).toContain('Toggle requirement by position')
+    expect(dialog?.textContent).toContain('Open CV link in a new tab')
+    expect(dialog?.textContent).toContain('Triage mode, form candidates')
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 's' }))
     await flushPromises()
@@ -1439,5 +1523,244 @@ describe('ReviewView', () => {
     expect(router.currentRoute.value.params.candidateId).toBe('1')
     expect(toastAdd).not.toHaveBeenCalled()
     wrapper.unmount()
+  })
+
+  // Issue 04: the workspace branches by Intake Source — a form-sourced
+  // candidate shows its Form Response as the dominant evidence.
+  describe('form-evidence variant', () => {
+    it('US-17: a form candidate renders the Form Answers panel instead of the CV viewer and source email', async () => {
+      const { requests } = stubApi({
+        details: { 1: formCandidateDetails(1) },
+        formLayout: formLayoutDto(),
+      })
+      const { wrapper } = await mountReview()
+      await flushPromises()
+
+      const panel = wrapper.find('[aria-label="Form answers"]')
+      expect(panel.exists()).toBe(true)
+      // Every other Picked Column is a Form Answer (CONTEXT.md): role-less
+      // columns only, in column order; the label leads and the header snapshot
+      // shows muted beside it when both exist.
+      const rows = panel
+        .findAll('dt')
+        .map((row) => row.text().replace(/\s+/g, ' ').trim())
+      expect(rows).toEqual(['4 · Experience · Pengalaman kerja', '5 · Posisi'])
+      const values = panel.findAll('dd')
+      expect(values[0]?.text()).toContain('3 years, PT X')
+      expect(values[0]?.text()).toContain('Shift rotation')
+      expect(values[1]?.text()).toBe('Operator produksi')
+
+      expect(wrapper.find('[aria-label="CV viewer"]').exists()).toBe(false)
+      expect(wrapper.find('[aria-label="Source email"]').exists()).toBe(false)
+      // The layout is vacancy-level configuration: fetched once, lazily.
+      expect(requests.filter((request) => request.url.endsWith('/form-layout'))).toHaveLength(1)
+      wrapper.unmount()
+    })
+
+    it('US-17: the header names the evidence source and links the stored CV in a new tab', async () => {
+      stubApi({
+        details: { 1: formCandidateDetails(1) },
+        formLayout: formLayoutDto(),
+      })
+      const { wrapper } = await mountReview()
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Form Response')
+      expect(wrapper.text()).toContain(
+        `Submitted ${formatReceivedAt('2026-09-12T09:58:00Z')}`,
+      )
+
+      const openCv = wrapper.find('a[href="https://drive.example.test/cv/siti"]')
+      expect(openCv.exists()).toBe(true)
+      expect(openCv.attributes('target')).toBe('_blank')
+      expect(openCv.attributes('rel')).toContain('noopener')
+      expect(openCv.attributes('aria-keyshortcuts')).toBe('C')
+      expect(openCv.text()).toContain('Open CV')
+      wrapper.unmount()
+    })
+
+    it('US-17: C opens the stored CV link, and typing c inside Notes does not', async () => {
+      const windowOpen = vi.spyOn(window, 'open').mockImplementation(() => null)
+      stubApi({
+        details: { 1: formCandidateDetails(1) },
+        formLayout: formLayoutDto(),
+      })
+      const { wrapper } = await mountReview()
+      await flushPromises()
+
+      const notes = wrapper.find('textarea[aria-label="Candidate notes"]')
+      notes.element.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', bubbles: true }))
+      await flushPromises()
+      expect(windowOpen).not.toHaveBeenCalled()
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c' }))
+      await flushPromises()
+      expect(windowOpen).toHaveBeenCalledWith(
+        'https://drive.example.test/cv/siti',
+        '_blank',
+        'noopener',
+      )
+      windowOpen.mockRestore()
+      wrapper.unmount()
+    })
+
+    it('US-17: an empty CV link cell renders a disabled "No CV link" button and C stays inert', async () => {
+      const windowOpen = vi.spyOn(window, 'open').mockImplementation(() => null)
+      stubApi({
+        details: {
+          1: formCandidateDetails(1, {
+            formResponses: [
+              formResponse(['2026-09-12T09:58:00Z', 'Joko', 'joko@example.com', '   ', '2 years', 'Operator']),
+            ],
+          }),
+        },
+        formLayout: formLayoutDto(),
+      })
+      const { wrapper } = await mountReview()
+      await flushPromises()
+
+      // The gap is never hidden: a disabled button with gap copy stands in.
+      const noCvLink = wrapper
+        .findAll('button')
+        .find((button) => button.text().includes('No CV link'))
+      expect(noCvLink, 'a disabled "No CV link" button').toBeDefined()
+      expect(noCvLink?.attributes('disabled')).toBeDefined()
+      expect(wrapper.find('a[aria-keyshortcuts="C"]').exists()).toBe(false)
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c' }))
+      await flushPromises()
+      expect(windowOpen).not.toHaveBeenCalled()
+      windowOpen.mockRestore()
+      wrapper.unmount()
+    })
+
+    it('domain: a Resubmitted candidate is flagged in the review header', async () => {
+      stubApi({
+        details: { 1: formCandidateDetails(1, { isResubmitted: true }) },
+        formLayout: formLayoutDto(),
+      })
+      const { wrapper } = await mountReview()
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Resubmitted')
+      expect(wrapper.text()).toContain('Form Response')
+      wrapper.unmount()
+    })
+
+    it('US-17: the email variant keeps the CV viewer and source email and never fetches a form layout', async () => {
+      const { requests } = stubApi()
+      const { wrapper } = await mountReview()
+      await flushPromises()
+
+      expect(wrapper.find('[aria-label="CV viewer"]').exists()).toBe(true)
+      expect(wrapper.find('[aria-label="Source email"]').exists()).toBe(true)
+      expect(wrapper.find('[aria-label="Form answers"]').exists()).toBe(false)
+      expect(wrapper.find('a[aria-keyshortcuts="C"]').exists()).toBe(false)
+      expect(wrapper.text()).toContain('Source Email')
+      expect(wrapper.text()).not.toContain('Submitted')
+      expect(wrapper.text()).not.toContain('Form Response')
+      // The stub throws on any unstubbed fetch; reaching this assertion
+      // already proves no layout request fired — kept explicit as a tripwire.
+      expect(requests.some((request) => request.url.endsWith('/form-layout'))).toBe(false)
+      wrapper.unmount()
+    })
+
+    it('US-17: decision shortcuts and auto-advance behave identically on the form variant', async () => {
+      const { requests } = stubApi({
+        candidateCount: 3,
+        details: { 1: formCandidateDetails(1) },
+        formLayout: formLayoutDto(),
+      })
+      const { wrapper, router } = await mountReview()
+      await flushPromises()
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 's' }))
+      await flushPromises()
+      expect(router.currentRoute.value.params.candidateId).toBe('2')
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f' }))
+      await flushPromises()
+      expect(router.currentRoute.value.params.candidateId).toBe('3')
+
+      // Nowhere to advance: deciding on the last candidate stays put.
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'r' }))
+      await flushPromises()
+      expect(router.currentRoute.value.params.candidateId).toBe('3')
+
+      const decisions = requests.filter(
+        (request) => request.method === 'PUT' && request.url.endsWith('/review'),
+      )
+      expect(decisions.map((request) => request.body?.reviewStatus)).toEqual([
+        'shortlisted',
+        'flagged',
+        'rejected',
+      ])
+      wrapper.unmount()
+    })
+
+    it('domain: a form candidate whose vacancy has no layout sees the panel empty state, never an error', async () => {
+      stubApi({
+        details: { 1: formCandidateDetails(1) },
+        formLayoutError: {
+          problem: { title: 'FormLayouts.NotFound', detail: 'No form layout.' },
+          status: 404,
+        },
+      })
+      const { wrapper } = await mountReview()
+      await flushPromises()
+
+      const panel = wrapper.find('[aria-label="Form answers"]')
+      expect(panel.exists()).toBe(true)
+      expect(panel.text()).toContain('This response has no picked columns to show.')
+      expect(panel.find('[role="alert"]').exists()).toBe(false)
+      // No layout, no CV link: the header falls back to the visible gap state,
+      // and the form Timestamp (system data) still shows.
+      expect(hasButton(wrapper, 'No CV link')).toBe(true)
+      expect(wrapper.text()).toContain(
+        `Submitted ${formatReceivedAt('2026-09-12T09:58:00Z')}`,
+      )
+      wrapper.unmount()
+    })
+
+    it('domain: a failed layout fetch surfaces an inline error and Try again refetches', async () => {
+      let layoutCalls = 0
+      const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (init?.method === undefined && url.endsWith('/form-layout')) {
+          layoutCalls += 1
+          return layoutCalls === 1
+            ? Promise.resolve(jsonResponse({ title: 'Server error' }, 500))
+            : Promise.resolve(jsonResponse(formLayoutDto()))
+        }
+        if (/\/candidates\/\d+$/.test(url)) {
+          return Promise.resolve(jsonResponse(formCandidateDetails(1)))
+        }
+        if (url.includes('/review-queue')) {
+          return Promise.resolve(jsonResponse([candidateSummary(1), candidateSummary(2)]))
+        }
+        if (url.endsWith('/vacancies/1')) {
+          return Promise.resolve(jsonResponse(vacancyDetails()))
+        }
+        throw new Error(`Unstubbed fetch: ${init?.method ?? 'GET'} ${url}`)
+      })
+      vi.stubGlobal('fetch', fetchMock)
+
+      const { wrapper } = await mountReview()
+      await flushPromises()
+
+      const alert = wrapper.find('[aria-label="Form answers"] [role="alert"]')
+      expect(alert.exists()).toBe(true)
+      expect(alert.text()).toContain("Couldn't load the form answers")
+
+      await findButton(wrapper, 'Try again').trigger('click')
+      await flushPromises()
+
+      expect(layoutCalls).toBe(2)
+      const panel = wrapper.find('[aria-label="Form answers"]')
+      expect(panel.find('[role="alert"]').exists()).toBe(false)
+      expect(panel.text()).toContain('Experience')
+      expect(panel.text()).toContain('Operator produksi')
+      wrapper.unmount()
+    })
   })
 })

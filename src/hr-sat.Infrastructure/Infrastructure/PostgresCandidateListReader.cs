@@ -171,17 +171,18 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
                 source_sender_name,
                 source_sender_email,
                 source_subject,
-                source_sent_at,
+                received_at,
                 cv_document_count,
                 intake_source,
                 is_resubmitted,
+                cv_link,
                 screened_out,
                 fired_rules::text
             FROM candidate_rows
             WHERE {scope} AND {filters}
             ORDER BY
-                CASE WHEN source_sent_at IS NULL THEN 1 ELSE 0 END,
-                source_sent_at {direction},
+                CASE WHEN received_at IS NULL THEN 1 ELSE 0 END,
+                received_at {direction},
                 id
             LIMIT @page_size OFFSET @page_offset;
             """;
@@ -194,7 +195,7 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
         while (await reader.ReadAsync(cancellationToken))
         {
             var firedRules = ParseFiredRules(
-                reader.GetString(15),
+                reader.GetString(16),
                 request.RoundClosed,
                 screeningContext);
             rows.Add(new CandidateListReadRow(
@@ -212,7 +213,8 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
                 reader.GetInt32(11),
                 reader.GetString(12),
                 reader.GetBoolean(13),
-                reader.GetBoolean(14),
+                ReadNullableString(reader, 14),
+                reader.GetBoolean(15),
                 firedRules));
         }
 
@@ -407,6 +409,8 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
                     c.source_sender_email,
                     c.source_subject,
                     c.source_sent_at,
+                    COALESCE(c.source_sent_at, current_response.form_timestamp_parsed)
+                        AS received_at,
                     (
                         SELECT COUNT(*)::int
                         FROM cv_document AS cv_document
@@ -414,6 +418,19 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
                     ) AS cv_document_count,
                     c.intake_source,
                     c.is_resubmitted,
+                    CASE
+                        WHEN c.intake_source = 'form' AND current_response.id IS NOT NULL
+                            THEN NULLIF(btrim(
+                                current_response.cells ->> (
+                                    SELECT (layout_column.column_value ->> 'Ordinal')::int
+                                    FROM jsonb_array_elements(layout.columns)
+                                        AS layout_column(column_value)
+                                    WHERE COALESCE(
+                                        layout_column.column_value ->> 'Role',
+                                        layout_column.column_value ->> 'role') IN ('3', 'CvLink', 'cvlink')
+                                    LIMIT 1)), '')
+                        ELSE NULL
+                    END AS cv_link,
                     {screeningProjection}
                 FROM candidate AS c
                 LEFT JOIN candidate_form_response AS current_response
@@ -421,6 +438,8 @@ public sealed class PostgresCandidateListReader(AppDbContext dbContext)
                     AND current_response.is_current
                 LEFT JOIN intake_round AS round
                     ON round.id = c.intake_round_id
+                LEFT JOIN form_layout AS layout
+                    ON layout.vacancy_id = round.vacancy_id
                 LEFT JOIN screening_rule_set AS rule_set
                     ON rule_set.vacancy_id = round.vacancy_id
                 {activeScreeningJoin}

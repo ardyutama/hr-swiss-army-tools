@@ -1,5 +1,7 @@
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.Candidates.FormResponses;
+using hr_sat.Domain.Vacancies.FormLayouts;
 using Shouldly;
 using Xunit;
 
@@ -270,6 +272,125 @@ public sealed class CandidateDomainTests
             .ShouldContain("A candidate can have at most one primary CV document.");
     }
 
+    [Fact]
+    public void Domain_received_at_is_the_source_sent_date_for_email_candidates()
+    {
+        var sentAt = new DateTimeOffset(2026, 8, 21, 8, 30, 0, TimeSpan.Zero);
+        var candidate = CandidateTestData.CreateCandidate(1, sourceSentAt: sentAt);
+
+        candidate.ReceivedAt.ShouldBe(sentAt);
+    }
+
+    [Fact]
+    public void Domain_received_at_is_the_current_form_responses_parsed_timestamp()
+    {
+        var parsed = new DateTimeOffset(2026, 9, 12, 9, 58, 0, TimeSpan.Zero);
+        var candidate = CreateFormCandidate(
+            ["2026-09-12T09:58:00Z", "Applicant", "person@example.com"],
+            parsed);
+
+        candidate.ReceivedAt.ShouldBe(parsed);
+    }
+
+    [Fact]
+    public void Domain_received_at_tracks_the_current_response_across_a_resubmission()
+    {
+        var olderParsed = new DateTimeOffset(2026, 9, 12, 9, 58, 0, TimeSpan.Zero);
+        var newerParsed = new DateTimeOffset(2026, 9, 13, 11, 5, 0, TimeSpan.Zero);
+        var candidate = CreateFormCandidate(
+            ["2026-09-12T09:58:00Z", "Applicant", "person@example.com"],
+            olderParsed);
+
+        var resubmission = candidate.AddFormResponse(
+            new CandidateFormResponseData(
+                ["2026-09-13T11:05:00Z", "Applicant", "person@example.com"],
+                "2026-09-13T11:05:00Z",
+                newerParsed,
+                "person@example.com",
+                new DateTimeOffset(2026, 9, 19, 12, 0, 0, TimeSpan.Zero)),
+            candidate.FormResponses.Single(response => response.IsCurrent),
+            isResubmitted: true);
+
+        resubmission.IsSuccess.ShouldBeTrue();
+        candidate.IsResubmitted.ShouldBeTrue();
+        candidate.ReceivedAt.ShouldBe(newerParsed);
+    }
+
+    [Fact]
+    public void Domain_received_at_is_null_when_the_form_timestamp_is_unparsed()
+    {
+        var candidate = CreateFormCandidate(["not a timestamp"], parsed: null);
+
+        candidate.ReceivedAt.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Domain_cv_link_reads_the_bound_cell_trimmed()
+    {
+        var candidate = CreateFormCandidate(
+            ["Timestamp", "Applicant", "person@example.com", "  https://drive.example.com/cv  "],
+            parsed: null);
+
+        candidate.CvLink(CreateCvLinkLayout()).ShouldBe("https://drive.example.com/cv");
+    }
+
+    [Fact]
+    public void Domain_cv_link_is_null_for_email_candidates_even_with_a_bound_layout()
+    {
+        var candidate = CandidateTestData.CreateCandidate(1);
+
+        candidate.CvLink(CreateCvLinkLayout()).ShouldBeNull();
+    }
+
+    [Fact]
+    public void Domain_cv_link_is_null_without_a_layout()
+    {
+        var candidate = CreateFormCandidate(
+            ["Timestamp", "Applicant", "person@example.com", "https://drive.example.com/cv"],
+            parsed: null);
+
+        candidate.CvLink(null).ShouldBeNull();
+    }
+
+    [Fact]
+    public void Domain_cv_link_is_null_when_no_column_is_bound_to_the_role()
+    {
+        var unboundLayoutResult = FormLayout.Create(
+            1,
+            ["Timestamp", "Name", "Email", "Portfolio"],
+            new FormLayoutDefinition([
+                new FormLayoutColumn(1, FormLayoutRole.Name, null),
+                new FormLayoutColumn(2, FormLayoutRole.ContactEmail, null),
+                new FormLayoutColumn(3, null, "Portfolio")
+            ]));
+        unboundLayoutResult.IsSuccess.ShouldBeTrue();
+        var candidate = CreateFormCandidate(
+            ["Timestamp", "Applicant", "person@example.com", "https://drive.example.com/cv"],
+            parsed: null);
+
+        candidate.CvLink(unboundLayoutResult.Value).ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Domain_cv_link_is_null_when_the_bound_cell_is_empty_or_whitespace(string cell)
+    {
+        var candidate = CreateFormCandidate(
+            ["Timestamp", "Applicant", "person@example.com", cell],
+            parsed: null);
+
+        candidate.CvLink(CreateCvLinkLayout()).ShouldBeNull();
+    }
+
+    [Fact]
+    public void Domain_cv_link_is_null_when_the_row_is_shorter_than_the_bound_ordinal()
+    {
+        var candidate = CreateFormCandidate(["Timestamp", "Applicant"], parsed: null);
+
+        candidate.CvLink(CreateCvLinkLayout()).ShouldBeNull();
+    }
+
     [Theory]
     [InlineData("intakeRoundId", "Intake round is required.")]
     [InlineData("sourceOriginalFilename", "The source filename is required.")]
@@ -317,6 +438,40 @@ public sealed class CandidateDomainTests
         result.Error.ShouldBeOfType<ValidationError>()
             .Errors["documents"]
             .ShouldContain(expectedMessage);
+    }
+
+    private static Candidate CreateFormCandidate(
+        IReadOnlyList<string> cells,
+        DateTimeOffset? parsed)
+    {
+        var importedAt = new DateTimeOffset(2026, 9, 19, 10, 0, 0, TimeSpan.Zero);
+        var candidateResult = Candidate.ImportForm(new CandidateFormImportData(1, importedAt));
+        candidateResult.IsSuccess.ShouldBeTrue();
+        var responseResult = candidateResult.Value.AddFormResponse(
+            new CandidateFormResponseData(
+                cells,
+                cells[0],
+                parsed,
+                cells.Count > 2 ? cells[2] : null,
+                importedAt),
+            currentResponse: null,
+            isResubmitted: false);
+        responseResult.IsSuccess.ShouldBeTrue();
+        return candidateResult.Value;
+    }
+
+    private static FormLayout CreateCvLinkLayout()
+    {
+        var result = FormLayout.Create(
+            1,
+            ["Timestamp", "Name", "Email", "CV link"],
+            new FormLayoutDefinition([
+                new FormLayoutColumn(1, FormLayoutRole.Name, null),
+                new FormLayoutColumn(2, FormLayoutRole.ContactEmail, null),
+                new FormLayoutColumn(3, FormLayoutRole.CvLink, null)
+            ]));
+        result.IsSuccess.ShouldBeTrue();
+        return result.Value;
     }
 
     private static CandidateImportData ValidImportData(

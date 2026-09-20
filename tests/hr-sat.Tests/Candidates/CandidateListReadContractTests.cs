@@ -321,6 +321,112 @@ public abstract class CandidateListReadContractTests
         row.FiredRules.ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task US_17_candidate_list_read_resolves_the_cv_link_with_trim_empty_and_email_edges()
+    {
+        await using var harness = await CreateHarnessAsync();
+        var seed = await CandidateListContractData.CreateWithCvLinkAsync(harness.DbContext);
+        var linked = CandidateListContractData.AddFormCandidate(
+            harness.DbContext,
+            seed,
+            1,
+            ["Timestamp", "Linked Applicant", "linked@example.com", "  https://drive.example.com/cv  "]);
+        var whitespace = CandidateListContractData.AddFormCandidate(
+            harness.DbContext,
+            seed,
+            2,
+            ["Timestamp", "Whitespace Applicant", "whitespace@example.com", "   "]);
+        var empty = CandidateListContractData.AddFormCandidate(
+            harness.DbContext,
+            seed,
+            3,
+            ["Timestamp", "Empty Applicant", "empty@example.com", ""]);
+        var email = CandidateListContractData.AddEmailCandidate(
+            harness.DbContext,
+            seed,
+            4,
+            new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero));
+        await harness.DbContext.SaveChangesAsync(CancellationToken.None);
+
+        var result = await harness.Reader.ReadAsync(
+            Request(seed.Round.Id, includeScreenedOut: true),
+            CancellationToken.None);
+
+        result.Rows.Single(row => row.Id == linked.Id).CvLink
+            .ShouldBe("https://drive.example.com/cv");
+        result.Rows.Single(row => row.Id == whitespace.Id).CvLink.ShouldBeNull();
+        result.Rows.Single(row => row.Id == empty.Id).CvLink.ShouldBeNull();
+        result.Rows.Single(row => row.Id == email.Id).CvLink.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task US_17_candidate_list_read_returns_a_null_cv_link_without_a_bound_layout_column()
+    {
+        await using var harness = await CreateHarnessAsync();
+        var seed = await CandidateListContractData.CreateAsync(harness.DbContext, []);
+        var candidate = CandidateListContractData.AddFormCandidate(
+            harness.DbContext,
+            seed,
+            1,
+            ["Timestamp", "Applicant", "person@example.com", "https://drive.example.com/cv"]);
+        await harness.DbContext.SaveChangesAsync(CancellationToken.None);
+
+        var result = await harness.Reader.ReadAsync(
+            Request(seed.Round.Id),
+            CancellationToken.None);
+
+        result.Rows.Single(row => row.Id == candidate.Id).CvLink.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task US_17_candidate_list_read_coalesces_the_form_timestamp_into_received_ordering()
+    {
+        await using var harness = await CreateHarnessAsync();
+        var seed = await CandidateListContractData.CreateAsync(harness.DbContext, []);
+        var olderEmail = CandidateListContractData.AddEmailCandidate(
+            harness.DbContext,
+            seed,
+            1,
+            new DateTimeOffset(2026, 8, 21, 12, 0, 0, TimeSpan.Zero));
+        var datedForm = CandidateListContractData.AddFormCandidate(
+            harness.DbContext,
+            seed,
+            2,
+            ["Timestamp", "Dated Form", "dated@example.com", "Yes"],
+            new DateTimeOffset(2026, 8, 22, 9, 0, 0, TimeSpan.Zero));
+        var newerEmail = CandidateListContractData.AddEmailCandidate(
+            harness.DbContext,
+            seed,
+            3,
+            new DateTimeOffset(2026, 8, 23, 12, 0, 0, TimeSpan.Zero));
+        var undatedForm = CandidateListContractData.AddFormCandidate(
+            harness.DbContext,
+            seed,
+            4,
+            ["Timestamp", "Undated Form", "undated@example.com", "Yes"]);
+        await harness.DbContext.SaveChangesAsync(CancellationToken.None);
+
+        var newestFirst = await harness.Reader.ReadAsync(
+            Request(seed.Round.Id),
+            CancellationToken.None);
+
+        newestFirst.Rows.Select(row => row.Id).ShouldBe(
+            [newerEmail.Id, datedForm.Id, olderEmail.Id, undatedForm.Id]);
+        // SourceSentAt carries the coalesced received moment; the DTO field name is unchanged.
+        // The SQLite harness converts DateTimeOffset to a UTC wall clock (TestDbContext),
+        // so compare the UTC reading — Postgres returns the exact instant with offset 0.
+        newestFirst.Rows.Single(row => row.Id == datedForm.Id).SourceSentAt.GetValueOrDefault().DateTime
+            .ShouldBe(new DateTimeOffset(2026, 8, 22, 9, 0, 0, TimeSpan.Zero).UtcDateTime);
+        newestFirst.Rows.Single(row => row.Id == undatedForm.Id).SourceSentAt.ShouldBeNull();
+
+        var oldestFirst = await harness.Reader.ReadAsync(
+            Request(seed.Round.Id, sort: "oldest"),
+            CancellationToken.None);
+
+        oldestFirst.Rows.Select(row => row.Id).ShouldBe(
+            [olderEmail.Id, datedForm.Id, newerEmail.Id, undatedForm.Id]);
+    }
+
     private static CandidateListReadRequest Request(
         long roundId,
         bool roundClosed = false,
@@ -465,11 +571,42 @@ internal static class CandidateListContractData
             ruleSetResult.Value);
     }
 
+    public static async Task<CandidateListSeed> CreateWithCvLinkAsync(IApplicationDbContext dbContext)
+    {
+        var vacancyResult = Vacancy.Create(
+            "Data Analyst",
+            new DateOnly(2026, 8, 20),
+            ["SQL"],
+            null);
+        vacancyResult.IsSuccess.ShouldBeTrue();
+        var vacancy = vacancyResult.Value;
+        dbContext.Vacancies.Add(vacancy);
+        await dbContext.SaveChangesAsync(CancellationToken.None);
+
+        var layoutResult = vacancy.UpsertFormLayout(
+            new FormLayoutDefinition([
+                new FormLayoutColumn(1, FormLayoutRole.Name, null),
+                new FormLayoutColumn(2, FormLayoutRole.ContactEmail, null),
+                new FormLayoutColumn(3, FormLayoutRole.CvLink, null)]),
+            ["Timestamp", "Name", "Email", "CV link"]);
+        layoutResult.IsSuccess.ShouldBeTrue();
+        var ruleSetResult = vacancy.UpsertScreeningRules(new ScreeningRuleDefinition([]));
+        ruleSetResult.IsSuccess.ShouldBeTrue();
+        await dbContext.SaveChangesAsync(CancellationToken.None);
+
+        return new CandidateListSeed(
+            vacancy,
+            vacancy.Rounds.Single(),
+            layoutResult.Value,
+            ruleSetResult.Value);
+    }
+
     public static Candidate AddFormCandidate(
         IApplicationDbContext dbContext,
         CandidateListSeed seed,
         int number,
-        IReadOnlyList<string> cells)
+        IReadOnlyList<string> cells,
+        DateTimeOffset? formTimestampParsed = null)
     {
         var importedAt = new DateTimeOffset(2026, 8, 20, 10 + number % 10, 0, 0, TimeSpan.Zero);
         var candidateResult = Candidate.ImportForm(
@@ -480,7 +617,7 @@ internal static class CandidateListContractData
             new CandidateFormResponseData(
                 cells,
                 cells[0],
-                DateTimeOffset.Parse("2026-08-20T09:00:00+00:00"),
+                formTimestampParsed,
                 cells.Count > 2 ? cells[2].ToLowerInvariant() : null,
                 importedAt),
             currentResponse: null,

@@ -72,6 +72,7 @@ export interface CandidateSummary {
   sourceSentAt: string | null
   cvDocumentCount: number
   intakeSource: string
+  cvLink: string | null
   screenedOut: boolean
   firedRules: FiredScreeningRule[]
 }

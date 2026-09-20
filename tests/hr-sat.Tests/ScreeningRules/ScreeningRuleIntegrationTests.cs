@@ -315,9 +315,11 @@ public sealed class ScreeningRuleIntegrationTests(ApiFactory factory) : IClassFi
     {
         using var client = factory.CreateClient();
         var (vacancyLocation, roundId) = await CreateConfiguredVacancyAsync(client);
+        // Identical timestamps pin the id tiebreak: the list orders by the coalesced
+        // received moment (form Timestamp), so spread timestamps would scatter pages.
         var rows = Enumerable.Range(1, 101)
             .Select(index => CsvRow(
-                $"2026-09-16T{index % 24:00}:00:00Z",
+                "2026-09-16T10:00:00Z",
                 $"Candidate {index}",
                 $"candidate{index}@example.com",
                 index == 101 ? "No" : "Yes"))

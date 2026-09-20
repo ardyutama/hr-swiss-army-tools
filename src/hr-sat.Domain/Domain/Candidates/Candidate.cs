@@ -402,6 +402,34 @@ public sealed class Candidate : Entity
         return responseResult.Value;
     }
 
+    /// <summary>
+    /// The candidate's received moment: the source email's sent date, or the current
+    /// Form Response's parsed timestamp for form-sourced candidates. Null when neither
+    /// exists; the candidate list displays and sorts on this.
+    /// </summary>
+    public DateTimeOffset? ReceivedAt =>
+        SourceSentAt ?? _formResponses.SingleOrDefault(response => response.IsCurrent)?.FormTimestampParsed;
+
+    /// <summary>
+    /// The form-sourced candidate's CV link, read from the current Form Response through
+    /// the layout's CV Link ordinal. Null for email candidates, when no layout/role is
+    /// bound, or when the cell is empty — never throws on a short row.
+    /// </summary>
+    public string? CvLink(FormLayout? layout)
+    {
+        if (IntakeSource != CandidateIntakeSource.Form || layout is null)
+        {
+            return null;
+        }
+
+        var currentResponse = _formResponses.SingleOrDefault(response => response.IsCurrent);
+        var value = currentResponse is null
+            ? null
+            : ReadCell(currentResponse.Cells, layout.GetColumnOrdinal(FormLayoutRole.CvLink));
+        var trimmed = value?.Trim();
+        return string.IsNullOrEmpty(trimmed) ? null : trimmed;
+    }
+
     private static string? ReadCell(
         IReadOnlyList<string> cells,
         int? ordinal) =>

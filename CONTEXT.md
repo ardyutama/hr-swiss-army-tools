@@ -121,7 +121,7 @@ A candidate's stored screening outcome: whether it is Screened Out plus the fire
 _Avoid_: Screening result, cached verdict
 
 **Resubmitted**:
-The display indicator on a candidate whose stored Form Response was replaced by a newer row for the same identity key on a later upload. The review page flags the refresh; review status, notes, requirement reviews, and typed details are never altered by a re-upload.
+The display indicator on a candidate whose stored Form Response was replaced by a newer row for the same identity key on a later upload. It surfaces on the review page header and as a badge on the candidate list; review status, notes, requirement reviews, and typed details are never altered by a re-upload.
 _Avoid_: Updated, overwritten
 
 **Source Sender**:

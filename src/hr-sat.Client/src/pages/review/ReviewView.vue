@@ -11,10 +11,12 @@ import ScreenedOutNotice from '@/features/review/components/ScreenedOutNotice.vu
 import SourceEmailPanel from '@/features/review/components/SourceEmailPanel.vue'
 import NotesEditor from '@/features/review/components/NotesEditor.vue'
 import CvViewer from '@/features/review/components/CvViewer.vue'
+import FormAnswersPanel from '@/features/review/components/FormAnswersPanel.vue'
 import ReviewActionBar from '@/features/review/components/ReviewActionBar.vue'
 import OutcomeConfirmDialog from '@/features/review/components/OutcomeConfirmDialog.vue'
 import ShortcutsHelpModal from '@/features/review/components/ShortcutsHelpModal.vue'
 import { useReview } from '@/features/review/useReview'
+import { useFormAnswers } from '@/features/review/useFormAnswers'
 import {
   useReviewShortcuts,
   type NotesFocusHandle,
@@ -81,6 +83,26 @@ const notesEditor = useTemplateRef<NotesFocusHandle>('notesEditor')
 const candidateDetailsPanel = useTemplateRef<{ focusEditing: () => void }>('candidateDetailsPanel')
 const sourceEmailPanel = useTemplateRef<SourceEmailHandle>('sourceEmailPanel')
 const shortcutsHelpOpen = shallowRef(false)
+
+// The workspace branches by Intake Source (issue 04): a form-sourced candidate
+// has no local PDF, so the dominant slot shows the form evidence instead.
+const isFormVariant = computed(() => candidate.value?.intakeSource === 'form')
+const {
+  formAnswersState,
+  formAnswersError,
+  formAnswers,
+  cvLink,
+  submittedAt,
+  retryFormAnswers,
+} = useFormAnswers(toRef(props, 'id'), candidate)
+const canOpenCv = computed(() => cvLink.value !== null)
+
+function openCv() {
+  const link = cvLink.value
+  if (link !== null) {
+    window.open(link, '_blank', 'noopener')
+  }
+}
 const outcomeDialogOpen = shallowRef(false)
 type ConsequentialOutcome = Extract<CandidateHireOutcome, 'runaway' | 'declined'>
 const pendingOutcome = shallowRef<ConsequentialOutcome | null>(null)
@@ -226,12 +248,14 @@ useReviewShortcuts({
   canPrev,
   canNext,
   busy: deciding,
+  canOpenCv,
   notesEditor,
   sourceEmailPanel,
   shortcutsHelpOpen,
   requirementCount,
   outcomeDialogOpen,
   onEditDetails: () => candidateDetailsPanel.value?.focusEditing(),
+  onOpenCv: openCv,
   onPrev,
   onNext,
   onDecide,
@@ -320,6 +344,11 @@ watch(outcomeDialogOpen, (open) => {
         :hire-outcome="candidate.hireOutcome"
         :is-round-closed="isRoundClosed"
         :vacancy-closed="vacancy.status === 'closed'"
+        :intake-source="candidate.intakeSource"
+        :submitted-at="submittedAt"
+        :is-resubmitted="candidate.isResubmitted"
+        :cv-link="cvLink"
+        :cv-link-pending="formAnswersState === 'loading'"
       />
 
       <div class="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
@@ -342,7 +371,10 @@ watch(outcomeDialogOpen, (open) => {
             :error="detailsError"
             @save="onDetailsSave"
           />
+          <!-- The source email is email-variant evidence; form candidates have
+               no source subject/body, so the panel is never mounted for them. -->
           <SourceEmailPanel
+            v-if="!isFormVariant"
             ref="sourceEmailPanel"
             :subject="candidate.sourceSubject"
             :sender-name="candidate.sourceSenderName"
@@ -360,7 +392,19 @@ watch(outcomeDialogOpen, (open) => {
           />
         </div>
 
-        <CvViewer :documents="candidate.documents" class="self-start lg:sticky lg:top-6" />
+        <FormAnswersPanel
+          v-if="isFormVariant"
+          :state="formAnswersState === 'idle' ? 'ready' : formAnswersState"
+          :answers="formAnswers"
+          :error="formAnswersError"
+          class="self-start lg:sticky lg:top-6"
+          @retry="retryFormAnswers"
+        />
+        <CvViewer
+          v-else
+          :documents="candidate.documents"
+          class="self-start lg:sticky lg:top-6"
+        />
       </div>
 
       <ReviewActionBar

@@ -17,5 +17,6 @@ public sealed record CandidateListReadRow(
     int CvDocumentCount,
     string IntakeSource,
     bool IsResubmitted,
+    string? CvLink,
     bool ScreenedOut,
     IReadOnlyList<ScreeningRuleMatch> FiredRules);

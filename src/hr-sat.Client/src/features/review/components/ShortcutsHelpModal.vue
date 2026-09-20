@@ -19,6 +19,7 @@ const shortcutRows: ShortcutRow[] = [
   { key: '1-9', action: 'Toggle requirement by position', context: 'Triage mode' },
   { key: 'E', action: 'Edit candidate details', context: 'Triage mode' },
   { key: 'O', action: 'Open/close source email', context: 'Triage mode' },
+  { key: 'C', action: 'Open CV link in a new tab', context: 'Triage mode, form candidates' },
   { key: 'N', action: 'Focus Notes', context: 'Triage mode' },
   { key: 'N', action: 'Leave Notes and save', context: 'Editing mode, Notes focused' },
   { key: 'Esc', action: 'Leave editing and save Notes', context: 'Editing mode' },

@@ -24,10 +24,11 @@ internal static class CandidateSummaryMapper
             candidate.SourceSenderName,
             candidate.SourceSenderEmail,
             candidate.SourceSubject,
-            candidate.SourceSentAt,
+            candidate.ReceivedAt,
             candidate.CvDocuments.Count,
             candidate.IntakeSource.ToString().ToLowerInvariant(),
             candidate.IsResubmitted,
+            candidate.CvLink(context.Layout),
             screening.ScreenedOut,
             screening.FiredRules);
     }

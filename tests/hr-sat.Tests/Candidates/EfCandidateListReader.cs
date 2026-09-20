@@ -1,6 +1,7 @@
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Domain.Candidates;
 using hr_sat.Domain.Vacancies;
+using hr_sat.Domain.Vacancies.FormLayouts;
 using Microsoft.EntityFrameworkCore;
 
 namespace hr_sat.Tests.Candidates;
@@ -33,7 +34,7 @@ internal sealed class EfCandidateListReader(TestDbContext dbContext) : ICandidat
             ? ScreeningContext.Frozen
             : ScreeningContext.Of(ruleSet, layout);
         var rows = candidates
-            .Select(candidate => ToRow(candidate, context))
+            .Select(candidate => ToRow(candidate, context, layout))
             .ToList();
         var nonScreenedRows = rows.Where(row => !row.ScreenedOut).ToList();
         var scopedRows = request.IncludeScreenedOut ? rows : nonScreenedRows;
@@ -71,7 +72,8 @@ internal sealed class EfCandidateListReader(TestDbContext dbContext) : ICandidat
 
     private static CandidateListReadRow ToRow(
         Candidate candidate,
-        ScreeningContext context)
+        ScreeningContext context,
+        FormLayout? layout)
     {
         var firedRules = candidate.EvaluateScreening(context);
         return new CandidateListReadRow(
@@ -85,10 +87,11 @@ internal sealed class EfCandidateListReader(TestDbContext dbContext) : ICandidat
             candidate.SourceSenderName,
             candidate.SourceSenderEmail,
             candidate.SourceSubject,
-            candidate.SourceSentAt,
+            candidate.ReceivedAt,
             candidate.CvDocuments.Count,
             candidate.IntakeSource.ToString().ToLowerInvariant(),
             candidate.IsResubmitted,
+            candidate.CvLink(layout),
             firedRules.Count > 0,
             firedRules);
     }

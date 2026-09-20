@@ -19,6 +19,7 @@ function candidate(id: number): CandidateSummary {
     sourceSubject: null,
     sourceSentAt: null,
     cvDocumentCount: 0,
+    cvLink: null,
   }
 }
 
