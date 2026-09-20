@@ -10,6 +10,7 @@ import PriorApplicationNotice from '@/features/review/components/PriorApplicatio
 import ScreenedOutNotice from '@/features/review/components/ScreenedOutNotice.vue'
 import SourceEmailPanel from '@/features/review/components/SourceEmailPanel.vue'
 import NotesEditor from '@/features/review/components/NotesEditor.vue'
+import NotePhraseChips from '@/features/review/components/NotePhraseChips.vue'
 import CvViewer from '@/features/review/components/CvViewer.vue'
 import FormAnswersPanel from '@/features/review/components/FormAnswersPanel.vue'
 import ReviewActionBar from '@/features/review/components/ReviewActionBar.vue'
@@ -26,6 +27,7 @@ import type { CandidateHireOutcome, CandidateReviewStatus } from '@/features/can
 import { candidateFilterStateFromQuery } from '@/features/candidates/filter'
 import type { CandidateDetailsPayload } from '@/features/review/api'
 import { formatPriorApplicationAnnouncement } from '@/features/review/format'
+import { notePhraseByIndex, type NotePhrase } from '@/features/review/notePhrases'
 
 const props = defineProps<{
   id: string
@@ -223,6 +225,19 @@ function onRequirementToggle(requirementId: number, confirmed: boolean) {
   void updateRequirementReview(requirementId, confirmed)
 }
 
+// Phrase chips (and their Alt+digit shortcut) edit the Notes draft only;
+// the usual commit paths (Save, N/Escape, decision-as-commit) still persist.
+function onNotePhraseInsert(phrase: NotePhrase) {
+  notesEditor.value?.insertPhrase(phrase)
+}
+
+function onNotePhraseShortcut(index: number) {
+  const phrase = notePhraseByIndex(index)
+  if (phrase) {
+    onNotePhraseInsert(phrase)
+  }
+}
+
 watch(candidate, (current) => {
   if (!current || current.id === displayedCandidateId) {
     return
@@ -266,6 +281,7 @@ useReviewShortcuts({
     void toggleRequirementAt(index)
   },
   saveNotes,
+  onNotePhrase: onNotePhraseShortcut,
 })
 
 watch(outcomeDialogOpen, (open) => {
@@ -393,7 +409,9 @@ watch(outcomeDialogOpen, (open) => {
             :saved-at="notesSavedAt"
             :dirty="notesDirty"
             @save="saveNotes"
-          />
+          >
+            <NotePhraseChips @insert="onNotePhraseInsert" />
+          </NotesEditor>
         </div>
 
         <FormAnswersPanel

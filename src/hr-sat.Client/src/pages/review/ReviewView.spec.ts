@@ -932,6 +932,68 @@ describe('ReviewView', () => {
     wrapper.unmount()
   })
 
+  it('US-17: phrase chips below Notes mark the draft with one click', async () => {
+    const { requests } = stubApi()
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    const phrases = wrapper.find('[aria-label="Note phrases"]')
+    expect(phrases.exists(), 'the phrase chips render below the Notes textarea').toBe(true)
+    expect(phrases.text()).toContain('Replacements')
+    expect(phrases.text()).toContain('Additionals')
+    expect(phrases.text()).toContain('Alt+1')
+
+    const notes = wrapper.find('textarea[aria-label="Candidate notes"]')
+    const notesElement = notes.element as HTMLTextAreaElement
+    await notes.setValue('Strong on VAT')
+    notesElement.setSelectionRange(notesElement.value.length, notesElement.value.length)
+
+    // An Additional appends at the caret with a joining space.
+    await findButton(wrapper, 'Additional manpower').trigger('click')
+    expect(notesElement.value).toBe('Strong on VAT Additional manpower')
+    expect(document.activeElement).toBe(notesElement)
+
+    // A Replacement overwrites only the marked span when one is selected.
+    notesElement.setSelectionRange(0, 'Strong on VAT'.length)
+    await findButton(wrapper, 'Replacement — runaway').trigger('click')
+    expect(notesElement.value).toBe('Replacement — runaway Additional manpower')
+
+    // A Replacement with a collapsed caret overwrites the whole draft.
+    await findButton(wrapper, 'Replacement — resigned').trigger('click')
+    expect(notesElement.value).toBe('Replacement — resigned')
+
+    // Chips edit the draft only; nothing persists until a commit path runs.
+    expect(
+      requests.some((request) => request.method === 'PUT' && request.url.endsWith('/notes')),
+    ).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('US-17: Alt+digit inserts the matching phrase only while Notes is focused', async () => {
+    stubApi()
+    const { wrapper } = await mountReview()
+    await flushPromises()
+
+    const notes = wrapper.find('textarea[aria-label="Candidate notes"]')
+    const notesElement = notes.element as HTMLTextAreaElement
+
+    // Triage mode: Alt+1 stays inert while Notes is not focused.
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '1', code: 'Digit1', altKey: true }))
+    await flushPromises()
+    expect(notesElement.value).toBe('')
+
+    notesElement.focus()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '1', code: 'Digit1', altKey: true }))
+    await flushPromises()
+    expect(notesElement.value).toBe('Replacement — runaway')
+
+    // The numbering runs flat across both groups: 3 is the single Additional.
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '3', code: 'Digit3', altKey: true }))
+    await flushPromises()
+    expect(notesElement.value).toBe('Replacement — runaway Additional manpower')
+    wrapper.unmount()
+  })
+
   it('US-17: Esc exits Editing mode and re-arms decision shortcuts', async () => {
     const { requests } = stubApi()
     const { wrapper, router } = await mountReview()

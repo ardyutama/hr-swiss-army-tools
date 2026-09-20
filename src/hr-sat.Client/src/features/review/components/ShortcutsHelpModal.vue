@@ -22,6 +22,7 @@ const shortcutRows: ShortcutRow[] = [
   { key: 'C', action: 'Open CV link in a new tab', context: 'Triage mode, form candidates' },
   { key: 'N', action: 'Focus Notes', context: 'Triage mode' },
   { key: 'N', action: 'Leave Notes and save', context: 'Editing mode, Notes focused' },
+  { key: 'Alt+1-9', action: 'Insert the note phrase with that chip number', context: 'Editing mode, Notes focused' },
   { key: 'Esc', action: 'Leave editing and save Notes', context: 'Editing mode' },
   { key: '?', action: 'Open shortcuts help', context: 'Triage mode' },
 ]

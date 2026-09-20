@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, useTemplateRef, watch } from 'vue'
+import { nextTick, onMounted, useTemplateRef, watch } from 'vue'
 import { formatClockTime } from '../format'
+import { applyNotePhrase, type NotePhrase } from '../notePhrases'
 import { notesMaxLength } from '../validation'
 import type { NotesSaveState } from '../useReview'
 
@@ -31,7 +32,25 @@ function isFocused() {
   return textarea.value === document.activeElement
 }
 
-defineExpose({ focus, blur, isFocused })
+/**
+ * One-click phrase insert shared by the chips and the Alt+digit shortcut.
+ * Reads the live selection so a chip click can replace a marked span even
+ * though the click itself blurred the textarea; restores a collapsed caret
+ * right after the inserted phrase.
+ */
+function insertPhrase(phrase: NotePhrase) {
+  const element = textarea.value
+  const start = element?.selectionStart ?? notes.value.length
+  const end = element?.selectionEnd ?? notes.value.length
+  const result = applyNotePhrase(notes.value, start, end, phrase, notesMaxLength)
+  notes.value = result.text
+  void nextTick(() => {
+    element?.focus()
+    element?.setSelectionRange(result.cursor, result.cursor)
+  })
+}
+
+defineExpose({ focus, blur, isFocused, insertPhrase })
 
 // Auto-growing textarea: grows with content up to ~8 lines, then scrolls (S4 spec).
 function autogrow() {
@@ -90,6 +109,10 @@ onMounted(autogrow)
       aria-label="Candidate notes"
       class="max-h-48 w-full resize-none overflow-y-auto rounded-xl border border-default bg-default px-3 py-2 text-sm text-highlighted placeholder:text-muted focus:border-primary focus:outline-none"
     />
+    <!-- Phrase chips (NotePhraseChips) sit below the textarea, inside the card. -->
+    <div v-if="$slots.default" class="mt-3">
+      <slot />
+    </div>
     <div class="mt-3 flex justify-end">
       <UButton
         color="primary"

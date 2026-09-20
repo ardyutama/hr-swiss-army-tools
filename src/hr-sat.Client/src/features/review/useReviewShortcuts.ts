@@ -1,5 +1,6 @@
 import type { CandidateHireOutcome, CandidateReviewStatus } from '@/features/candidates/api'
 import { computed, type Ref } from 'vue'
+import type { NotePhrase } from './notePhrases'
 
 export const requirementShortcutKeys = ['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const
 
@@ -7,6 +8,7 @@ export interface NotesFocusHandle {
   focus: () => void
   blur: () => void
   isFocused: () => boolean
+  insertPhrase: (phrase: NotePhrase) => void
 }
 
 export interface SourceEmailHandle {
@@ -37,6 +39,8 @@ interface UseReviewShortcutsOptions {
   onSetOutcome: (outcome: CandidateHireOutcome) => void | Promise<void>
   onToggleRequirement: (index: number) => void | Promise<void>
   saveNotes: () => Promise<boolean>
+  /** Inserts the phrase chip with the given 1-based number into the Notes draft. */
+  onNotePhrase: (index: number) => void
 }
 
 type ShortcutDefinition =
@@ -203,6 +207,24 @@ export function useReviewShortcuts(options: UseReviewShortcutsOptions) {
         if (isArmed(event) && !busy.value) {
           void options.onToggleRequirement(index)
         }
+      }
+    })
+
+    // Phrase chips: Alt+<chip number> while Notes is focused. `usingInput`
+    // keeps the combo alive inside the textarea; the focus gate keeps
+    // triage-mode Alt+digits inert.
+    requirementShortcutKeys.forEach((digit) => {
+      definitions[`alt_${digit}`] = {
+        usingInput: true,
+        handler: () => {
+          if (shortcutsHelpOpen.value || options.outcomeDialogOpen.value) {
+            return
+          }
+          if (!isNotesFocused()) {
+            return
+          }
+          options.onNotePhrase(Number(digit))
+        },
       }
     })
 
