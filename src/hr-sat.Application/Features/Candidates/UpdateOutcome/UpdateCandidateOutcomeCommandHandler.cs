@@ -15,8 +15,9 @@ internal sealed class UpdateCandidateOutcomeCommandHandler(IApplicationDbContext
         UpdateCandidateOutcomeCommand command,
         CancellationToken cancellationToken)
     {
-        if (!Enum.TryParse<CandidateHireOutcome>(command.Outcome, true, out var outcome) ||
-            !Enum.IsDefined(outcome))
+        if (!EnumParsing.TryParseDefined<CandidateHireOutcome>(
+                command.Outcome,
+                out var outcome))
         {
             return Result<CandidateDetailsResponse>.Failure(
                 CandidateErrors.Invalid(new Dictionary<string, string[]>

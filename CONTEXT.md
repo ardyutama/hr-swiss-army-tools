@@ -235,3 +235,7 @@ _Avoid_: Talent pool, waitlist
 **Shortage**:
 A vacancy's needed hires minus its active hires; the number of slots still to fill, which increases again when a runaway is recorded.
 _Avoid_: Gap, match score, vacancy progress
+
+**Enum Parsing**:
+How text arriving at the API boundary becomes a domain enum value: case-insensitive matching against defined member names only, so undefined input (including bare numbers like "99") is always rejected. One shared parsing operation serves every command and query; the wording of the rejection stays with each flow's own validation.
+_Avoid_: Ad-hoc parse switches, per-handler parsing

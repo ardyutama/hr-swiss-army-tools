@@ -193,4 +193,22 @@ public sealed class CandidateValidatorsTests
             .ErrorMessage
             .ShouldBe("Review status must be shortlisted, flagged, or rejected.");
     }
+
+    [Fact]
+    public void Update_candidate_outcome_rejects_a_numeric_outcome_that_parses_into_a_defined_value()
+    {
+        var result = new UpdateCandidateOutcomeCommandValidator()
+            .Validate(new UpdateCandidateOutcomeCommand(
+                1,
+                1,
+                1,
+                "0",
+                null));
+
+        result.IsValid.ShouldBeFalse();
+        result.Errors.Single(error =>
+                error.PropertyName == nameof(UpdateCandidateOutcomeCommand.Outcome))
+            .ErrorMessage
+            .ShouldBe("Hire outcome must be none, hired, runaway, or declined.");
+    }
 }

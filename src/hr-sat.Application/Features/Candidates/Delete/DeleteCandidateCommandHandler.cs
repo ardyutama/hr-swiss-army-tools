@@ -40,17 +40,18 @@ internal sealed class DeleteCandidateCommandHandler(
                     return Result<bool>.Failure(canRemoveResult.Error);
                 }
 
+                var storageKeys = await dbContext.CvDocuments
+                    .Where(document => document.CandidateId == candidate.Id)
+                    .Select(document => document.StorageKey)
+                    .ToListAsync(cancellationToken);
                 await dbContext.Candidates
                     .Where(item => item.Id == candidate.Id)
                     .ExecuteDeleteAsync(cancellationToken);
 
                 var enqueuedAt = timeProvider.GetUtcNow();
-                var storageKeys = candidate.CvDocuments
-                    .Select(document => document.StorageKey)
-                    .AsEnumerable();
                 if (candidate.SourceStorageKey is not null)
                 {
-                    storageKeys = storageKeys.Prepend(candidate.SourceStorageKey);
+                    storageKeys.Insert(0, candidate.SourceStorageKey);
                 }
 
                 foreach (var storageKey in storageKeys)

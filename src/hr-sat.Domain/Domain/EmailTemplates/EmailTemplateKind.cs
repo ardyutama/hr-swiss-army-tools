@@ -1,3 +1,5 @@
+using hr_sat.Domain;
+
 namespace hr_sat.Domain.EmailTemplates;
 
 public enum EmailTemplateKind
@@ -8,21 +10,8 @@ public enum EmailTemplateKind
 
 public static class EmailTemplateKindExtensions
 {
-    public static bool TryParse(string? value, out EmailTemplateKind kind)
-    {
-        switch (value?.Trim().ToLowerInvariant())
-        {
-            case "shortlisted":
-                kind = EmailTemplateKind.Shortlisted;
-                return true;
-            case "rejected":
-                kind = EmailTemplateKind.Rejected;
-                return true;
-            default:
-                kind = default;
-                return false;
-        }
-    }
+    public static bool TryParse(string? value, out EmailTemplateKind kind) =>
+        EnumParsing.TryParseDefined<EmailTemplateKind>(value, out kind);
 
     public static string ToApiValue(this EmailTemplateKind kind) => kind switch
     {

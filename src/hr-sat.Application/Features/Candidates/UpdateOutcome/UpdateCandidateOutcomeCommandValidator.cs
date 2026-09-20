@@ -1,4 +1,5 @@
 using FluentValidation;
+using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
 
 namespace hr_sat.Application.Features.Candidates.UpdateOutcome;
@@ -13,9 +14,7 @@ public sealed class UpdateCandidateOutcomeCommandValidator
         RuleFor(command => command.CandidateId).GreaterThan(0);
         RuleFor(command => command.Outcome)
             .Must(outcome =>
-                outcome is not null &&
-                Enum.TryParse<CandidateHireOutcome>(outcome, true, out var parsed) &&
-                Enum.IsDefined(parsed))
+                EnumParsing.TryParseDefined<CandidateHireOutcome>(outcome, out _))
             .WithMessage("Hire outcome must be none, hired, runaway, or declined.");
         RuleFor(command => command.Note)
             .MaximumLength(4000)
