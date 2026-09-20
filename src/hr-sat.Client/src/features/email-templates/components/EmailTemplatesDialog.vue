@@ -18,10 +18,11 @@ import TemplateViewDialog from './TemplateViewDialog.vue'
 const open = defineModel<boolean>('open', { required: true })
 
 // Presentation over flow-constructed lifecycles: the page's flow owns
-// useEmailTemplates/useTemplateSources and passes their state down; save/remove
-// arrive as function props so failed saves stay awaitable and route back into
-// the editor. This dialog keeps the editor/view mediation (nested dialogs,
-// per-section delete confirm) and triggers the open-time loads via emits.
+// useEmailTemplates (sources merged in) and passes its state down; save/remove
+// go up as emits and settle back through the exposed handles (the canonical
+// form-dialog seam), so failed saves stay routed into the editor. This dialog
+// keeps the editor/view mediation (nested dialogs, per-section delete confirm)
+// and triggers the open-time loads via emits.
 const props = defineProps<{
   vacancyId: string
   vacancyTitle: string
@@ -35,13 +36,13 @@ const props = defineProps<{
   saving: boolean
   deleting: boolean
   sources: Partial<Record<EmailTemplateKind, TemplateSource[]>>
-  save: (kind: EmailTemplateKind, payload: EmailTemplateWritePayload) => Promise<void>
-  remove: (kind: EmailTemplateKind) => Promise<void>
 }>()
 
 const emit = defineEmits<{
   reload: []
   'load-sources': [kind: EmailTemplateKind]
+  save: [kind: EmailTemplateKind, payload: EmailTemplateWritePayload]
+  remove: [kind: EmailTemplateKind]
 }>()
 
 const closed = computed(() => props.status === 'closed')
@@ -101,17 +102,8 @@ function openCopy(kind: EmailTemplateKind, source: TemplateSource) {
   )
 }
 
-async function onEditorSubmit(payload: EmailTemplateWritePayload) {
-  try {
-    await props.save(editorKind.value, payload)
-    editorOpen.value = false
-  } catch (error) {
-    if (fieldErrorsOf(error)) {
-      editorRef.value?.applyServerErrors(error)
-    } else {
-      editorError.value = problemMessageText(problemMessage(error, "Couldn't save the template"))
-    }
-  }
+function onEditorSubmit(payload: EmailTemplateWritePayload) {
+  emit('save', editorKind.value, payload)
 }
 
 // Inline delete confirm: the section footer morphs; failures stay visible in
@@ -122,16 +114,10 @@ const deleteErrors = reactive<Record<EmailTemplateKind, string | null>>({
   rejected: null,
 })
 
-async function onDelete(kind: EmailTemplateKind) {
+function onDelete(kind: EmailTemplateKind) {
   deletingKind.value = kind
   deleteErrors[kind] = null
-  try {
-    await props.remove(kind)
-  } catch (error) {
-    deleteErrors[kind] = problemMessageText(problemMessage(error, "Couldn't delete the template"))
-  } finally {
-    deletingKind.value = null
-  }
+  emit('remove', kind)
 }
 
 const viewOpen = shallowRef(false)
@@ -141,6 +127,28 @@ function openView(kind: EmailTemplateKind) {
   viewKind.value = kind
   viewOpen.value = true
 }
+
+// The emitted save/remove settle back through these handles — the parent owns
+// the try/catch (canonical form-dialog seam): a landed save closes the editor;
+// a failed one routes named field errors into it, anything else as inline text.
+defineExpose({
+  saveSucceeded() {
+    editorOpen.value = false
+  },
+  saveFailed(error: unknown) {
+    if (fieldErrorsOf(error)) {
+      editorRef.value?.applyServerErrors(error)
+    } else {
+      editorError.value = problemMessageText(problemMessage(error, "Couldn't save the template"))
+    }
+  },
+  removeSettled(kind: EmailTemplateKind, error?: unknown) {
+    if (error) {
+      deleteErrors[kind] = problemMessageText(problemMessage(error, "Couldn't delete the template"))
+    }
+    deletingKind.value = null
+  },
+})
 </script>
 
 <template>

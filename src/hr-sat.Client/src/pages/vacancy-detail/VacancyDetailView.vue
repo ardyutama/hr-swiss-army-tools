@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, shallowRef, toRef, watch } from 'vue'
+import { computed, shallowRef, toRef, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 import StatusBadge from '@/features/vacancies/components/StatusBadge.vue'
 import HiringPlanSummary from '@/features/vacancies/components/HiringPlanSummary.vue'
@@ -13,7 +13,6 @@ import ImportResultList from '@/features/candidates/components/ImportResultList.
 import CandidateList from '@/features/candidates/components/CandidateList.vue'
 import CandidateToolbar from '@/features/candidates/components/CandidateToolbar.vue'
 import { useCandidates } from '@/features/candidates/useCandidates'
-import { useMessagingSummary } from '@/features/candidates/useMessagingSummary'
 import RoundList from '@/features/intake-rounds/components/RoundList.vue'
 import CreateRoundDialog from '@/features/intake-rounds/components/CreateRoundDialog.vue'
 import CloseRoundDialog from '@/features/intake-rounds/components/CloseRoundDialog.vue'
@@ -21,11 +20,7 @@ import { useIntakeRounds, roundDisplayName } from '@/features/intake-rounds/useI
 import PromoteCandidatesDialog from '@/features/promote-candidates/components/PromoteCandidatesDialog.vue'
 import { usePromoteCandidates } from '@/features/promote-candidates/usePromoteCandidates'
 import EmailTemplatesDialog from '@/features/email-templates/components/EmailTemplatesDialog.vue'
-import { useEmailTemplates } from '@/features/email-templates/useEmailTemplates'
-import { useTemplateSources } from '@/features/email-templates/useTemplateSources'
 import PreparedMessageListDialog from '@/features/prepared-messages/components/PreparedMessageListDialog.vue'
-import { usePreparedMessages } from '@/features/prepared-messages/usePreparedMessages'
-import { sendScope } from '@/features/prepared-messages/format'
 import ScreeningSection from '@/features/screening/components/ScreeningSection.vue'
 import ScreeningRulesDialog from '@/features/screening/components/ScreeningRulesDialog.vue'
 import { useScreeningRules } from '@/features/screening/useScreeningRules'
@@ -36,10 +31,15 @@ import { useVacancyDetail } from '@/features/vacancy-detail/useVacancyDetail'
 import { useCloseVacancy } from '@/features/vacancy-detail/useCloseVacancy'
 import { useVacancyDetailFlow } from '@/features/vacancy-detail/useVacancyDetailFlow'
 import { useImportConsole } from '@/features/vacancy-detail/useImportConsole'
+import { useMessagingConsole } from '@/features/vacancy-detail/useMessagingConsole'
 import CloseVacancyDialog from '@/features/vacancy-detail/components/CloseVacancyDialog.vue'
 import { formatDate, progressPercent } from '@/features/vacancies/format'
 import { hiringShortage } from '@/features/vacancies/hiring'
 import type { CandidateSummary } from '@/features/candidates/api'
+import type {
+  EmailTemplateKind,
+  EmailTemplateWritePayload,
+} from '@/features/email-templates/api'
 import type { VacancyRound } from '@/features/vacancies/api'
 import CandidateListFallback from './CandidateListFallback.vue'
 
@@ -77,7 +77,7 @@ const flow = useVacancyDetailFlow({
   // import outcomes, never during setup.
   reloadCandidates: () => candidatesFlow.load(),
   reloadLayout: () => importConsole.formLayout.load(),
-  reloadMessaging: () => messagingFlow.load(),
+  reloadMessaging: () => messaging.messagingSummary.load(),
 })
 const {
   selectedRoundId,
@@ -117,10 +117,6 @@ const {
   load: loadCandidates,
   remove: removeCandidate,
 } = candidatesFlow
-
-// The full unpaged round list feeding the send dialogs and template preview.
-const messagingFlow = useMessagingSummary(vacancyId, selectedRoundParam)
-const messagingSummaries = messagingFlow.summaries
 
 // Saving rules reclassifies live; the modal-atomic cascade refreshes the list.
 const screeningFlow = useScreeningRules(
@@ -226,42 +222,52 @@ const candidateSectionFlush = computed(() => {
   )
 })
 
-// Prepared messages / email templates dialog state.
-const preparedOpen = shallowRef(false)
-const preparedCandidate = shallowRef<CandidateSummary | null>(null)
-const emailTemplatesOpen = shallowRef(false)
-const templatesRevision = shallowRef(0)
-
-watch(emailTemplatesOpen, (isOpen, wasOpen) => {
-  if (wasOpen && !isOpen) {
-    templatesRevision.value += 1
-  }
-})
-
-const sendCandidates = computed(() =>
-  sendScope(preparedCandidate.value, messagingSummaries.value ?? []),
-)
-const sendRoundName = computed(() => {
-  const round = selectedRound.value
-  return round ? roundDisplayName(round) : 'the selected round'
-})
-
-const preparedMessages = usePreparedMessages(
+// The messaging console composes the round's messaging summary, the Prepared
+// Message list, and the Email Templates flow, and owns what crosses between
+// them — the send scope, the dialog open flags, and the templates-revision
+// signal. The view binds the console's coordinations and the leaves' own
+// state directly — the leaves arrive as whole instances (ticket:
+// messaging-console-seam 2026-09-20); only the router navigation and the
+// save/remove settle mediation stay here.
+const messaging = useMessagingConsole({
   vacancyId,
-  sendCandidates,
+  roundId: selectedRoundParam,
+  selectedRound,
+})
+const { preparedMessages, emailTemplates } = messaging
+const messagingSummaries = messaging.messagingSummary.summaries
+// Dialog v-models destructure to the top level (see the import console above).
+const {
   preparedOpen,
-  templatesRevision,
-)
-const emailTemplates = useEmailTemplates(vacancyId)
-const templateSources = useTemplateSources(vacancyId)
+  emailTemplatesOpen,
+  sendCandidates,
+  sendRoundName,
+  openPrepared,
+  openEmailTemplates,
+} = messaging
 
-function openPrepared(candidate?: CandidateSummary) {
-  preparedCandidate.value = candidate ?? null
-  preparedOpen.value = true
+// The dialog emits save/remove; the view owns the try/catch and settles the
+// outcome back through the dialog's exposed handles (canonical form-dialog seam).
+const emailTemplatesDialog = useTemplateRef<InstanceType<typeof EmailTemplatesDialog>>(
+  'emailTemplatesDialog',
+)
+
+async function onEmailTemplateSave(kind: EmailTemplateKind, payload: EmailTemplateWritePayload) {
+  try {
+    await emailTemplates.save(kind, payload)
+    emailTemplatesDialog.value?.saveSucceeded()
+  } catch (error) {
+    emailTemplatesDialog.value?.saveFailed(error)
+  }
 }
 
-function openEmailTemplates() {
-  emailTemplatesOpen.value = true
+async function onEmailTemplateRemove(kind: EmailTemplateKind) {
+  try {
+    await emailTemplates.remove(kind)
+    emailTemplatesDialog.value?.removeSettled(kind)
+  } catch (error) {
+    emailTemplatesDialog.value?.removeSettled(kind, error)
+  }
 }
 
 const {
@@ -729,6 +735,7 @@ function openReview(candidate: CandidateSummary) {
     />
     <EmailTemplatesDialog
       v-if="vacancy"
+      ref="emailTemplatesDialog"
       v-model:open="emailTemplatesOpen"
       :vacancy-id="id"
       :vacancy-title="vacancy.title"
@@ -740,11 +747,11 @@ function openReview(candidate: CandidateSummary) {
       :view-state="emailTemplates.viewState.value"
       :saving="emailTemplates.saving.value"
       :deleting="emailTemplates.deleting.value"
-      :sources="templateSources.sources.value"
-      :save="emailTemplates.save"
-      :remove="emailTemplates.remove"
+      :sources="emailTemplates.sources.value"
       @reload="emailTemplates.load"
-      @load-sources="templateSources.loadSources"
+      @load-sources="emailTemplates.loadSources"
+      @save="onEmailTemplateSave"
+      @remove="onEmailTemplateRemove"
     />
   </div>
 </template>

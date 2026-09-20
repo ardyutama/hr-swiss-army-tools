@@ -4,10 +4,12 @@ import { problemMessage, problemMessageText } from '@/shared/problem-details'
 import {
   deleteEmailTemplate,
   listEmailTemplates,
+  listTemplateSources,
   upsertEmailTemplate,
   type EmailTemplate,
   type EmailTemplateKind,
   type EmailTemplateWritePayload,
+  type TemplateSource,
   type VacancyEmailTemplates,
 } from './api'
 import { emailTemplateKindLabel } from './format'
@@ -76,5 +78,45 @@ export function useEmailTemplates(vacancyId: MaybeRefOrGetter<string>) {
     }
   }
 
-  return { templates, loadError, viewState, saving, deleting, load, save, remove }
+  // Copy-from sources per template kind: every other vacancy owning that kind,
+  // closed included, newest first. Best-effort like the vacancy edit prefill —
+  // when the fetch fails the picker hides itself (empty list) rather than
+  // blocking template management. The latest call per kind wins, so a stale
+  // response never overwrites a fresh one.
+  const sources = shallowRef<Partial<Record<EmailTemplateKind, TemplateSource[]>>>({})
+  const tokens: Record<EmailTemplateKind, number> = { shortlisted: 0, rejected: 0 }
+
+  function loadSources(kind: EmailTemplateKind) {
+    const requestToken = ++tokens[kind]
+    listTemplateSources(toValue(vacancyId), kind)
+      .then((list) => {
+        if (tokens[kind] === requestToken) {
+          sources.value =
+            kind === 'shortlisted'
+              ? { ...sources.value, shortlisted: list }
+              : { ...sources.value, rejected: list }
+        }
+      })
+      .catch(() => {
+        if (tokens[kind] === requestToken) {
+          sources.value =
+            kind === 'shortlisted'
+              ? { ...sources.value, shortlisted: [] }
+              : { ...sources.value, rejected: [] }
+        }
+      })
+  }
+
+  return {
+    templates,
+    loadError,
+    viewState,
+    saving,
+    deleting,
+    load,
+    save,
+    remove,
+    sources,
+    loadSources,
+  }
 }
