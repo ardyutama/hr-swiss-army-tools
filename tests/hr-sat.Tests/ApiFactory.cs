@@ -1,6 +1,10 @@
+using hr_sat.Application.Abstractions.Email;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
+using NSubstitute;
 using Testcontainers.PostgreSql;
 using Xunit;
 
@@ -15,6 +19,19 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         "hr-sat-tests",
         Guid.NewGuid().ToString("N"));
 
+    // Settable per test so a test can install a fresh substitute (e.g. one that
+    // throws for a specific recipient) before creating its client.
+    public IEmailSender EmailSender { get; set; } = CreateDefaultEmailSender();
+
+    private static IEmailSender CreateDefaultEmailSender()
+    {
+        var sender = Substitute.For<IEmailSender>();
+        sender.IsConfigured.Returns(true);
+        sender.SendAsync(default!, default!, default!, default)
+            .ReturnsForAnyArgs(Task.CompletedTask);
+        return sender;
+    }
+
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
@@ -24,6 +41,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     {
         builder.UseSetting("ConnectionStrings:Database", _postgres.GetConnectionString());
         builder.UseSetting("FileStorage:RootPath", _storageRoot);
+        builder.ConfigureServices(services =>
+        {
+            services.RemoveAll<IEmailSender>();
+            services.AddScoped<IEmailSender>(_ => EmailSender);
+        });
     }
 
     public new HttpClient CreateClient()

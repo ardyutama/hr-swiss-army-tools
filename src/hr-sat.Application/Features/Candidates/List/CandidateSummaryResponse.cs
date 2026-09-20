@@ -18,4 +18,6 @@ public sealed record CandidateSummaryResponse(
     bool IsResubmitted,
     string? CvLink,
     bool ScreenedOut,
-    IReadOnlyList<FiredScreeningRuleResponse> FiredRules);
+    IReadOnlyList<FiredScreeningRuleResponse> FiredRules,
+    string Contactability,
+    CandidateLastDispatchResponse? LastDispatch);

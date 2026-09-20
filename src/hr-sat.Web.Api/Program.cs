@@ -2,8 +2,12 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using hr_sat.Application;
 using hr_sat.Application.Abstractions.Data;
+using hr_sat.Application.Abstractions.Dispatching;
+using hr_sat.Application.Abstractions.Email;
 using hr_sat.Application.Abstractions.Storage;
 using hr_sat.Infrastructure;
+using hr_sat.Infrastructure.Dispatching;
+using hr_sat.Infrastructure.Email;
 using hr_sat.Infrastructure.Storage;
 using hr_sat.Web.Api;
 using Microsoft.AspNetCore.Http.Features;
@@ -23,8 +27,9 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 builder.Services.AddApplication();
 builder.Services.AddEndpoints();
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+var connectionString = builder.Configuration.GetConnectionString("Database");
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Database")));
+    options.UseNpgsql(connectionString));
 builder.Services.AddScoped<IApplicationDbContext>(
     services => services.GetRequiredService<AppDbContext>());
 builder.Services.AddScoped<ICandidateListReader, PostgresCandidateListReader>();
@@ -32,6 +37,11 @@ builder.Services.Configure<PrivateFileStorageOptions>(
     builder.Configuration.GetSection(PrivateFileStorageOptions.SectionName));
 builder.Services.AddSingleton<IPrivateFileStorage, PrivateFileStorage>();
 builder.Services.AddHostedService<FileDeletionSweeper>();
+builder.Services.Configure<SmtpOptions>(
+    builder.Configuration.GetSection(SmtpOptions.SectionName));
+builder.Services.AddSingleton<IEmailSender, MailKitEmailSender>();
+builder.Services.AddScoped<IDispatchRunLock>(
+    _ => new PostgresDispatchRunLock(connectionString!));
 builder.WebHost.ConfigureKestrel(options =>
 {
     options.Limits.MaxRequestBodySize = 100 * 1024 * 1024;

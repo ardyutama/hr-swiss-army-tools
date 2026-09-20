@@ -62,9 +62,12 @@ per-candidate path. Glossary impact: **Dispatch** and **Dispatch Run** added, an
 - **Background job with polling** — rejected: no job infrastructure exists; at tens of
   emails per run, sequential-in-request is honest and debuggable. The schema leaves the
   door open if scale ever demands it.
-- **DB-backed SMTP settings with an in-app settings page** — deferred: a whole new
-  surface for a one-time IT task; the send code reads an options abstraction either
-  way, so it can come later without rework.
+- **DB-backed SMTP settings with an in-app settings page** — deferred to follow-up
+  issue `.scratch/send-to-all/issues/02-smtp-settings.md` (provider-preset form +
+  test-connection gate, design settled 2026-09-20, round 3 of the same grill): the
+  send code reads an options abstraction either way, so the UI can come later without
+  rework. The interim path ships as a commented config template with provider examples,
+  and the refusal copy names the concrete file path.
 - **Cross-round / whole-vacancy audience** — rejected: violates round ownership and
   double-mails repeat applicants; promotion is the deliberate path for reaching last
   round's people.
@@ -79,3 +82,10 @@ per-candidate path. Glossary impact: **Dispatch** and **Dispatch Run** added, an
   vendor relay) contradicts self-hosted on-prem.
 - **Dispatches outlive templates:** the rendered snapshot is the audit record, so
   editing or deleting a template never rewrites history — and never blocks it either.
+
+## Amendment — 2026-09-20 (implementation grill, decision 20)
+
+`dispatch_runs` stores **no counts**: the report derives them by joining run →
+dispatches, because a stored count is a cache a mid-run crash corrupts.
+`completed_at IS NULL` is the interrupted-run state; recovery is point 3's idempotency
+rule, unchanged.

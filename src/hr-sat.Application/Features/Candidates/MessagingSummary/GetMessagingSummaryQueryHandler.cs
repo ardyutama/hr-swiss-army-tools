@@ -52,8 +52,30 @@ internal sealed class GetMessagingSummaryQueryHandler(IApplicationDbContext dbCo
             .ThenBy(candidate => candidate.Id)
             .ToListAsync(cancellationToken);
 
+        var candidateIds = candidates.Select(candidate => candidate.Id).ToArray();
+        var lastDispatchByCandidate = (await dbContext.Dispatches
+                .AsNoTracking()
+                .Where(dispatch => candidateIds.Contains(dispatch.CandidateId))
+                .OrderByDescending(dispatch => dispatch.Id)
+                .Select(dispatch => new
+                {
+                    dispatch.CandidateId,
+                    dispatch.Status,
+                    dispatch.AttemptedAt
+                })
+                .ToListAsync(cancellationToken))
+            .GroupBy(dispatch => dispatch.CandidateId)
+            .ToDictionary(group => group.Key, group => group.First());
+
         var items = candidates
-            .Select(candidate => CandidateSummaryMapper.Map(candidate, context))
+            .Select(candidate => CandidateSummaryMapper.Map(
+                candidate,
+                context,
+                lastDispatchByCandidate.TryGetValue(candidate.Id, out var lastDispatch)
+                    ? new CandidateLastDispatchResponse(
+                        lastDispatch.Status.ToString().ToLowerInvariant(),
+                        lastDispatch.AttemptedAt)
+                    : null))
             .ToArray();
 
         return Result<IReadOnlyList<CandidateSummaryResponse>>.Success(items);

@@ -8,12 +8,17 @@ internal static class CandidateSummaryMapper
 {
     public static CandidateSummaryResponse Map(
         Candidate candidate,
-        ScreeningContext context)
+        ScreeningContext context,
+        CandidateLastDispatchResponse? lastDispatch = null)
     {
         var firedRules = candidate.EvaluateScreening(context);
         var screening = CandidateScreeningResponse.From(
             firedRules.Count > 0,
             firedRules);
+        var contactability = Contactability.Evaluate(
+            candidate.ReviewStatus,
+            candidate.HireOutcome,
+            candidate.ContactEmail);
         return new CandidateSummaryResponse(
             candidate.Id,
             candidate.FullName,
@@ -30,6 +35,8 @@ internal static class CandidateSummaryMapper
             candidate.IsResubmitted,
             candidate.CvLink(context.Layout),
             screening.ScreenedOut,
-            screening.FiredRules);
+            screening.FiredRules,
+            contactability.Kind.ToApiValue(),
+            lastDispatch);
     }
 }

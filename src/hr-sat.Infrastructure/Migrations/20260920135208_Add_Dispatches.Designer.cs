@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using hr_sat.Infrastructure;
@@ -11,16 +12,11 @@ using hr_sat.Infrastructure;
 namespace hr_sat.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260920135208_Add_Dispatches")]
+    partial class Add_Dispatches
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
-        {
-            BuildSnapshotModel(modelBuilder);
-        }
-
-        // Hand-maintained: old Designer files call this; `dotnet ef migrations add` drops it
-        // on each scaffold — re-add after scaffolding (see .scratch/send-to-all notes).
-        internal static void BuildSnapshotModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

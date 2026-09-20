@@ -41,14 +41,15 @@ internal sealed class RenderEmailTemplateQueryHandler(IApplicationDbContext dbCo
                 CandidateErrors.NotFound(query.CandidateId));
         }
 
-        var candidateName = ResolveCandidateName(
+        var candidateName = CandidateDisplayName.Resolve(
             candidateData.FullName,
             candidateData.SourceSenderName);
-        return EmailTemplateRenderer.Render(
+        var rendered = EmailTemplateRenderer.Render(
             query.Subject!,
             query.Body!,
             candidateName,
             candidateData.VacancyTitle);
+        return new RenderedEmailTemplateResponse(rendered.Subject, rendered.Body);
     }
 
     private static ValidationError? Validate(RenderEmailTemplateQuery query)
@@ -76,11 +77,4 @@ internal sealed class RenderEmailTemplateQueryHandler(IApplicationDbContext dbCo
 
         return errors.Count == 0 ? null : EmailTemplateErrors.Invalid(errors);
     }
-
-    private static string ResolveCandidateName(string? fullName, string? sourceSenderName) =>
-        !string.IsNullOrWhiteSpace(fullName)
-            ? fullName.Trim()
-            : !string.IsNullOrWhiteSpace(sourceSenderName)
-                ? sourceSenderName.Trim()
-                : "there";
 }

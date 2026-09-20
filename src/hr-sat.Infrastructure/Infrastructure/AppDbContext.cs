@@ -3,12 +3,14 @@ using hr_sat.Application.Abstractions.Messaging;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
 using hr_sat.Domain.Candidates.FormResponses;
+using hr_sat.Domain.Dispatches;
 using hr_sat.Domain.EmailTemplates;
 using hr_sat.Domain.IntakeRounds;
 using hr_sat.Domain.Vacancies;
 using hr_sat.Domain.Vacancies.FormLayouts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Npgsql;
 
 namespace hr_sat.Infrastructure;
 
@@ -28,9 +30,14 @@ public sealed class AppDbContext(
     public DbSet<EmailTemplate> EmailTemplates => Set<EmailTemplate>();
     public DbSet<FormLayout> FormLayouts => Set<FormLayout>();
     public DbSet<ScreeningRuleSet> ScreeningRuleSets => Set<ScreeningRuleSet>();
+    public DbSet<DispatchRun> DispatchRuns => Set<DispatchRun>();
+    public DbSet<Dispatch> Dispatches => Set<Dispatch>();
 
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken) =>
         Database.BeginTransactionAsync(cancellationToken);
+
+    public bool IsUniqueViolation(DbUpdateException exception) =>
+        exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 
     public async Task<Vacancy?> FindVacancyForUpdateAsync(
         long id,
@@ -85,5 +92,7 @@ public sealed class AppDbContext(
         modelBuilder.Entity<EmailTemplate>().Ignore(item => item.DomainEvents);
         modelBuilder.Entity<FormLayout>().Ignore(item => item.DomainEvents);
         modelBuilder.Entity<ScreeningRuleSet>().Ignore(item => item.DomainEvents);
+        modelBuilder.Entity<DispatchRun>().Ignore(item => item.DomainEvents);
+        modelBuilder.Entity<Dispatch>().Ignore(item => item.DomainEvents);
     }
 }

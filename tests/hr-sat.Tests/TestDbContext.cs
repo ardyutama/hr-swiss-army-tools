@@ -1,6 +1,7 @@
 using System.Text.Json;
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Domain.Candidates;
+using hr_sat.Domain.Dispatches;
 using hr_sat.Domain.EmailTemplates;
 using hr_sat.Domain.IntakeRounds;
 using hr_sat.Domain.Vacancies;
@@ -10,10 +11,13 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Npgsql;
 
 namespace hr_sat.Tests.Candidates;
 
-internal sealed class TestDbContext : DbContext, IApplicationDbContext
+// Not sealed: dispatch tests derive a fake that overrides SaveChangesAsync to throw
+// a one-shot 23505-wrapped DbUpdateException, exercising the idempotency catch.
+internal class TestDbContext : DbContext, IApplicationDbContext
 {
     private readonly SqliteConnection connection = new("Data Source=:memory:");
 
@@ -34,6 +38,11 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
     public DbSet<EmailTemplate> EmailTemplates => Set<EmailTemplate>();
     public DbSet<FormLayout> FormLayouts => Set<FormLayout>();
     public DbSet<ScreeningRuleSet> ScreeningRuleSets => Set<ScreeningRuleSet>();
+    public DbSet<DispatchRun> DispatchRuns => Set<DispatchRun>();
+    public DbSet<Dispatch> Dispatches => Set<Dispatch>();
+
+    public bool IsUniqueViolation(DbUpdateException exception) =>
+        exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken) =>
         Database.BeginTransactionAsync(cancellationToken);
@@ -234,6 +243,42 @@ internal sealed class TestDbContext : DbContext, IApplicationDbContext
             entity.HasOne<Vacancy>()
                 .WithOne(vacancy => vacancy.ScreeningRuleSet)
                 .HasForeignKey<ScreeningRuleSet>(ruleSet => ruleSet.VacancyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DispatchRun>(entity =>
+        {
+            entity.HasKey(run => run.Id);
+            entity.Property(run => run.Id).ValueGeneratedOnAdd();
+            entity.Property(run => run.StartedAt)
+                .HasConversion(dateTimeOffsetConverter);
+            entity.Property(run => run.CompletedAt)
+                .HasConversion(nullableDateTimeOffsetConverter);
+            entity.HasOne<Vacancy>()
+                .WithMany()
+                .HasForeignKey(run => run.VacancyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<IntakeRound>()
+                .WithMany()
+                .HasForeignKey(run => run.IntakeRoundId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Dispatch>(entity =>
+        {
+            entity.HasKey(dispatch => dispatch.Id);
+            entity.Property(dispatch => dispatch.Id).ValueGeneratedOnAdd();
+            entity.Property(dispatch => dispatch.TemplateKind).HasConversion<string>();
+            entity.Property(dispatch => dispatch.Status).HasConversion<string>();
+            entity.Property(dispatch => dispatch.AttemptedAt)
+                .HasConversion(dateTimeOffsetConverter);
+            entity.HasOne<DispatchRun>()
+                .WithMany()
+                .HasForeignKey(dispatch => dispatch.DispatchRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Candidate>()
+                .WithMany()
+                .HasForeignKey(dispatch => dispatch.CandidateId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }
