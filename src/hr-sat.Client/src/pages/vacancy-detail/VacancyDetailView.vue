@@ -4,17 +4,15 @@ import { useRouter } from 'vue-router'
 import StatusBadge from '@/features/vacancies/components/StatusBadge.vue'
 import HiringPlanSummary from '@/features/vacancies/components/HiringPlanSummary.vue'
 import ImportDialog from '@/features/import/components/ImportDialog.vue'
-import FormLayoutDialog from '@/features/form-layout/components/FormLayoutDialog.vue'
+import GuidedSetupDialog from '@/features/form-layout/components/GuidedSetupDialog.vue'
+import FormLayoutEditDialog from '@/features/form-layout/components/FormLayoutEditDialog.vue'
 import DriftDialog from '@/features/import-form/components/DriftDialog.vue'
 import FormLayoutSummary from '@/features/form-layout/components/FormLayoutSummary.vue'
-import type { FormLayoutColumn } from '@/features/form-layout/api'
-import { useFormLayout } from '@/features/form-layout/useFormLayout'
 import CandidateDeleteDialog from '@/features/candidates/components/CandidateDeleteDialog.vue'
 import ImportResultList from '@/features/candidates/components/ImportResultList.vue'
 import CandidateList from '@/features/candidates/components/CandidateList.vue'
 import CandidateToolbar from '@/features/candidates/components/CandidateToolbar.vue'
 import { useCandidates } from '@/features/candidates/useCandidates'
-import { useCandidateImport } from '@/features/candidates/useCandidateImport'
 import { useMessagingSummary } from '@/features/candidates/useMessagingSummary'
 import RoundList from '@/features/intake-rounds/components/RoundList.vue'
 import CreateRoundDialog from '@/features/intake-rounds/components/CreateRoundDialog.vue'
@@ -31,13 +29,13 @@ import { sendScope } from '@/features/prepared-messages/format'
 import ScreeningSection from '@/features/screening/components/ScreeningSection.vue'
 import ScreeningRulesDialog from '@/features/screening/components/ScreeningRulesDialog.vue'
 import { useScreeningRules } from '@/features/screening/useScreeningRules'
-import { useFormResponseImport } from '@/features/import-form/useFormResponseImport'
 import { candidateFilterQuery } from '@/features/candidates/filter'
 import { problemMessage, problemMessageText } from '@/shared/problem-details'
 import { useActionDialog } from '@/shared/useActionDialog'
 import { useVacancyDetail } from '@/features/vacancy-detail/useVacancyDetail'
 import { useCloseVacancy } from '@/features/vacancy-detail/useCloseVacancy'
 import { useVacancyDetailFlow } from '@/features/vacancy-detail/useVacancyDetailFlow'
+import { useImportConsole } from '@/features/vacancy-detail/useImportConsole'
 import CloseVacancyDialog from '@/features/vacancy-detail/components/CloseVacancyDialog.vue'
 import { formatDate, progressPercent } from '@/features/vacancies/format'
 import { hiringShortage } from '@/features/vacancies/hiring'
@@ -54,15 +52,6 @@ const vacancyId = toRef(props, 'id')
 
 // The leaf lifecycles, composed here — the view is the composition surface.
 const { vacancy, loadError, viewState, load } = useVacancyDetail(vacancyId)
-const {
-  layout: formLayoutMapping,
-  loadError: formLayoutLoadError,
-  viewState: formLayoutViewState,
-  saving: formLayoutSaving,
-  saveError: formLayoutSaveError,
-  load: loadFormLayout,
-  save: saveFormLayoutMapping,
-} = useFormLayout(vacancyId)
 
 const rounds = computed<VacancyRound[]>(() => vacancy.value?.rounds ?? [])
 // The composer's refresh announcement reaches the rounds flow lazily: it is
@@ -87,7 +76,7 @@ const flow = useVacancyDetailFlow({
   // Composed below; the composer invokes its reloads only from mutations and
   // import outcomes, never during setup.
   reloadCandidates: () => candidatesFlow.load(),
-  reloadLayout: loadFormLayout,
+  reloadLayout: () => importConsole.formLayout.load(),
   reloadMessaging: () => messagingFlow.load(),
 })
 const {
@@ -142,26 +131,43 @@ const screeningFlow = useScreeningRules(
 
 const { closing: closingVacancy, close: closeVacancy } = useCloseVacancy(vacancy, load)
 
-// The .eml adapter announces its own refresh; a landed import closes the dialog.
-const { importing, importError, results, importFiles, clearError } = useCandidateImport(
+// The import console composes the .eml and Form Response channels, the Form
+// Layout behind them, and the import-request dialog, and owns what crosses
+// between them. The view binds the console's coordinations and the leaves'
+// own state directly — the leaves arrive as whole instances; the console
+// forwards nothing member-wise (ticket: review adjudication 2026-09-20).
+const importConsole = useImportConsole({
   vacancyId,
-  selectedRoundParam,
-  flow.refreshVacancyAndCandidates,
-)
-const formImport = useFormResponseImport(
-  vacancyId,
-  selectedRoundParam,
-  formLayoutMapping,
-  async (changed) => {
-    if (changed === 'candidatesAndLayout') {
-      await flow.refreshVacancyCandidatesAndLayout()
-    } else {
-      await flow.refreshVacancyAndCandidates()
-    }
-  },
-)
-const formImportUploading = formImport.uploading
-const formLayoutPanelHeaders = formImport.panelHeaders
+  roundId: selectedRoundParam,
+  refreshVacancyAndCandidates: flow.refreshVacancyAndCandidates,
+  refreshVacancyCandidatesAndLayout: flow.refreshVacancyCandidatesAndLayout,
+})
+const { formImport } = importConsole
+const { emlImport: { results } } = importConsole
+const {
+  layout: formLayoutMapping,
+  loadError: formLayoutLoadError,
+  viewState: formLayoutViewState,
+  saving: formLayoutSaving,
+  saveError: formLayoutSaveError,
+  load: loadFormLayout,
+} = importConsole.formLayout
+// Dialog v-models destructure to the top level: a nested member binding would
+// overwrite the computeds instead of writing through them. The refusal
+// dialogs' open models live on the import-form leaf, derived from its step
+// union (pack: dialog visibility).
+const {
+  requestImport,
+  importDialogOpen,
+  importAlert,
+  importBusy,
+  importEmlFiles,
+  importCsvFile,
+  layoutEditing,
+  openLayoutEdit,
+  saveLayoutEdit,
+} = importConsole
+const { guidedSetupOpen, headerDriftOpen } = formImport
 
 const {
   open: promoteOpen,
@@ -259,16 +265,6 @@ function openEmailTemplates() {
 }
 
 const {
-  open: importRequested,
-  request: requestImport,
-  confirm: confirmImport,
-} = useActionDialog({
-  onReset: () => {
-    clearError()
-    formImport.clearResult()
-  },
-})
-const {
   open: deleteOpen,
   payload: deletingCandidate,
   error: deleteError,
@@ -295,138 +291,6 @@ const {
 function openReviewFromPrepared(candidate: CandidateSummary) {
   preparedOpen.value = false
   openReview(candidate)
-}
-
-function openImport() {
-  requestImport()
-}
-
-// The dialog surfaces one alert at a time: the form flow's typed alert wins,
-// otherwise the .eml flow's message renders as a red inline alert as before.
-const importAlert = computed(() => {
-  if (formImport.alert.value) {
-    return formImport.alert.value
-  }
-  return importError.value ? { color: 'error' as const, title: importError.value } : null
-})
-
-async function onImportEmlFiles(files: File[]) {
-  formImport.clearResult()
-  await confirmImport(() => importFiles(files))
-}
-
-async function onImportCsvFile(file: File) {
-  clearError()
-  // The dialog stays open so the summary line remains visible — a refusal
-  // moves the step off idle, which swaps it for the guided panel or the drift
-  // dialog via the derived bindings below.
-  await formImport.importFile(file)
-}
-
-// --- Form layout panel + drift dialog --------------------------------------
-// The refusal steps and their bindings derive in the import-form module; the
-// view keeps only its own intent flags and the v-model wiring.
-
-// Edit mode is view-owned UI state; it loses to any refusal step.
-const layoutEditRequested = shallowRef(false)
-const layoutEditing = computed({
-  get: () => layoutEditRequested.value && formImport.idle.value,
-  set: (open: boolean) => {
-    layoutEditRequested.value = open
-  },
-})
-
-// The import dialog shows only while requested and the import sits at idle —
-// a refusal closes it; terminal success returns to idle so it reappears with
-// the summary line while still requested.
-const importDialogOpen = computed({
-  get: () => importRequested.value && formImport.idle.value,
-  set: (open: boolean) => {
-    importRequested.value = open
-  },
-})
-
-const formLayoutDialogOpen = computed({
-  get: () => formImport.guidedSetup.value !== null || layoutEditing.value,
-  set: (open: boolean) => {
-    if (!open) {
-      if (formImport.guidedSetup.value !== null) {
-        formImport.cancel()
-      }
-      layoutEditRequested.value = false
-    }
-  },
-})
-
-const formLayoutDialogMode = computed<'edit' | 'guided'>(() =>
-  formImport.guidedSetup.value !== null ? 'guided' : 'edit',
-)
-
-const formLayoutPanelBusy = computed(
-  () => formImport.guidedSetup.value?.submitting ?? formLayoutSaving.value,
-)
-
-const formLayoutPanelAlert = computed(() =>
-  formImport.guidedSetup.value !== null ? formImport.alert.value : formLayoutSaveError.value,
-)
-
-const formLayoutFileName = computed(() => formImport.guidedSetup.value?.file.name ?? null)
-
-const driftDialogOpen = computed({
-  get: () => formImport.headerDrift.value !== null,
-  set: (open: boolean) => {
-    if (!open && formImport.headerDrift.value !== null) {
-      formImport.cancel()
-    }
-  },
-})
-
-const driftChanges = computed(() => formImport.headerDrift.value?.changes ?? [])
-
-const driftSubmitting = computed(() => formImport.headerDrift.value?.submitting ?? false)
-
-function openFormLayoutEdit() {
-  layoutEditRequested.value = true
-}
-
-function onFormLayoutSave(columns: FormLayoutColumn[]) {
-  if (formImport.guidedSetup.value !== null) {
-    // Guided setup completes the held file's import; success returns the step
-    // to idle, closing the panel and re-opening the import dialog.
-    void formImport.submitLayout(columns)
-  } else {
-    // A layout save re-projects over stored rows, so candidate details change too.
-    void saveFormLayoutMapping(columns).then(async (saved) => {
-      if (saved) {
-        await flow.refreshVacancyAndCandidates()
-        layoutEditRequested.value = false
-      }
-    })
-  }
-}
-
-function onFormLayoutCancel() {
-  if (formImport.guidedSetup.value !== null) {
-    // Cancel import drops the held file; nothing is saved.
-    formImport.cancel()
-  }
-  layoutEditRequested.value = false
-}
-
-function onDriftConfirm() {
-  // Success returns the step to idle: the drift dialog closes and the import
-  // dialog reappears with the summary line.
-  void formImport.confirmDrift()
-}
-
-function onDriftRemap() {
-  // The refusal stays held; the guided panel pre-fills the current mapping and
-  // saving it completes the import.
-  formImport.remap()
-}
-
-function onDriftCancel() {
-  formImport.cancel()
 }
 
 function openCreateRound() {
@@ -554,7 +418,7 @@ function openReview(candidate: CandidateSummary) {
               color="neutral"
               variant="ghost"
               icon="i-lucide-table-properties"
-              @click="openFormLayoutEdit"
+              @click="openLayoutEdit()"
             >
               Form layout
             </UButton>
@@ -563,7 +427,7 @@ function openReview(candidate: CandidateSummary) {
               color="neutral"
               variant="ghost"
               icon="i-lucide-upload"
-              @click="openImport"
+              @click="requestImport()"
             >
               Import candidates
             </UButton>
@@ -626,7 +490,7 @@ function openReview(candidate: CandidateSummary) {
         :layout="formLayoutMapping"
         :load-error="formLayoutLoadError"
         :can-edit="!isClosed"
-        @edit="openFormLayoutEdit"
+        @edit="openLayoutEdit()"
         @retry="loadFormLayout"
       />
 
@@ -699,7 +563,7 @@ function openReview(candidate: CandidateSummary) {
           :state="listState"
           :can-open-round="canOpenRound"
           @open-round="openCreateRound"
-          @import="openImport"
+          @import="requestImport()"
           @clear-filters="clearFilters"
         />
 
@@ -736,7 +600,7 @@ function openReview(candidate: CandidateSummary) {
             :state="listState"
             :can-open-round="canOpenRound"
             @open-round="openCreateRound"
-            @import="openImport"
+            @import="requestImport()"
             @clear-filters="clearFilters"
             @show-screened="screenedAll = true"
             @back-to-first-page="backToFirstPage"
@@ -758,32 +622,39 @@ function openReview(candidate: CandidateSummary) {
 
     <ImportDialog
       v-model:open="importDialogOpen"
-      :busy="importing || formImportUploading"
+      :busy="importBusy"
       :alert="importAlert"
       :summary="formImport.summaryLine.value"
-      @eml-files="onImportEmlFiles"
-      @csv-file="onImportCsvFile"
+      @eml-files="importEmlFiles"
+      @csv-file="importCsvFile"
     />
-    <FormLayoutDialog
-      v-model:open="formLayoutDialogOpen"
-      :mode="formLayoutDialogMode"
-      :headers="formLayoutPanelHeaders"
+    <GuidedSetupDialog
+      v-model:open="guidedSetupOpen"
+      :headers="formImport.guidedSetup.value?.headers ?? []"
       :initial-columns="formLayoutMapping?.columns ?? null"
       :initial-headers="formLayoutMapping?.headerSnapshot ?? null"
-      :file-name="formLayoutFileName"
-      :busy="formLayoutPanelBusy"
-      :alert="formLayoutPanelAlert"
-      @save="onFormLayoutSave"
-      @cancel="onFormLayoutCancel"
+      :file-name="formImport.guidedSetup.value?.file.name ?? null"
+      :busy="formImport.guidedSetup.value?.submitting ?? false"
+      :alert="formImport.alert.value"
+      @save="formImport.submitLayout"
+      @cancel="formImport.cancel"
+    />
+    <FormLayoutEditDialog
+      v-model:open="layoutEditing"
+      :headers="formLayoutMapping?.headerSnapshot ?? []"
+      :initial-columns="formLayoutMapping?.columns ?? null"
+      :busy="formLayoutSaving"
+      :alert="formLayoutSaveError"
+      @save="saveLayoutEdit"
     />
     <DriftDialog
-      v-model:open="driftDialogOpen"
-      :changes="driftChanges"
-      :busy="driftSubmitting"
+      v-model:open="headerDriftOpen"
+      :changes="formImport.headerDrift.value?.changes ?? []"
+      :busy="formImport.headerDrift.value?.submitting ?? false"
       :alert="formImport.alert.value"
-      @confirm="onDriftConfirm"
-      @remap="onDriftRemap"
-      @cancel="onDriftCancel"
+      @confirm="formImport.confirmDrift"
+      @remap="formImport.remap"
+      @cancel="formImport.cancel"
     />
     <CandidateDeleteDialog
       v-model:open="deleteOpen"

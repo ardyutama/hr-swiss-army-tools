@@ -108,11 +108,24 @@ export function useFormResponseImport(
   const headerDrift = computed(() => (step.value.kind === 'headerDrift' ? step.value : null))
   const idle = computed(() => step.value.kind === 'idle')
 
-  // The layout panel maps the held file's headers in guided mode and the
-  // saved snapshot in edit mode; the layout arrives by injection either way.
-  const panelHeaders = computed(
-    () => guidedSetup.value?.headers ?? layout.value?.headerSnapshot ?? [],
-  )
+  // One open model per refusal dialog, derived once from the step union — the
+  // view binds them without re-deriving visibility (pack: dialog visibility).
+  const guidedSetupOpen = computed({
+    get: () => guidedSetup.value !== null,
+    set: (open: boolean) => {
+      if (!open) {
+        cancel()
+      }
+    },
+  })
+  const headerDriftOpen = computed({
+    get: () => headerDrift.value !== null,
+    set: (open: boolean) => {
+      if (!open) {
+        cancel()
+      }
+    },
+  })
 
   /**
    * The refusal routes ahead of the shared taxonomy: the two 409 codes hold
@@ -231,8 +244,9 @@ export function useFormResponseImport(
     guidedSetup,
     headerDrift,
     idle,
+    guidedSetupOpen,
+    headerDriftOpen,
     uploading,
-    panelHeaders,
     alert,
     summary,
     summaryLine,
