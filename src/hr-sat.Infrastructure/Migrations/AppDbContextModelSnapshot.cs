@@ -449,6 +449,11 @@ namespace hr_sat.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("error_message");
 
+                    b.Property<string>("FromAddress")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("from_address");
+
                     b.Property<string>("RenderedBody")
                         .IsRequired()
                         .HasColumnType("text")
@@ -771,6 +776,47 @@ namespace hr_sat.Infrastructure.Migrations
                             t.HasCheckConstraint("vacancy_requirement_phrase_check", "char_length(btrim(phrase)) BETWEEN 1 AND 200");
 
                             t.HasCheckConstraint("vacancy_requirement_position_check", "position >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("hr_sat.Infrastructure.Email.SmtpSettingsRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    b.Property<string>("FromAddress")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("from_address");
+
+                    b.Property<string>("FromName")
+                        .HasColumnType("text")
+                        .HasColumnName("from_name");
+
+                    b.Property<string>("Host")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("host");
+
+                    b.Property<int>("Port")
+                        .HasColumnType("integer")
+                        .HasColumnName("port");
+
+                    b.Property<string>("ProtectedPassword")
+                        .HasColumnType("text")
+                        .HasColumnName("protected_password");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("username");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("smtp_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("smtp_settings_singleton_check", "id = 1");
                         });
                 });
 

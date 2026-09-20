@@ -20,6 +20,12 @@ const navItems = computed<NavigationMenuItem[]>(() => [
     to: '/',
     active: route.path === '/' || route.path.startsWith('/vacancies'),
   },
+  { label: 'Settings', type: 'label' },
+  {
+    label: 'Email sending',
+    to: '/settings/email',
+    active: route.path.startsWith('/settings'),
+  },
 ])
 </script>
 

@@ -42,6 +42,10 @@ internal sealed class DispatchConfiguration : IEntityTypeConfiguration<Dispatch>
             .HasColumnName("rendered_body")
             .HasColumnType("text")
             .IsRequired();
+        entity.Property(dispatch => dispatch.FromAddress)
+            .HasColumnName("from_address")
+            .HasColumnType("text")
+            .IsRequired();
         entity.Property(dispatch => dispatch.Status)
             .HasColumnName("status")
             .HasColumnType("text")

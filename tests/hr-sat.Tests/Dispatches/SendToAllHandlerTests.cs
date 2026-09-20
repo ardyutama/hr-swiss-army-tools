@@ -19,6 +19,7 @@ namespace hr_sat.Tests.Dispatches;
 public sealed class SendToAllHandlerTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 20, 9, 0, 0, TimeSpan.Zero);
+    private const string SmtpFromAddress = "hr@example.com";
 
     [Fact]
     public async Task Handle_Should_SendToEveryContactableCandidate_WhenRunSucceeds() // US-19
@@ -310,6 +311,7 @@ public sealed class SendToAllHandlerTests
             EmailTemplateKind.Rejected,
             "Earlier subject",
             "Earlier body",
+            SmtpFromAddress,
             Now.AddDays(-1)));
         await dbContext.SaveChangesAsync(CancellationToken.None);
         var emailSender = CreateEmailSender();
@@ -528,6 +530,7 @@ public sealed class SendToAllHandlerTests
             dbContext,
             emailSender,
             dispatchRunLock ?? CreateAcquiredLock(),
+            CreateSmtpSettingsStore(),
             new FixedTimeProvider(Now));
 
     private static IEmailSender CreateEmailSender(bool configured = true)
@@ -553,5 +556,20 @@ public sealed class SendToAllHandlerTests
         runLock.TryAcquireAsync(Arg.Any<long>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IAsyncDisposable?>(null));
         return runLock;
+    }
+
+    private static ISmtpSettingsStore CreateSmtpSettingsStore()
+    {
+        var store = Substitute.For<ISmtpSettingsStore>();
+        store.GetSnapshotAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new SmtpSettingsSnapshot(
+                "smtp.example.com",
+                587,
+                "hr@example.com",
+                SmtpFromAddress,
+                null,
+                true,
+                SmtpSettingsSource.Settings)));
+        return store;
     }
 }

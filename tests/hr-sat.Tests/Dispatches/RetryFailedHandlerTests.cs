@@ -17,6 +17,7 @@ namespace hr_sat.Tests.Dispatches;
 public sealed class RetryFailedHandlerTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 20, 9, 0, 0, TimeSpan.Zero);
+    private const string SmtpFromAddress = "hr@example.com";
 
     [Fact]
     public async Task Handle_Should_ResendTheStoredSnapshot_WhenRetrying() // domain: Dispatch — the snapshot is sent verbatim, never re-rendered
@@ -109,6 +110,7 @@ public sealed class RetryFailedHandlerTests
             EmailTemplateKind.Rejected,
             "Later subject",
             "Later body",
+            SmtpFromAddress,
             Now.AddMinutes(-30)));
         await dbContext.SaveChangesAsync(CancellationToken.None);
         var emailSender = CreateEmailSender();
@@ -325,6 +327,7 @@ public sealed class RetryFailedHandlerTests
             EmailTemplateKind.Rejected,
             "Original subject",
             "Original body",
+            SmtpFromAddress,
             "SMTP offline.",
             Now.AddHours(-1));
         dbContext.Dispatches.Add(dispatch);
@@ -339,6 +342,7 @@ public sealed class RetryFailedHandlerTests
             dbContext,
             emailSender,
             dispatchRunLock ?? CreateAcquiredLock(),
+            CreateSmtpSettingsStore(),
             new FixedTimeProvider(Now));
 
     private static IEmailSender CreateEmailSender(bool configured = true)
@@ -364,5 +368,20 @@ public sealed class RetryFailedHandlerTests
         runLock.TryAcquireAsync(Arg.Any<long>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IAsyncDisposable?>(null));
         return runLock;
+    }
+
+    private static ISmtpSettingsStore CreateSmtpSettingsStore()
+    {
+        var store = Substitute.For<ISmtpSettingsStore>();
+        store.GetSnapshotAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new SmtpSettingsSnapshot(
+                "smtp.example.com",
+                587,
+                "hr@example.com",
+                SmtpFromAddress,
+                null,
+                true,
+                SmtpSettingsSource.Settings)));
+        return store;
     }
 }

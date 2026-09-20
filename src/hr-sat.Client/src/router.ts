@@ -20,5 +20,10 @@ export const router = createRouter({
       component: () => import('@/pages/review/ReviewView.vue'),
       props: true,
     },
+    {
+      path: '/settings/email',
+      name: 'settings-email',
+      component: () => import('@/pages/settings/SettingsEmailView.vue'),
+    },
   ],
 })

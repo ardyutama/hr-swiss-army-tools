@@ -15,6 +15,7 @@ public sealed class Dispatch : Entity
         EmailTemplateKind templateKind,
         string renderedSubject,
         string renderedBody,
+        string fromAddress,
         DispatchStatus status,
         string? errorMessage,
         DateTimeOffset attemptedAt)
@@ -24,6 +25,7 @@ public sealed class Dispatch : Entity
         TemplateKind = templateKind;
         RenderedSubject = renderedSubject;
         RenderedBody = renderedBody;
+        FromAddress = fromAddress;
         Status = status;
         ErrorMessage = errorMessage;
         AttemptedAt = attemptedAt;
@@ -34,6 +36,9 @@ public sealed class Dispatch : Entity
     public EmailTemplateKind TemplateKind { get; private set; }
     public string RenderedSubject { get; private set; } = string.Empty;
     public string RenderedBody { get; private set; } = string.Empty;
+    // Which SMTP Account sent (or attempted) this Dispatch — part of the retained
+    // snapshot so "which account sent this" stays answerable (issue 02, decision 7).
+    public string FromAddress { get; private set; } = string.Empty;
     public DispatchStatus Status { get; private set; }
     public string? ErrorMessage { get; private set; }
     public DateTimeOffset AttemptedAt { get; private set; }
@@ -44,6 +49,7 @@ public sealed class Dispatch : Entity
         EmailTemplateKind templateKind,
         string renderedSubject,
         string renderedBody,
+        string fromAddress,
         DateTimeOffset attemptedAt) =>
         new(
             dispatchRunId,
@@ -51,6 +57,7 @@ public sealed class Dispatch : Entity
             templateKind,
             renderedSubject,
             renderedBody,
+            fromAddress,
             DispatchStatus.Sent,
             null,
             attemptedAt);
@@ -61,6 +68,7 @@ public sealed class Dispatch : Entity
         EmailTemplateKind templateKind,
         string renderedSubject,
         string renderedBody,
+        string fromAddress,
         string errorMessage,
         DateTimeOffset attemptedAt) =>
         new(
@@ -69,21 +77,24 @@ public sealed class Dispatch : Entity
             templateKind,
             renderedSubject,
             renderedBody,
+            fromAddress,
             DispatchStatus.Failed,
             errorMessage,
             attemptedAt);
 
-    internal void MarkSent(DateTimeOffset attemptedAt)
+    internal void MarkSent(string fromAddress, DateTimeOffset attemptedAt)
     {
         Status = DispatchStatus.Sent;
         ErrorMessage = null;
+        FromAddress = fromAddress;
         AttemptedAt = attemptedAt;
     }
 
-    internal void MarkFailed(string errorMessage, DateTimeOffset attemptedAt)
+    internal void MarkFailed(string errorMessage, string fromAddress, DateTimeOffset attemptedAt)
     {
         Status = DispatchStatus.Failed;
         ErrorMessage = errorMessage;
+        FromAddress = fromAddress;
         AttemptedAt = attemptedAt;
     }
 }

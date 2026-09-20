@@ -16,6 +16,7 @@ internal sealed class RetryFailedDispatchesCommandHandler(
     IApplicationDbContext dbContext,
     IEmailSender emailSender,
     IDispatchRunLock dispatchRunLock,
+    ISmtpSettingsStore smtpSettingsStore,
     TimeProvider timeProvider)
     : ICommandHandler<RetryFailedDispatchesCommand, DispatchRunReportResponse>
 {
@@ -38,6 +39,11 @@ internal sealed class RetryFailedDispatchesCommandHandler(
         {
             return Result<DispatchRunReportResponse>.Failure(DispatchErrors.SmtpNotConfigured());
         }
+
+        // Same once-per-run account resolution as Send To All (issue 02, decision 13):
+        // re-attempted rows record the sender the retry actually used. IsConfigured
+        // passed, so the effective settings are complete — FromAddress is non-null.
+        var fromAddress = (await smtpSettingsStore.GetSnapshotAsync(cancellationToken)).FromAddress!;
 
         var vacancyStatus = await dbContext.Vacancies
             .AsNoTracking()
@@ -88,7 +94,7 @@ internal sealed class RetryFailedDispatchesCommandHandler(
 
         if (failed.Count > 0)
         {
-            await RetryRowsAsync(failed, outcomes, cancellationToken);
+            await RetryRowsAsync(failed, outcomes, fromAddress, cancellationToken);
         }
 
         // Counts are derived, never stored (ADR-0019 amendment): the report totals are
@@ -114,6 +120,7 @@ internal sealed class RetryFailedDispatchesCommandHandler(
     private async Task RetryRowsAsync(
         List<Dispatch> failed,
         List<DispatchOutcomeResponse> outcomes,
+        string fromAddress,
         CancellationToken cancellationToken)
     {
         var candidateIds = failed.Select(dispatch => dispatch.CandidateId).ToArray();
@@ -142,7 +149,7 @@ internal sealed class RetryFailedDispatchesCommandHandler(
             var attemptedAt = timeProvider.GetUtcNow();
             if (string.IsNullOrWhiteSpace(candidate.ContactEmail))
             {
-                dispatch.MarkFailed("The candidate has no contact email.", attemptedAt);
+                dispatch.MarkFailed("The candidate has no contact email.", fromAddress, attemptedAt);
             }
             else
             {
@@ -155,7 +162,7 @@ internal sealed class RetryFailedDispatchesCommandHandler(
                         dispatch.RenderedSubject,
                         dispatch.RenderedBody,
                         cancellationToken);
-                    dispatch.MarkSent(attemptedAt);
+                    dispatch.MarkSent(fromAddress, attemptedAt);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -163,7 +170,7 @@ internal sealed class RetryFailedDispatchesCommandHandler(
                 }
                 catch (Exception exception)
                 {
-                    dispatch.MarkFailed(exception.Message, attemptedAt);
+                    dispatch.MarkFailed(exception.Message, fromAddress, attemptedAt);
                 }
             }
 

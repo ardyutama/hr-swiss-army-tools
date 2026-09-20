@@ -1,18 +1,24 @@
 using hr_sat.Application.Abstractions.Email;
 using MailKit.Net.Smtp;
 using MailKit.Security;
-using Microsoft.Extensions.Options;
 using MimeKit;
 
 namespace hr_sat.Infrastructure.Email;
 
-public sealed class MailKitEmailSender(IOptions<SmtpOptions> options) : IEmailSender
+// Sends through the installation's effective SMTP Account (issue 02, decision 2): the
+// saved settings row when complete, else the Smtp configuration section. Registered
+// scoped; the store pins one resolution per scope, so a dispatch run sees a single
+// account from the refusal check to the last send (decision 13), and a settings save
+// takes effect on the next request — no restart.
+public sealed class MailKitEmailSender(SmtpSettingsStore settingsStore) : IEmailSender
 {
     // Per-send timeout: keeps a hung SMTP account from stalling the whole run — and the
     // round's advisory lock — beyond one bounded wait per candidate.
     private static readonly TimeSpan SendTimeout = TimeSpan.FromSeconds(15);
 
-    public bool IsConfigured => options.Value.IsConfigured;
+    // The IEmailSender contract is synchronous (ADR-0019 seam, unchanged per decision
+    // 2); resolution is one bounded read per request, pinned by the store.
+    public bool IsConfigured => Resolve() is not null;
 
     public async Task SendAsync(
         string recipientEmail,
@@ -20,10 +26,11 @@ public sealed class MailKitEmailSender(IOptions<SmtpOptions> options) : IEmailSe
         string body,
         CancellationToken cancellationToken)
     {
-        var smtp = options.Value;
+        var smtp = Resolve() ?? throw new InvalidOperationException(
+            "SMTP is not configured; check IsConfigured before sending.");
 
         var message = new MimeMessage();
-        message.From.Add(new MailboxAddress(smtp.FromName ?? string.Empty, smtp.FromAddress!));
+        message.From.Add(new MailboxAddress(smtp.FromName ?? string.Empty, smtp.FromAddress));
         message.To.Add(new MailboxAddress(string.Empty, recipientEmail));
         message.Subject = subject;
         message.Body = new TextPart("plain") { Text = body };
@@ -40,4 +47,10 @@ public sealed class MailKitEmailSender(IOptions<SmtpOptions> options) : IEmailSe
         await client.SendAsync(message, timeout.Token);
         await client.DisconnectAsync(true, timeout.Token);
     }
+
+    private EffectiveSmtpConnection? Resolve() =>
+        settingsStore
+            .ResolveConnectionAsync(CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
 }

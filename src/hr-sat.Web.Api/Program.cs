@@ -39,7 +39,17 @@ builder.Services.AddSingleton<IPrivateFileStorage, PrivateFileStorage>();
 builder.Services.AddHostedService<FileDeletionSweeper>();
 builder.Services.Configure<SmtpOptions>(
     builder.Configuration.GetSection(SmtpOptions.SectionName));
-builder.Services.AddSingleton<IEmailSender, MailKitEmailSender>();
+// Data Protection protects the saved SMTP Account password at rest (purpose
+// smtp-settings-v1, issue 02 decision 1); keys persist under the installing user's
+// profile, so a restart never strands the saved row.
+builder.Services.AddDataProtection();
+builder.Services.AddScoped<SmtpSettingsStore>();
+builder.Services.AddScoped<ISmtpSettingsStore>(services =>
+    services.GetRequiredService<SmtpSettingsStore>());
+builder.Services.AddScoped<ISmtpConnectionTester, MailKitSmtpConnectionTester>();
+// Scoped, resolving the effective account through the settings store once per scope —
+// a run pins one account (issue 02 decision 13); a save takes effect without restart.
+builder.Services.AddScoped<IEmailSender, MailKitEmailSender>();
 builder.Services.AddScoped<IDispatchRunLock>(
     _ => new PostgresDispatchRunLock(connectionString!));
 builder.WebHost.ConfigureKestrel(options =>

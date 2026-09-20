@@ -41,6 +41,15 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     {
         builder.UseSetting("ConnectionStrings:Database", _postgres.GetConnectionString());
         builder.UseSetting("FileStorage:RootPath", _storageRoot);
+        // A complete file-based SMTP section: the real settings store resolves it as
+        // the configuration-file fallback, so dispatch rows record a from_address while
+        // the substituted IEmailSender keeps actual sending out of the seam. The
+        // Email settings tests exercise the saved-row path over this fallback.
+        builder.UseSetting("Smtp:Host", "smtp.test.invalid");
+        builder.UseSetting("Smtp:Port", "587");
+        builder.UseSetting("Smtp:Username", "hr@test.invalid");
+        builder.UseSetting("Smtp:Password", "file-password");
+        builder.UseSetting("Smtp:FromAddress", "hr@test.invalid");
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<IEmailSender>();
@@ -58,7 +67,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         await using var connection = new NpgsqlConnection(_postgres.GetConnectionString());
         await connection.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "TRUNCATE TABLE vacancy RESTART IDENTITY CASCADE";
+        command.CommandText =
+            "TRUNCATE TABLE vacancy RESTART IDENTITY CASCADE; TRUNCATE TABLE smtp_settings";
         await command.ExecuteNonQueryAsync(cancellationToken);
         if (Directory.Exists(_storageRoot))
         {

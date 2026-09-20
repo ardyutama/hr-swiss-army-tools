@@ -208,6 +208,10 @@ _Avoid_: Sent email, notification, bulk email
 One Send To All action: the batch of Dispatches for every Contactable Candidate of one round, executed one candidate at a time. A failure on one Dispatch never aborts the run; re-running after a Dispatch Run sends only to candidates with no successful Dispatch — a successful Dispatch is never repeated.
 _Avoid_: Bulk send, batch job, campaign
 
+**SMTP Account**:
+The per-installation email account the server sends Dispatches through, managed on the settings page; one per installation, shared by all HR users.
+_Avoid_: Sender profile, per-user account, mailbox
+
 **Contactable Candidate**:
 A candidate eligible to receive a Prepared Message or a Dispatch: a Rejected Candidate or a member of the Bench with a contact email recorded. New and flagged candidates, shortlisted candidates carrying a hire outcome, and candidates without a contact email are never contacted; the send flow names who was left out and why.
 _Avoid_: Recipient, send-list member

@@ -17,6 +17,7 @@ internal sealed class SendToAllCommandHandler(
     IApplicationDbContext dbContext,
     IEmailSender emailSender,
     IDispatchRunLock dispatchRunLock,
+    ISmtpSettingsStore smtpSettingsStore,
     TimeProvider timeProvider)
     : ICommandHandler<SendToAllCommand, DispatchRunReportResponse>
 {
@@ -40,6 +41,12 @@ internal sealed class SendToAllCommandHandler(
         {
             return Result<DispatchRunReportResponse>.Failure(DispatchErrors.SmtpNotConfigured());
         }
+
+        // The account resolves once per run (issue 02, decision 13): every Dispatch row
+        // of the run records the same sender, like the templates it rendered.
+        // IsConfigured passed, so the effective settings are complete — FromAddress is
+        // non-null.
+        var fromAddress = (await smtpSettingsStore.GetSnapshotAsync(cancellationToken)).FromAddress!;
 
         var vacancy = await dbContext.Vacancies
             .AsNoTracking()
@@ -188,6 +195,7 @@ internal sealed class SendToAllCommandHandler(
                     member.TemplateKind,
                     rendered.Subject,
                     rendered.Body,
+                    fromAddress,
                     attemptedAt);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -202,6 +210,7 @@ internal sealed class SendToAllCommandHandler(
                     member.TemplateKind,
                     rendered.Subject,
                     rendered.Body,
+                    fromAddress,
                     exception.Message,
                     attemptedAt);
             }
