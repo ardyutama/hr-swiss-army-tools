@@ -15,6 +15,7 @@ public sealed class UpdateCandidateReviewCommandValidator
             .Must(status =>
                 status is not null &&
                 Enum.TryParse<CandidateReviewStatus>(status, true, out var parsed) &&
+                Enum.IsDefined(parsed) &&
                 parsed != CandidateReviewStatus.New)
             .WithMessage("Review status must be shortlisted, flagged, or rejected.");
         RuleFor(command => command.Notes)

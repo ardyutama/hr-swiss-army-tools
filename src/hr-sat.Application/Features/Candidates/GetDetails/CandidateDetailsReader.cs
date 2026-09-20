@@ -1,5 +1,6 @@
 using hr_sat.Application.Abstractions.Data;
 using hr_sat.Application.Features.Candidates;
+using hr_sat.Application.Features.Candidates.PriorApplications;
 using hr_sat.Application.Features.Shared;
 using hr_sat.Domain;
 using hr_sat.Domain.Candidates;
@@ -110,91 +111,27 @@ internal static class CandidateDetailsReader
             return candidateWithScreening;
         }
 
-        var priorApplications = await dbContext.Candidates
-            .AsNoTracking()
-            .Join(
-                dbContext.IntakeRounds.AsNoTracking(),
-                priorCandidate => priorCandidate.IntakeRoundId,
-                priorRound => priorRound.Id,
-                (priorCandidate, priorRound) => new
-                {
-                    Candidate = priorCandidate,
-                    Round = priorRound
-                })
-            .Where(prior =>
-                prior.Round.VacancyId == vacancyId &&
-                prior.Candidate.Id != candidateId &&
-                prior.Candidate.SourceSenderEmail != null &&
-                prior.Candidate.SourceSenderEmail!.Trim().ToLower() == normalizedSenderEmail)
-            .OrderByDescending(prior => prior.Round.RoundNumber)
-            .ThenByDescending(prior => prior.Candidate.ImportedAt)
-            .ThenByDescending(prior => prior.Candidate.Id)
-            .Select(prior => new
-            {
-                prior.Round.RoundNumber,
-                RoundName = prior.Round.Name,
-                ReviewStatus = prior.Candidate.ReviewStatus.ToString().ToLowerInvariant(),
-                prior.Candidate.ImportedAt,
-                CandidateId = prior.Candidate.Id
-            })
-            .ToListAsync(cancellationToken);
-
-        var formPriorApplications = await dbContext.CandidateFormResponses
-            .AsNoTracking()
-            .Join(
-                dbContext.Candidates.AsNoTracking(),
-                response => response.CandidateId,
-                priorCandidate => priorCandidate.Id,
-                (response, priorCandidate) => new
-                {
-                    Response = response,
-                    Candidate = priorCandidate
-                })
-            .Join(
-                dbContext.IntakeRounds.AsNoTracking(),
-                prior => prior.Candidate.IntakeRoundId,
-                priorRound => priorRound.Id,
-                (prior, priorRound) => new
-                {
-                    prior.Response,
-                    prior.Candidate,
-                    Round = priorRound
-                })
-            .Where(prior =>
-                prior.Round.VacancyId == vacancyId &&
-                prior.Candidate.Id != candidateId &&
-                prior.Response.IsCurrent &&
-                prior.Response.IdentityKey == normalizedSenderEmail)
-            .OrderByDescending(prior => prior.Round.RoundNumber)
-            .ThenByDescending(prior => prior.Candidate.ImportedAt)
-            .ThenByDescending(prior => prior.Candidate.Id)
-            .Select(prior => new
-            {
-                prior.Round.RoundNumber,
-                RoundName = prior.Round.Name,
-                ReviewStatus = prior.Candidate.ReviewStatus.ToString().ToLowerInvariant(),
-                prior.Candidate.ImportedAt,
-                CandidateId = prior.Candidate.Id
-            })
-            .ToListAsync(cancellationToken);
-
-        var allPriorApplications = priorApplications
-            .Concat(formPriorApplications)
-            .OrderByDescending(prior => prior.RoundNumber)
-            .ThenByDescending(prior => prior.ImportedAt)
-            .ThenByDescending(prior => prior.CandidateId)
-            .ToList();
+        var priorApplicationsByKey = await PriorApplicationLookup.FindAsync(
+            vacancyId,
+            new HashSet<string>(StringComparer.Ordinal) { normalizedSenderEmail },
+            dbContext,
+            cancellationToken);
 
         return candidateWithScreening with
         {
-            PriorApplications = allPriorApplications
-                .GroupBy(prior => prior.RoundNumber)
-                .Select(group => group.First())
-                .Select(prior => new CandidatePriorApplicationResponse(
-                    prior.RoundNumber,
-                    prior.RoundName,
-                    prior.ReviewStatus))
-                .ToList()
+            PriorApplications = priorApplicationsByKey.TryGetValue(
+                normalizedSenderEmail,
+                out var matches)
+                ? matches
+                    .Where(match => match.CandidateId != candidateId)
+                    .GroupBy(match => match.RoundNumber)
+                    .Select(group => group.First())
+                    .Select(match => new CandidatePriorApplicationResponse(
+                        match.RoundNumber,
+                        match.RoundName,
+                        match.ReviewStatus))
+                    .ToList()
+                : Array.Empty<CandidatePriorApplicationResponse>()
         };
     }
 }

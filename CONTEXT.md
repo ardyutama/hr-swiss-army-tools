@@ -72,6 +72,10 @@ _Avoid_: Copy candidate, re-import
 A display-only indicator that a candidate's identifying email (Source Sender, or the Form Response's Contact Email) appears on more than one candidate of the same vacancy — any round, including the current one; it is person-intuition, not person-proof, and never blocks import or affects review status.
 _Avoid_: Duplicate block, global person history
 
+**Prior Application**:
+Another candidate of the same vacancy — any round, including the current one — whose identifying email matches; the evidence behind a Prior Application Notice.
+_Avoid_: Duplicate, repeat applicant
+
 **Candidate**:
 One person's submission to one intake round, created from one intake source; the same person submitted to another round or vacancy is a different candidate.
 _Avoid_: Talent, shared person, global candidate

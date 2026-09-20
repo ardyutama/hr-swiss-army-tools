@@ -175,4 +175,22 @@ public sealed class CandidateValidatorsTests
             .ErrorMessage
             .ShouldBe("Notes must be 4000 characters or fewer.");
     }
+
+    [Fact]
+    public void Update_candidate_review_rejects_a_numeric_status_that_parses_into_an_undefined_value()
+    {
+        var result = new UpdateCandidateReviewCommandValidator()
+            .Validate(new UpdateCandidateReviewCommand(
+                1,
+                1,
+                1,
+                "99",
+                null));
+
+        result.IsValid.ShouldBeFalse();
+        result.Errors.Single(error =>
+                error.PropertyName == nameof(UpdateCandidateReviewCommand.ReviewStatus))
+            .ErrorMessage
+            .ShouldBe("Review status must be shortlisted, flagged, or rejected.");
+    }
 }

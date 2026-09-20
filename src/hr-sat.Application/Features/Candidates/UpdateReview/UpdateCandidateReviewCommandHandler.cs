@@ -15,7 +15,8 @@ internal sealed class UpdateCandidateReviewCommandHandler(IApplicationDbContext 
         UpdateCandidateReviewCommand command,
         CancellationToken cancellationToken)
     {
-        if (!Enum.TryParse<CandidateReviewStatus>(command.ReviewStatus, true, out var reviewStatus))
+        if (!Enum.TryParse<CandidateReviewStatus>(command.ReviewStatus, true, out var reviewStatus) ||
+            !Enum.IsDefined(reviewStatus))
         {
             return Result<CandidateDetailsResponse>.Failure(
                 CandidateErrors.Invalid(new Dictionary<string, string[]>
