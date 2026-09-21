@@ -209,8 +209,12 @@ One Send To All action: the batch of Dispatches for every Contactable Candidate 
 _Avoid_: Bulk send, batch job, campaign
 
 **SMTP Account**:
-The per-installation email account the server sends Dispatches through, managed on the settings page; one per installation, shared by all HR users.
+The per-installation email account the server sends Dispatches through, managed on the settings page; one per installation, shared by all HR users, authenticated by exactly one Sign-in Method at a time.
 _Avoid_: Sender profile, per-user account, mailbox
+
+**Sign-in Method**:
+How the server authenticates to the SMTP Account: an **App Password** typed on the settings page, or a **Microsoft Account** connected through Microsoft's sign-in flow and renewed silently until revoked or disconnected. The account carries exactly one method at a time; switching methods discards the other credential.
+_Avoid_: Basic auth, OAuth2, auth method (wire-protocol terms, not domain language)
 
 **Contactable Candidate**:
 A candidate eligible to receive a Prepared Message or a Dispatch: a Rejected Candidate or a member of the Bench with a contact email recorded. New and flagged candidates, shortlisted candidates carrying a hire outcome, and candidates without a contact email are never contacted; the send flow names who was left out and why.
