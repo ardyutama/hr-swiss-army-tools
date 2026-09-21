@@ -4,9 +4,12 @@
 @import '@fontsource/geist/500.css';
 @import '@fontsource/geist/600.css';
 @import '@fontsource/geist/700.css';
+@import '@fontsource/geist-mono/500.css';
+@import '@fontsource/geist-mono/700.css';
 
 @theme {
   --font-sans: 'Geist', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', 'SF Mono', ui-monospace, 'Cascadia Mono', monospace;
 
   --color-app-background: #f7f6f3;
   --color-ink: #1e2430;

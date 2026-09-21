@@ -47,6 +47,9 @@ builder.Services.AddScoped<SmtpSettingsStore>();
 builder.Services.AddScoped<ISmtpSettingsStore>(services =>
     services.GetRequiredService<SmtpSettingsStore>());
 builder.Services.AddScoped<ISmtpConnectionTester, MailKitSmtpConnectionTester>();
+// The Microsoft Account sign-in seam (issue 03): one singleton MSAL public client per
+// process — the token cache and the in-flight connect attempt live on it.
+builder.Services.AddSingleton<IMicrosoftAccountSignIn, MicrosoftAccountSignIn>();
 // Scoped, resolving the effective account through the settings store once per scope —
 // a run pins one account (issue 02 decision 13); a save takes effect without restart.
 builder.Services.AddScoped<IEmailSender, MailKitEmailSender>();

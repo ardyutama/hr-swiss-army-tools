@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, shallowRef, useTemplateRef } from 'vue'
+import { onMounted, shallowRef, useTemplateRef, watch } from 'vue'
 import type {
   SmtpSettingsWritePayload,
   SmtpTestPayload,
@@ -8,6 +8,7 @@ import SmtpSettingsForm from '@/features/email-settings/components/SmtpSettingsF
 import SmtpStatusLine from '@/features/email-settings/components/SmtpStatusLine.vue'
 import { problemDetailText } from '@/features/email-settings/format'
 import { useEmailSettings } from '@/features/email-settings/useEmailSettings'
+import { useMicrosoftConnect } from '@/features/email-settings/useMicrosoftConnect'
 import { problemMessage, problemMessageText } from '@/shared/problem-details'
 
 const {
@@ -22,6 +23,21 @@ const {
   testConnection,
   removeSettings,
 } = useEmailSettings()
+
+// One composable per async lifecycle (issue 03, decision 26): the connect attempt is
+// owned here; the form renders it. A succeeded attempt means the server already wrote
+// the row (connect is the test, decision 6) — reload so the form and the status line
+// show the derived account.
+const microsoftConnect = useMicrosoftConnect()
+
+watch(
+  () => microsoftConnect.state.value.status,
+  async (status) => {
+    if (status === 'succeeded') {
+      await load()
+    }
+  },
+)
 
 const form = useTemplateRef<InstanceType<typeof SmtpSettingsForm>>('form')
 const removeError = shallowRef<string | null>(null)
@@ -53,6 +69,8 @@ async function onRemove() {
   removeError.value = null
   try {
     await removeSettings()
+    // Disconnecting ends any connect session the panel could still trade on.
+    microsoftConnect.reset()
     form.value?.closeRemoveDialog()
   } catch (error) {
     removeError.value = problemMessageText(
@@ -106,9 +124,11 @@ async function onRemove() {
       :testing="testing"
       :removing="removing"
       :remove-error="removeError"
+      :connect="microsoftConnect.state.value"
       @test="onTest"
       @save="onSave"
       @remove="onRemove"
+      @connect="microsoftConnect.begin"
     />
   </div>
 </template>

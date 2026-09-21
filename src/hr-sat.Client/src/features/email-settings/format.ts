@@ -3,11 +3,15 @@ import type { SmtpPresetId } from './validation'
 
 /**
  * The effective-source status line (decision 10): one muted sentence stating what
- * actually sends mail. Updates in place after save/remove — the success feedback.
+ * actually sends mail. Updates in place after save/remove — the success feedback. A
+ * connected Microsoft Account names itself instead of the host (issue 03, decision 35).
  */
 export function smtpStatusLine(settings: SmtpSettings): string {
   if (settings.source === 'none') {
     return 'Email sending is not configured.'
+  }
+  if (settings.source === 'settings' && settings.signInMethod === 'microsoft-account') {
+    return `Sending as ${settings.fromAddress} via Microsoft account — saved on this page.`
   }
   const via = `Sending as ${settings.fromAddress} via ${settings.host}:${settings.port}`
   return settings.source === 'settings'
@@ -37,4 +41,12 @@ export function problemDetailText(error: unknown): string | null {
   }
   const detail = (problem as { detail?: unknown }).detail
   return typeof detail === 'string' && detail.length > 0 ? detail : null
+}
+
+/** "The code expires at HH:MM" — the device code's local 24-hour expiry (issue 03, decision 33). */
+export function formatTimeHHmm(iso: string): string {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
 }

@@ -94,7 +94,7 @@ public sealed class SendToAllHandlerTests
             dbContext, round.Id, 1, CandidateReviewStatus.Rejected, "bob@example.com");
         AddTemplate(dbContext, vacancy.Id, EmailTemplateKind.Rejected);
         await dbContext.SaveChangesAsync(CancellationToken.None);
-        var emailSender = CreateEmailSender(configured: false);
+        var emailSender = CreateEmailSender(SmtpReadiness.NotConfigured);
         var handler = CreateHandler(dbContext, emailSender);
 
         var result = await handler.Handle(
@@ -103,6 +103,34 @@ public sealed class SendToAllHandlerTests
 
         result.IsFailure.ShouldBeTrue();
         result.Error.Code.ShouldBe("Dispatch.SmtpNotConfigured");
+        (await dbContext.DispatchRuns.CountAsync()).ShouldBe(0);
+        (await dbContext.Dispatches.CountAsync()).ShouldBe(0);
+        await emailSender.DidNotReceive().SendAsync(
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Handle_Should_RefuseWithoutWritingRows_WhenTheSignInHasExpired() // domain: Sign-in Method — a dead grant refuses the whole run amber, no dispatch rows (issue 03, decision 7)
+    {
+        await using var dbContext = new TestDbContext();
+        var (vacancy, round) = await SeedVacancyAsync(dbContext);
+        await AddCandidateAsync(
+            dbContext, round.Id, 1, CandidateReviewStatus.Rejected, "bob@example.com");
+        AddTemplate(dbContext, vacancy.Id, EmailTemplateKind.Rejected);
+        await dbContext.SaveChangesAsync(CancellationToken.None);
+        var emailSender = CreateEmailSender(SmtpReadiness.SignInExpired);
+        var handler = CreateHandler(dbContext, emailSender);
+
+        var result = await handler.Handle(
+            new SendToAllCommand(vacancy.Id, round.Id),
+            CancellationToken.None);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Dispatch.SmtpSignInExpired");
+        result.Error.Message.ShouldBe("Reconnect the email account on the settings page.");
         (await dbContext.DispatchRuns.CountAsync()).ShouldBe(0);
         (await dbContext.Dispatches.CountAsync()).ShouldBe(0);
         await emailSender.DidNotReceive().SendAsync(
@@ -533,10 +561,11 @@ public sealed class SendToAllHandlerTests
             CreateSmtpSettingsStore(),
             new FixedTimeProvider(Now));
 
-    private static IEmailSender CreateEmailSender(bool configured = true)
+    private static IEmailSender CreateEmailSender(SmtpReadiness readiness = SmtpReadiness.Configured)
     {
         var sender = Substitute.For<IEmailSender>();
-        sender.IsConfigured.Returns(configured);
+        sender.CheckReadinessAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(readiness));
         sender.SendAsync(default!, default!, default!, default)
             .ReturnsForAnyArgs(Task.CompletedTask);
         return sender;
@@ -569,6 +598,7 @@ public sealed class SendToAllHandlerTests
                 SmtpFromAddress,
                 null,
                 true,
+                SignInMethod.AppPassword,
                 SmtpSettingsSource.Settings)));
         return store;
     }

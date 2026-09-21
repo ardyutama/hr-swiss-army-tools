@@ -1,4 +1,5 @@
 using hr_sat.Application.Abstractions.Email;
+using hr_sat.Infrastructure.Email;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,10 +24,16 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     // throws for a specific recipient) before creating its client.
     public IEmailSender EmailSender { get; set; } = CreateDefaultEmailSender();
 
+    // The Microsoft Account sign-in seam (issue 03, decision 31): a hand-written fake
+    // registered by default — no live Microsoft calls in the suite. Reset per client,
+    // matching the database reset.
+    public FakeMicrosoftAccountSignIn MicrosoftSignIn { get; } = new();
+
     private static IEmailSender CreateDefaultEmailSender()
     {
         var sender = Substitute.For<IEmailSender>();
-        sender.IsConfigured.Returns(true);
+        sender.CheckReadinessAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(SmtpReadiness.Configured));
         sender.SendAsync(default!, default!, default!, default)
             .ReturnsForAnyArgs(Task.CompletedTask);
         return sender;
@@ -54,12 +61,39 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         {
             services.RemoveAll<IEmailSender>();
             services.AddScoped<IEmailSender>(_ => EmailSender);
+            services.RemoveAll<IMicrosoftAccountSignIn>();
+            services.AddSingleton<IMicrosoftAccountSignIn>(_ => MicrosoftSignIn);
         });
     }
 
     public new HttpClient CreateClient()
     {
+        MicrosoftSignIn.Reset();
         return CreateDefaultClient(new DatabaseResetHandler(ResetDatabaseAsync));
+    }
+
+    // Seeds a connected Microsoft Account row through the store's own one-upsert
+    // (issue 03, decision 23) so seam tests can exercise the Microsoft paths without
+    // live Microsoft calls. Seed AFTER the client's first request — the database
+    // reset runs on it.
+    public async Task SeedMicrosoftAccountAsync(
+        string accountEmail = "anna@outlook.com",
+        string grantBlob = "fake-grant-blob")
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var store = scope.ServiceProvider.GetRequiredService<SmtpSettingsStore>();
+        await store.ConnectMicrosoftAccountAsync(accountEmail, grantBlob, CancellationToken.None);
+    }
+
+    // Raw SQL against the test database — e.g. corrupting a stored grant to prove the
+    // per-method completeness rule (issue 03, decision 29).
+    public async Task ExecuteSqlAsync(string sql)
+    {
+        await using var connection = new NpgsqlConnection(_postgres.GetConnectionString());
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await command.ExecuteNonQueryAsync();
     }
 
     private async Task ResetDatabaseAsync(CancellationToken cancellationToken)

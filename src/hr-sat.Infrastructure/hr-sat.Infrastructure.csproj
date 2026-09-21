@@ -17,6 +17,10 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <!-- MSAL.NET (issue 03, decision 3): device-code acquisition and silent refresh,
+         no hand-rolled OAuth2 — polling, slow_down, rotation races, and expiry math
+         are where homegrown auth rots. Rationale in ADR-0020. -->
+    <PackageReference Include="Microsoft.Identity.Client" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
   </ItemGroup>
 

@@ -15,7 +15,8 @@ public sealed class EmailSettingsTests(ApiFactory factory) : IClassFixture<ApiFa
     {
         using var client = factory.CreateClient();
 
-        // First open: prefilled from the configuration file, password withheld.
+        // First open: prefilled from the configuration file, password withheld; the
+        // file path is always App Password (issue 03, decision 11).
         var initial = await GetSettingsAsync(client);
         Assert.Equal("configuration-file", initial.Source);
         Assert.Equal("smtp.test.invalid", initial.Host);
@@ -24,6 +25,7 @@ public sealed class EmailSettingsTests(ApiFactory factory) : IClassFixture<ApiFa
 
         using var saveResponse = await client.PutAsJsonAsync("/api/settings/smtp", new
         {
+            signInMethod = "app-password",
             host = "smtp.gmail.com",
             port = 587,
             username = "hr@firma.example",
@@ -39,16 +41,20 @@ public sealed class EmailSettingsTests(ApiFactory factory) : IClassFixture<ApiFa
         var saved = JsonDocument.Parse(savedBody).RootElement;
         Assert.Equal("settings", saved.GetProperty("source").GetString());
         Assert.True(saved.GetProperty("hasPassword").GetBoolean());
+        Assert.Equal("app-password", saved.GetProperty("signInMethod").GetString());
+        Assert.True(saved.GetProperty("microsoftSignInAvailable").GetBoolean());
         Assert.Equal("smtp.gmail.com", saved.GetProperty("host").GetString());
         Assert.Equal("HR Team", saved.GetProperty("fromName").GetString());
 
         var afterSave = await GetSettingsAsync(client);
         Assert.Equal("settings", afterSave.Source);
         Assert.Equal("hr@firma.example", afterSave.Username);
+        Assert.Equal("app-password", afterSave.SignInMethod);
 
         // Omitting the password keeps the stored one (decision 12).
         using var keepResponse = await client.PutAsJsonAsync("/api/settings/smtp", new
         {
+            signInMethod = "app-password",
             host = "smtp.office365.com",
             port = 587,
             username = "hr@firma.example",
@@ -77,6 +83,7 @@ public sealed class EmailSettingsTests(ApiFactory factory) : IClassFixture<ApiFa
 
         using var saveResponse = await client.PutAsJsonAsync("/api/settings/smtp", new
         {
+            signInMethod = "app-password",
             host = "smtp.gmail.com",
             port = 587,
             username = "hr@firma.example",
@@ -98,6 +105,7 @@ public sealed class EmailSettingsTests(ApiFactory factory) : IClassFixture<ApiFa
 
         using var response = await client.PutAsJsonAsync("/api/settings/smtp", new
         {
+            signInMethod = "app-password",
             host = "https://smtp.gmail.com",
             port = 70000,
             username = " ",
@@ -163,6 +171,7 @@ public sealed class EmailSettingsTests(ApiFactory factory) : IClassFixture<ApiFa
         // reaching the connect stage proves the stored password was read and unprotected.
         using var saveResponse = await client.PutAsJsonAsync("/api/settings/smtp", new
         {
+            signInMethod = "app-password",
             host = "smtp.gmail.com",
             port = 587,
             username = "hr@firma.example",
@@ -202,7 +211,8 @@ public sealed class EmailSettingsTests(ApiFactory factory) : IClassFixture<ApiFa
             json.GetProperty("port").GetInt32OrNull(),
             json.GetProperty("username").GetString(),
             json.GetProperty("fromName").GetString(),
-            json.GetProperty("hasPassword").GetBoolean());
+            json.GetProperty("hasPassword").GetBoolean(),
+            json.GetProperty("signInMethod").GetString());
     }
 
     private sealed record SmtpSettingsContract(
@@ -211,7 +221,8 @@ public sealed class EmailSettingsTests(ApiFactory factory) : IClassFixture<ApiFa
         int? Port,
         string? Username,
         string? FromName,
-        bool HasPassword);
+        bool HasPassword,
+        string? SignInMethod);
 
     private sealed record ValidationProblemResponse(Dictionary<string, string[]> Errors);
 

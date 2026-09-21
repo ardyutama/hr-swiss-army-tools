@@ -153,7 +153,7 @@ public sealed class SendToAllTests(ApiFactory factory) : IClassFixture<ApiFactor
     [Fact]
     public async Task Send_to_all_should_refuse_and_record_nothing_when_smtp_is_not_configured() // US-19 — dispatch requires a configured per-installation SMTP (ADR-0019)
     {
-        var sender = CreateEmailSender(configured: false);
+        var sender = CreateEmailSender(SmtpReadiness.NotConfigured);
         factory.EmailSender = sender;
         using var client = factory.CreateClient();
         var (vacancyLocation, roundId) = await CreateVacancyAsync(client);
@@ -176,6 +176,45 @@ public sealed class SendToAllTests(ApiFactory factory) : IClassFixture<ApiFactor
         var problem = await response.Content.ReadFromJsonAsync<ProblemResponse>();
         Assert.NotNull(problem);
         Assert.Equal("Dispatch.SmtpNotConfigured", problem.Title);
+        await sender.DidNotReceive().SendAsync(
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Any<CancellationToken>());
+
+        var summary = await GetMessagingSummaryAsync(client, vacancyLocation, roundId);
+        Assert.All(summary, item => Assert.Null(item.LastDispatch));
+    }
+
+    [Fact]
+    public async Task Send_to_all_should_refuse_amber_when_the_microsoft_sign_in_has_expired() // domain: Sign-in Method — a dead grant refuses the whole run, no dispatch rows (issue 03, decisions 7, 12)
+    {
+        var sender = CreateEmailSender(SmtpReadiness.SignInExpired);
+        factory.EmailSender = sender;
+        using var client = factory.CreateClient();
+        var (vacancyLocation, roundId) = await CreateVacancyAsync(client);
+        var candidate = await ImportCandidateAsync(client, vacancyLocation, roundId, "Alice Applicant");
+        await UpdateDetailsAsync(
+            client, vacancyLocation, roundId, candidate.Id, "Alice Applicant", "alice.applicant@example.com");
+        await UpdateReviewAsync(client, vacancyLocation, roundId, candidate.Id, "rejected");
+        await UpsertTemplateAsync(
+            client,
+            vacancyLocation,
+            "rejected",
+            "Not this time {{candidate_name}}",
+            "Thank you for applying to {{vacancy_title}}.");
+
+        var response = await client.PostAsync(
+            $"{vacancyLocation}/rounds/{roundId}/dispatches",
+            content: null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        using var problem = JsonDocument.Parse(body);
+        Assert.Equal("Dispatch.SmtpSignInExpired", problem.RootElement.GetProperty("title").GetString());
+        Assert.Equal(
+            "Reconnect the email account on the settings page.",
+            problem.RootElement.GetProperty("detail").GetString());
         await sender.DidNotReceive().SendAsync(
             Arg.Any<string>(),
             Arg.Any<string>(),
@@ -325,7 +364,8 @@ public sealed class SendToAllTests(ApiFactory factory) : IClassFixture<ApiFactor
         var sendStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseSend = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var sender = Substitute.For<IEmailSender>();
-        sender.IsConfigured.Returns(true);
+        sender.CheckReadinessAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(SmtpReadiness.Configured));
         sender.SendAsync(default!, default!, default!, default)
             .ReturnsForAnyArgs(async _ =>
             {
@@ -370,10 +410,11 @@ public sealed class SendToAllTests(ApiFactory factory) : IClassFixture<ApiFactor
         Assert.Equal(1, firstReport.SentCount);
     }
 
-    private static IEmailSender CreateEmailSender(bool configured = true)
+    private static IEmailSender CreateEmailSender(SmtpReadiness readiness = SmtpReadiness.Configured)
     {
         var sender = Substitute.For<IEmailSender>();
-        sender.IsConfigured.Returns(configured);
+        sender.CheckReadinessAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(readiness));
         sender.SendAsync(default!, default!, default!, default)
             .ReturnsForAnyArgs(Task.CompletedTask);
         return sender;

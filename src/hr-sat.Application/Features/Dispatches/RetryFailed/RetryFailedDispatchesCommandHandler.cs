@@ -35,13 +35,21 @@ internal sealed class RetryFailedDispatchesCommandHandler(
                 DispatchErrors.RunInProgress(command.VacancyId, command.RoundId));
         }
 
-        if (!emailSender.IsConfigured)
+        // Same pre-flight as Send To All (issue 03, decision 7): a dead Microsoft
+        // Account grant refuses the retry amber before any row is re-attempted.
+        var readiness = await emailSender.CheckReadinessAsync(cancellationToken);
+        if (readiness == SmtpReadiness.NotConfigured)
         {
             return Result<DispatchRunReportResponse>.Failure(DispatchErrors.SmtpNotConfigured());
         }
 
+        if (readiness == SmtpReadiness.SignInExpired)
+        {
+            return Result<DispatchRunReportResponse>.Failure(DispatchErrors.SmtpSignInExpired());
+        }
+
         // Same once-per-run account resolution as Send To All (issue 02, decision 13):
-        // re-attempted rows record the sender the retry actually used. IsConfigured
+        // re-attempted rows record the sender the retry actually used. Readiness
         // passed, so the effective settings are complete — FromAddress is non-null.
         var fromAddress = (await smtpSettingsStore.GetSnapshotAsync(cancellationToken)).FromAddress!;
 

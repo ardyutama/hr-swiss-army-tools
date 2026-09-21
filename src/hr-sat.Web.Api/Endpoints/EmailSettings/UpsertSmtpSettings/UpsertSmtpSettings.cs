@@ -7,6 +7,7 @@ internal sealed class UpsertSmtpSettings : IEndpoint
 {
     public sealed class Request
     {
+        public string? SignInMethod { get; init; }
         public string? Host { get; init; }
         public int? Port { get; init; }
         public string? Username { get; init; }
@@ -26,6 +27,7 @@ internal sealed class UpsertSmtpSettings : IEndpoint
                 {
                     var result = await handler.Handle(
                         new UpsertSmtpSettingsCommand(
+                            request.SignInMethod,
                             request.Host,
                             request.Port,
                             request.Username,

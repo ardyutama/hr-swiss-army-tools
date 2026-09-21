@@ -37,14 +37,23 @@ internal sealed class SendToAllCommandHandler(
                 DispatchErrors.RunInProgress(command.VacancyId, command.RoundId));
         }
 
-        if (!emailSender.IsConfigured)
+        // The dispatch pre-flight (issue 03, decisions 7, 20): a Microsoft Account
+        // grant silently refreshes once here; a dead grant refuses the whole run
+        // before any dispatch row is written.
+        var readiness = await emailSender.CheckReadinessAsync(cancellationToken);
+        if (readiness == SmtpReadiness.NotConfigured)
         {
             return Result<DispatchRunReportResponse>.Failure(DispatchErrors.SmtpNotConfigured());
         }
 
+        if (readiness == SmtpReadiness.SignInExpired)
+        {
+            return Result<DispatchRunReportResponse>.Failure(DispatchErrors.SmtpSignInExpired());
+        }
+
         // The account resolves once per run (issue 02, decision 13): every Dispatch row
         // of the run records the same sender, like the templates it rendered.
-        // IsConfigured passed, so the effective settings are complete — FromAddress is
+        // Readiness passed, so the effective settings are complete — FromAddress is
         // non-null.
         var fromAddress = (await smtpSettingsStore.GetSnapshotAsync(cancellationToken)).FromAddress!;
 

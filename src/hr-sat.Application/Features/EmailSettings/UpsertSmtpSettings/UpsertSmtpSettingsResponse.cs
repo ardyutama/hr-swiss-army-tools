@@ -10,4 +10,6 @@ public sealed record UpsertSmtpSettingsResponse(
     string? FromAddress,
     string? FromName,
     bool HasPassword,
+    string? SignInMethod,
+    bool MicrosoftSignInAvailable,
     string Source);

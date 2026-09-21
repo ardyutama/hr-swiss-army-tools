@@ -803,9 +803,18 @@ namespace hr_sat.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("port");
 
+                    b.Property<string>("ProtectedGrant")
+                        .HasColumnType("text")
+                        .HasColumnName("protected_grant");
+
                     b.Property<string>("ProtectedPassword")
                         .HasColumnType("text")
                         .HasColumnName("protected_password");
+
+                    b.Property<string>("SignInMethod")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("sign_in_method");
 
                     b.Property<string>("Username")
                         .IsRequired()
@@ -816,6 +825,8 @@ namespace hr_sat.Infrastructure.Migrations
 
                     b.ToTable("smtp_settings", null, t =>
                         {
+                            t.HasCheckConstraint("smtp_settings_sign_in_method_check", "sign_in_method IN ('app-password', 'microsoft-account')");
+
                             t.HasCheckConstraint("smtp_settings_singleton_check", "id = 1");
                         });
                 });

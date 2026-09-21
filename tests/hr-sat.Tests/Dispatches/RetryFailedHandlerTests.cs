@@ -220,7 +220,7 @@ public sealed class RetryFailedHandlerTests
     {
         await using var dbContext = new TestDbContext();
         var (vacancy, round) = await SeedVacancyAsync(dbContext);
-        var handler = CreateHandler(dbContext, CreateEmailSender(configured: false));
+        var handler = CreateHandler(dbContext, CreateEmailSender(SmtpReadiness.NotConfigured));
 
         var result = await handler.Handle(
             new RetryFailedDispatchesCommand(vacancy.Id, round.Id, 1),
@@ -228,6 +228,21 @@ public sealed class RetryFailedHandlerTests
 
         result.IsFailure.ShouldBeTrue();
         result.Error.Code.ShouldBe("Dispatch.SmtpNotConfigured");
+    }
+
+    [Fact]
+    public async Task Handle_Should_Refuse_WhenTheSignInHasExpired() // domain: Sign-in Method — the retry pre-flight matches Send To All (issue 03, decision 7)
+    {
+        await using var dbContext = new TestDbContext();
+        var (vacancy, round) = await SeedVacancyAsync(dbContext);
+        var handler = CreateHandler(dbContext, CreateEmailSender(SmtpReadiness.SignInExpired));
+
+        var result = await handler.Handle(
+            new RetryFailedDispatchesCommand(vacancy.Id, round.Id, 1),
+            CancellationToken.None);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Dispatch.SmtpSignInExpired");
     }
 
     [Fact]
@@ -345,10 +360,11 @@ public sealed class RetryFailedHandlerTests
             CreateSmtpSettingsStore(),
             new FixedTimeProvider(Now));
 
-    private static IEmailSender CreateEmailSender(bool configured = true)
+    private static IEmailSender CreateEmailSender(SmtpReadiness readiness = SmtpReadiness.Configured)
     {
         var sender = Substitute.For<IEmailSender>();
-        sender.IsConfigured.Returns(configured);
+        sender.CheckReadinessAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(readiness));
         sender.SendAsync(default!, default!, default!, default)
             .ReturnsForAnyArgs(Task.CompletedTask);
         return sender;
@@ -381,6 +397,7 @@ public sealed class RetryFailedHandlerTests
                 SmtpFromAddress,
                 null,
                 true,
+                SignInMethod.AppPassword,
                 SmtpSettingsSource.Settings)));
         return store;
     }

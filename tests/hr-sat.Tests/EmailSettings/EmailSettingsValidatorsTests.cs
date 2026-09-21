@@ -7,10 +7,13 @@ namespace hr_sat.Tests.EmailSettings;
 
 // The server mirrors the client's input rules and owns them (issue 02, decision 6):
 // bare hostname or IP, port 1–65535, non-empty username, strict From address, capped
-// From name; the password stays write-only and optional on save.
+// From name; the password stays write-only and optional on save. The rules are
+// method-conditional (issue 03, decision 30): Microsoft Account validates only the
+// From fields — the credential columns are derived from the connected account.
 public sealed class EmailSettingsValidatorsTests
 {
     private static readonly UpsertSmtpSettingsCommand ValidUpsert = new(
+        "app-password",
         "smtp.gmail.com",
         587,
         "hr@firma.example",
@@ -101,5 +104,53 @@ public sealed class EmailSettingsValidatorsTests
         result.Errors.Select(error => error.PropertyName).ShouldContain(nameof(TestSmtpConnectionCommand.Host));
         result.Errors.Select(error => error.PropertyName).ShouldContain(nameof(TestSmtpConnectionCommand.Port));
         result.Errors.Select(error => error.PropertyName).ShouldContain(nameof(TestSmtpConnectionCommand.Username));
+    }
+
+    [Fact]
+    public void Validate_Should_RequireADefinedSignInMethod() // domain: Sign-in Method — defined wire values only (issue 03, decision 16)
+    {
+        var validator = new UpsertSmtpSettingsCommandValidator();
+
+        foreach (var method in new[] { null, "", "password", "microsoft", "basic", "oauth2" })
+        {
+            var result = validator.Validate(ValidUpsert with { SignInMethod = method });
+            result.IsValid.ShouldBeFalse($"method '{method}' must be rejected");
+            result.Errors.Select(error => error.PropertyName)
+                .ShouldContain(nameof(UpsertSmtpSettingsCommand.SignInMethod));
+        }
+
+        validator.Validate(ValidUpsert with { SignInMethod = "App-Password" }).IsValid.ShouldBeTrue();
+        validator.Validate(ValidUpsert with { SignInMethod = "microsoft-account", Host = null, Port = null, Username = null })
+            .IsValid.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Validate_Should_SkipCredentialRules_WhenMicrosoftAccount() // domain: Sign-in Method — microsoft validates only the From fields (issue 03, decision 22)
+    {
+        var validator = new UpsertSmtpSettingsCommandValidator();
+
+        var result = validator.Validate(ValidUpsert with
+        {
+            SignInMethod = "microsoft-account",
+            Host = null,
+            Port = null,
+            Username = null,
+            Password = null,
+            FromAddress = "anna@outlook.com",
+            FromName = null,
+        });
+        result.IsValid.ShouldBeTrue();
+
+        // The From rules still bind under Microsoft Account.
+        var invalid = validator.Validate(ValidUpsert with
+        {
+            SignInMethod = "microsoft-account",
+            FromAddress = "not-an-email",
+        });
+        invalid.IsValid.ShouldBeFalse();
+        invalid.Errors.Select(error => error.PropertyName)
+            .ShouldContain(nameof(UpsertSmtpSettingsCommand.FromAddress));
+        invalid.Errors.Select(error => error.PropertyName)
+            .ShouldNotContain(nameof(UpsertSmtpSettingsCommand.Host));
     }
 }

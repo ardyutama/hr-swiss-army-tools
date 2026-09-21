@@ -4,7 +4,9 @@ using hr_sat.Domain;
 
 namespace hr_sat.Application.Features.EmailSettings.GetSmtpSettings;
 
-internal sealed class GetSmtpSettingsQueryHandler(ISmtpSettingsStore settingsStore)
+internal sealed class GetSmtpSettingsQueryHandler(
+    ISmtpSettingsStore settingsStore,
+    IMicrosoftAccountSignIn microsoftSignIn)
     : IQueryHandler<GetSmtpSettingsQuery, SmtpSettingsResponse>
 {
     public async Task<Result<SmtpSettingsResponse>> Handle(
@@ -19,6 +21,8 @@ internal sealed class GetSmtpSettingsQueryHandler(ISmtpSettingsStore settingsSto
             snapshot.FromAddress,
             snapshot.FromName,
             snapshot.HasPassword,
+            snapshot.SignInMethod?.ToApiValue(),
+            microsoftSignIn.IsAvailable,
             snapshot.Source.ToApiValue());
     }
 }

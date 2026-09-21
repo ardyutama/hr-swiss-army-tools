@@ -109,7 +109,8 @@ public sealed class RetryFailedTests(ApiFactory factory) : IClassFixture<ApiFact
     private static IEmailSender CreateEmailSender()
     {
         var sender = Substitute.For<IEmailSender>();
-        sender.IsConfigured.Returns(true);
+        sender.CheckReadinessAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(SmtpReadiness.Configured));
         sender.SendAsync(default!, default!, default!, default)
             .ReturnsForAnyArgs(Task.CompletedTask);
         return sender;

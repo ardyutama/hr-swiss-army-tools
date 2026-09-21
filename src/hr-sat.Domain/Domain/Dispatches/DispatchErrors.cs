@@ -9,6 +9,13 @@ public static class DispatchErrors
         "Dispatch.SmtpNotConfigured",
         "Email sending is not configured: the 'Smtp' section is missing or incomplete in the app's configuration file (appsettings.json). Whoever installed this app can fill it in from the included template and restart the app.");
 
+    // The dispatch pre-flight refusal for a dead Microsoft Account grant (issue 03,
+    // decisions 7, 12): one amber refusal for the whole run, no dispatch rows written
+    // — never a wall of identical per-dispatch failures.
+    public static Error SmtpSignInExpired() => Error.Problem(
+        "Dispatch.SmtpSignInExpired",
+        "Reconnect the email account on the settings page.");
+
     public static Error MissingTemplate(EmailTemplateKind kind) => Error.Problem(
         "Dispatch.MissingTemplate",
         $"The vacancy has no '{kind.ToApiValue()}' email template, so nothing was sent.",
